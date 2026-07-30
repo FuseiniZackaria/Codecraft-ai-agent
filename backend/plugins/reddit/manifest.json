@@ -1,0 +1,8 @@
+{
+  "name": "reddit",
+  "version": "1.0.0",
+  "permissions": ["reddit.comment"],
+  "auth": { "type": "oauth2", "provider": "reddit" },
+  "actions": ["postComment"],
+  "events": []
+}

@@ -1,0 +1,13 @@
+{
+  "name": "codecraft-ai",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Run backend and frontend together from the project root",
+  "scripts": {
+    "install:all": "npm install --prefix backend && npm install --prefix frontend",
+    "dev": "concurrently -n backend,frontend -c yellow,cyan \"npm start --prefix backend\" \"npm run dev --prefix frontend\""
+  },
+  "devDependencies": {
+    "concurrently": "^8.2.2"
+  }
+}

@@ -1,0 +1,8 @@
+{
+  "name": "whatsapp",
+  "version": "1.0.0",
+  "permissions": ["whatsapp.send"],
+  "auth": { "type": "oauth2", "provider": "whatsapp" },
+  "actions": ["sendMessage"],
+  "events": []
+}

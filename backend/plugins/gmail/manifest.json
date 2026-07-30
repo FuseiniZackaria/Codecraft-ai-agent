@@ -1,0 +1,8 @@
+{
+  "name": "gmail",
+  "version": "1.0.0",
+  "permissions": ["gmail.read", "gmail.send"],
+  "auth": { "type": "oauth2", "provider": "google" },
+  "actions": ["sendEmail", "readInbox", "replyToThread"],
+  "events": ["newEmailReceived"]
+}

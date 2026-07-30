@@ -1,0 +1,13 @@
+{
+  "id": "greeting-skill",
+  "name": "Greeting Skill",
+  "version": "1.0.0",
+  "author": "CodeCraft",
+  "description": "A minimal sample skill that adds a greeting tool - demonstrates the installer pipeline end to end with zero external dependencies.",
+  "entry": "agent/index.js",
+  "minimumCoreVersion": "1.0.0",
+  "dependencies": [],
+  "permissions": [],
+  "tools": ["greeting.sayHello"],
+  "events": ["skill.loaded", "skill.enabled"]
+}

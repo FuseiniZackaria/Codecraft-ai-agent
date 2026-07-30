@@ -1,0 +1,30 @@
+const express = require('express');
+const cors = require('cors');
+const config = require('./config');
+const { loadPlugins } = require('./core/pluginLoader');
+const routes = require('./api/routes');
+const webhookRoutes = require('./api/webhookRoutes');
+const eventsRoutes = require('./api/eventsRoutes');
+const skillsRoutes = require('./api/skillsRoutes');
+const scheduler = require('./core/scheduler');
+
+const app = express();
+app.use(cors());
+app.use(express.json({ limit: '35mb' }));
+
+const loadedPlugins = loadPlugins();
+console.log(`[startup] Loaded plugins: ${loadedPlugins.join(', ') || '(none)'}`);
+
+app.use('/api', routes);
+app.use('/webhooks', webhookRoutes);
+app.use('/api/events', eventsRoutes);
+app.use('/api/skills', skillsRoutes);
+
+app.get('/health', (req, res) => res.json({ status: 'ok', plugins: loadedPlugins }));
+
+app.listen(config.port, () => {
+  console.log(`CodeCraft AI backend running on http://localhost:${config.port}`);
+  scheduler.start();
+});
+
+module.exports = app;

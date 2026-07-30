@@ -1,0 +1,8 @@
+{
+  "name": "websearch",
+  "version": "1.0.0",
+  "permissions": ["websearch.search"],
+  "auth": { "type": "api_key", "provider": "tavily" },
+  "actions": ["search"],
+  "events": []
+}

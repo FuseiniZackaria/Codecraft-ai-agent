@@ -1,0 +1,8 @@
+{
+  "name": "github",
+  "version": "1.0.0",
+  "permissions": ["github.write"],
+  "auth": { "type": "oauth2", "provider": "github" },
+  "actions": ["createRepository", "createOrUpdateFile", "createPullRequest"],
+  "events": []
+}
