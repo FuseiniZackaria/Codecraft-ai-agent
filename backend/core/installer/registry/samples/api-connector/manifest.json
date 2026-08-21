@@ -1,0 +1,18 @@
+{
+  "id": "api-connector",
+  "name": "Generic API Connector",
+  "version": "1.0.0",
+  "author": "CodeCraft",
+  "description": "Connects to any REST API via a configured base URL and optional bearer token. Read-only GET calls run freely; anything else (POST/PUT/DELETE) requires approval, since a generic connector can't know which calls are safe.",
+  "kind": "tool",
+  "entry": "index.js",
+  "triggers": [],
+  "minimumCoreVersion": "1.0.0",
+  "dependencies": [],
+  "permissions": ["network"],
+  "tools": [
+    { "name": "get", "description": "Read-only GET request against the configured API." },
+    { "name": "call", "description": "Any HTTP method against the configured API - requires approval." }
+  ],
+  "events": ["skill.loaded", "skill.enabled"]
+}

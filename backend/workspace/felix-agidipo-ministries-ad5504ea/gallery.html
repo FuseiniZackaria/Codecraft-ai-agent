@@ -1,0 +1,136 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Gallery — Rev. Felix Agidipo Ministries</title>
+<meta name="description" content="Photo albums from Rev. Felix Agidipo Ministries — crusades, ordinations, community outreach, and worship gatherings.">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:ital,opsz,wght@0,9..144,400;0,9..144,600;0,9..144,700;1,9..144,500&family=Work+Sans:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="css/styles.css">
+</head>
+<body>
+
+<div class="beam-spine" aria-hidden="true"></div>
+
+<header class="site-header">
+  <div class="header-inner">
+    <a href="index.html" class="brand">
+      <span class="brand-mark">FA</span>
+      <span class="brand-text">Rev. Felix Agidipo<br><em>Ministries</em></span>
+    </a>
+    <button class="nav-toggle" aria-label="Toggle navigation" aria-expanded="false" aria-controls="siteNav">
+      <span></span><span></span><span></span>
+    </button>
+    <nav class="site-nav" id="siteNav">
+      <a href="index.html">Home</a>
+      <a href="about.html">About</a>
+      <a href="activities.html">Activities</a>
+      <a href="events.html">Events</a>
+      <a href="sermons.html">Sermons</a>
+      <a href="gallery.html" class="active" aria-current="page">Gallery</a>
+      <a href="news.html">News</a>
+      <a href="contact.html">Contact</a>
+    </nav>
+  </div>
+</header>
+
+<main>
+
+  <section class="page-hero page-hero--gallery">
+    <div class="beam-clip beam-clip--hero" aria-hidden="true"></div>
+    <div class="page-hero-inner">
+      <p class="eyebrow">Moments of Light</p>
+      <h1>Gallery</h1>
+      <p class="page-hero-lede">Crusades under open skies, ordinations, baptisms by the river, and the ordinary Sundays that carry extraordinary grace — a visual record of what God has done among us.</p>
+    </div>
+  </section>
+
+  <section class="section section--alabaster gallery-controls-section">
+    <div class="section-inner">
+      <div class="gallery-controls">
+        <div class="filter-group" id="galleryFilters" role="tablist" aria-label="Filter gallery by category">
+          <button class="filter-chip is-active" data-filter="all" role="tab" aria-selected="true">All Albums</button>
+          <button class="filter-chip" data-filter="crusades" role="tab" aria-selected="false">Crusades</button>
+          <button class="filter-chip" data-filter="ordinations" role="tab" aria-selected="false">Ordinations</button>
+          <button class="filter-chip" data-filter="outreach" role="tab" aria-selected="false">Outreach</button>
+          <button class="filter-chip" data-filter="worship" role="tab" aria-selected="false">Worship</button>
+          <button class="filter-chip" data-filter="youth" role="tab" aria-selected="false">Youth</button>
+        </div>
+      </div>
+
+      <div class="gallery-grid" id="galleryGrid" aria-live="polite">
+        <!-- Gallery items injected by js/gallery.js -->
+        <p class="gallery-loading">Loading photographs…</p>
+      </div>
+
+      <p class="gallery-empty" id="galleryEmpty" hidden>No photographs found in this category yet — check back soon.</p>
+    </div>
+  </section>
+
+  <section class="section section--indigo cta-strip">
+    <div class="beam-clip beam-clip--divider" aria-hidden="true"></div>
+    <div class="section-inner cta-strip-inner">
+      <div class="cta-copy">
+        <p class="eyebrow eyebrow--gold">Were You There?</p>
+        <h2>Share Your Photographs With Us</h2>
+        <p>If you captured a moment from one of our gatherings, we would love to feature it in this gallery. Send your images through our contact page.</p>
+      </div>
+      <a href="contact.html" class="btn btn--gold">Submit a Photo</a>
+    </div>
+  </section>
+
+</main>
+
+<!-- Lightbox -->
+<div class="lightbox" id="lightbox" role="dialog" aria-modal="true" aria-label="Photograph viewer" hidden>
+  <div class="lightbox-backdrop" data-lightbox-close></div>
+  <div class="lightbox-frame">
+    <button class="lightbox-close" id="lightboxClose" aria-label="Close viewer">&times;</button>
+    <button class="lightbox-nav lightbox-prev" id="lightboxPrev" aria-label="Previous photograph">&#8249;</button>
+    <img src="" alt="" id="lightboxImage" class="lightbox-image">
+    <button class="lightbox-nav lightbox-next" id="lightboxNext" aria-label="Next photograph">&#8250;</button>
+    <div class="lightbox-caption">
+      <p id="lightboxCaption"></p>
+      <span id="lightboxCounter" class="lightbox-counter"></span>
+    </div>
+  </div>
+</div>
+
+<footer class="site-footer">
+  <div class="beam-clip beam-clip--footer" aria-hidden="true"></div>
+  <div class="footer-inner">
+    <div class="footer-brand">
+      <span class="brand-mark">FA</span>
+      <p>Rev. Felix Agidipo Ministries<br>Carrying the light of the Gospel into every nation.</p>
+    </div>
+    <div class="footer-links">
+      <h3>Explore</h3>
+      <a href="about.html">About the Ministry</a>
+      <a href="sermons.html">Sermon Archive</a>
+      <a href="events.html">Upcoming Events</a>
+      <a href="news.html">Latest News</a>
+    </div>
+    <div class="footer-contact">
+      <h3>Connect</h3>
+      <p>Grace Sanctuary, 14 Ijebu Road<br>Ibadan, Oyo State, Nigeria</p>
+      <p>info@felixagidipoministries.org</p>
+      <a href="admin.html" class="footer-admin-link">Admin Panel</a>
+    </div>
+  </div>
+  <div class="footer-bottom">
+    <p>&copy; 2024 Rev. Felix Agidipo Ministries. All rights reserved.</p>
+  </div>
+</footer>
+
+<script src="js/data.js"></script>
+<script src="js/main.js"></script>
+<script src="js/gallery.js"></script>
+  <script src="js/sermons.js"></script>
+  <script src="js/events.js"></script>
+  <script src="js/activities.js"></script>
+  <script src="js/news.js"></script>
+  <script src="js/admin.js"></script>
+</body>
+</html>

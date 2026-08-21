@@ -1,0 +1,9 @@
+{
+  "name": "youtube",
+  "version": "1.0.0",
+  "permissions": ["youtube", "youtube.comment", "youtube.upload"],
+  "auth": { "type": "api_key", "envVar": "YOUTUBE_API_KEY" },
+  "authNote": "search and getTrending use YOUTUBE_API_KEY above. postComment and upload are different - they need a Composio 'youtube' OAuth connection, set up separately in the Composio dashboard, same as reddit/gmail/github.",
+  "actions": ["search", "getTrending", "postComment", "upload"],
+  "events": []
+}

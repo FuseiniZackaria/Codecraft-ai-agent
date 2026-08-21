@@ -4,7 +4,7 @@ const memory = require('../memory');
 const toolRegistry = require('../tools/ToolRegistry');
 const composio = require('../core/composio');
 const chat = require('../core/chat');
-const whatsappDirect = require('../core/whatsappDirect');
+const whatsappProvider = require('../core/whatsappProvider');
 const { agents } = require('../agents/registry');
 const { availableProviders } = require('../core/router');
 
@@ -38,7 +38,30 @@ router.post('/chat', async (req, res) => {
       return res.status(400).json({ error: '"message" or an attachment is required' });
     }
     const result = await chat.handleMessage(message || '', history || [], attachments || []);
+
+    // Persist both sides server-side, so chat history survives a refresh or
+    // a different device/browser. Fire-and-forget - a persistence hiccup
+    // should never break the actual chat response the user is waiting on.
+    const attachmentNames = (attachments || []).map((a) => a.name).filter(Boolean);
+    const userContent =
+      message || (attachmentNames.length ? `Sent ${attachmentNames.length === 1 ? attachmentNames[0] : `${attachmentNames.length} files`}` : '');
+    memory
+      .addChatMessage({ role: 'user', content: userContent, attachmentNames })
+      .catch((err) => console.warn(`[chat] failed to persist user message: ${err.message}`));
+    memory
+      .addChatMessage({ role: 'assistant', content: result.reply, taskId: result.task?.id || null })
+      .catch((err) => console.warn(`[chat] failed to persist assistant reply: ${err.message}`));
+
     res.json(result);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+router.get('/chat/history', async (req, res) => {
+  try {
+    const limit = Math.min(Number(req.query.limit) || 200, 500);
+    res.json(await memory.listChatMessages(limit));
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
@@ -72,14 +95,9 @@ router.get('/composio/whatsapp/status', async (req, res) => {
   if (Date.now() - whatsappStatusCache.at < GMAIL_STATUS_TTL_MS && whatsappStatusCache.value) {
     return res.json(whatsappStatusCache.value);
   }
-  try {
-    await whatsappDirect.checkStatus();
-    whatsappStatusCache = { at: Date.now(), value: { connected: true } };
-    res.json(whatsappStatusCache.value);
-  } catch (err) {
-    whatsappStatusCache = { at: Date.now(), value: { connected: false, error: err.message } };
-    res.json(whatsappStatusCache.value);
-  }
+  const result = await whatsappProvider.checkStatus();
+  whatsappStatusCache = { at: Date.now(), value: result };
+  res.json(result);
 });
 
 // Submit a new high-level goal

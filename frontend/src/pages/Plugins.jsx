@@ -66,12 +66,12 @@ export default function Plugins() {
         <ComposioCard
           icon={MessageCircle}
           name="WhatsApp"
-          desc="Send messages (within 24h of them texting first)."
+          desc="Send/receive messages via Twilio Sandbox (no business verification needed)."
           toolPrefix="whatsapp"
           connectedKey="whatsappConnected"
-          viaLabel="via Meta direct"
-          manageUrl="https://developers.facebook.com"
-          manageLabel="Set up on Meta"
+          viaLabel="via Twilio"
+          manageUrl="https://console.twilio.com"
+          manageLabel="Set up on Twilio"
         />
         <ComposioCard icon={GitBranch} name="GitHub" desc="Create repos, commit files, and open pull requests." toolPrefix="github" connectedKey="githubConnected" />
         {CATALOG.map(({ name, icon: Icon, desc }) => {

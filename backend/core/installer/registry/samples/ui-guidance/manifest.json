@@ -1,0 +1,20 @@
+{
+  "id": "ui-guidance",
+  "name": "UI/UX Design Guidance",
+  "version": "1.0.0",
+  "author": "CodeCraft",
+  "description": "Reference guidance for building professional-looking UI - accessibility, contrast, spacing, and interaction rules. Injected into agent prompts for relevant tasks instead of running as code.",
+  "kind": "guidance",
+  "guidanceFile": "guidance.md",
+  "triggers": [
+    "ui", "ux", "design", "landing page", "dashboard", "component",
+    "button", "modal", "navbar", "sidebar", "card", "form", "layout",
+    "color palette", "typography", "accessibility", "responsive",
+    "glassmorphism", "dark mode", "css", "tailwind", "frontend"
+  ],
+  "minimumCoreVersion": "1.0.0",
+  "dependencies": [],
+  "permissions": [],
+  "tools": [],
+  "events": ["skill.loaded", "skill.enabled"]
+}

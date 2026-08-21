@@ -95,6 +95,29 @@ body {
   --tw-prose-quotes: var(--color-text-muted);
   --tw-prose-quote-borders: var(--color-accent);
 }
+/* Same markdown rendering, tuned for the bright accent-colored user chat
+   bubble (black text on orange) instead of the dark surface background the
+   variant above assumes - reusing prose-codecraft's muted-gray tones there
+   would be nearly unreadable on an orange background. */
+.prose-codecraft-on-accent {
+  --tw-prose-body: rgba(0, 0, 0, 0.85);
+  --tw-prose-headings: #000;
+  --tw-prose-bold: #000;
+  --tw-prose-links: #000;
+  --tw-prose-bullets: rgba(0, 0, 0, 0.5);
+  --tw-prose-hr: rgba(0, 0, 0, 0.2);
+  --tw-prose-th-borders: rgba(0, 0, 0, 0.2);
+  --tw-prose-td-borders: rgba(0, 0, 0, 0.2);
+  --tw-prose-code: #000;
+  --tw-prose-quotes: rgba(0, 0, 0, 0.7);
+  --tw-prose-quote-borders: rgba(0, 0, 0, 0.4);
+}
+.prose-codecraft-on-accent code {
+  background: rgba(0, 0, 0, 0.1);
+  padding: 0.15em 0.4em;
+  border-radius: 4px;
+  font-size: 0.85em;
+}
 .prose-codecraft :where(code):not(:where([class~="not-prose"] *))::before,
 .prose-codecraft :where(code):not(:where([class~="not-prose"] *))::after {
   content: none;

@@ -1,0 +1,8 @@
+{
+  "name": "filesystem",
+  "version": "1.0.0",
+  "permissions": ["filesystem"],
+  "auth": { "type": "none" },
+  "actions": ["writeFile", "listFiles", "zipProject"],
+  "events": []
+}

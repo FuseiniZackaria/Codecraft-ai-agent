@@ -1,13 +1,8 @@
+import { Link } from 'react-router-dom';
+import { Radio, ArrowRight } from 'lucide-react';
 import { useStore } from '../store/useStore';
 import StatCard from '../components/StatCard';
 import StatusPill from '../components/StatusPill';
-
-function timeAgo(iso) {
-  const s = Math.max(1, Math.floor((Date.now() - new Date(iso).getTime()) / 1000));
-  if (s < 60) return `${s}s ago`;
-  if (s < 3600) return `${Math.floor(s / 60)}m ago`;
-  return `${Math.floor(s / 3600)}h ago`;
-}
 
 export default function Dashboard() {
   const { summary, tasks } = useStore();
@@ -38,22 +33,22 @@ export default function Dashboard() {
 
       <div className="grid md:grid-cols-2 gap-6">
         <div>
-          <h2 className="text-sm font-medium text-[var(--color-text-muted)] mb-3">Activity</h2>
-          <div className="rounded-lg border border-[var(--color-border)] bg-[var(--color-surface)] p-4">
-            <ol className="relative border-l border-[var(--color-border)] ml-1 space-y-4">
-              {summary.auditLog.slice().reverse().map((e, i) => (
-                <li key={i} className="pl-4 relative">
-                  <span className="absolute -left-[5px] top-1.5 w-2 h-2 rounded-full bg-[var(--color-accent)]" />
-                  <div className="text-sm">
-                    <span className="text-[var(--color-text-muted)]">{e.actor}</span>{' '}
-                    <span className="font-[var(--font-mono)] text-[13px]">{e.action}</span>{' '}
-                    {e.target && <span className="text-[var(--color-text-muted)]">→ {e.target}</span>}
-                  </div>
-                  <div className="text-[11px] text-[var(--color-text-muted)]">{timeAgo(e.at)}</div>
-                </li>
-              ))}
-            </ol>
-          </div>
+          <h2 className="text-sm font-medium text-[var(--color-text-muted)] mb-3">Live activity</h2>
+          <Link
+            to="/console"
+            className="group flex items-center justify-between rounded-lg border border-[var(--color-border)] bg-[var(--color-surface)] p-4 hover:border-[var(--color-accent)]/40 transition-colors"
+          >
+            <div className="flex items-center gap-3">
+              <div className="w-8 h-8 rounded-md bg-[var(--color-accent)]/10 flex items-center justify-center shrink-0">
+                <Radio size={15} className="text-[var(--color-accent)]" />
+              </div>
+              <div>
+                <div className="text-sm font-medium">Watch agents work in real time</div>
+                <div className="text-xs text-[var(--color-text-muted)]">Live reasoning, tool calls, and results as they happen</div>
+              </div>
+            </div>
+            <ArrowRight size={16} className="text-[var(--color-text-muted)] group-hover:text-[var(--color-accent)] transition-colors shrink-0" />
+          </Link>
         </div>
 
         <div>

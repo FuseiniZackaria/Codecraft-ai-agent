@@ -10,15 +10,18 @@
   "scripts": {
     "start": "node server.js",
     "cc": "node bin/cc.js",
-    "test": "node tests/orchestrator.test.js && node tests/installer.test.js"
+    "test": "node tests/orchestrator.test.js && node tests/installer.test.js && node tests/coding.test.js && node tests/content-studio.test.js && node tests/twilio-whatsapp.test.js && node tests/intent-classifier.test.js && node tests/scheduler.test.js && node tests/chat-history.test.js && node tests/document-handling.test.js && node tests/workflow-engine.test.js && node tests/workflow-engine-phase2.test.js && node tests/workflow-marketplace.test.js && node tests/image-generation.test.js && node tests/image-generation-no-key.test.js && node tests/youtube-search.test.js && node tests/youtube-trending-comment.test.js && node tests/folder-watch-trigger.test.js && node tests/speech-to-text.test.js && node tests/video-editing.test.js && node tests/approval-video-preview.test.js && node tests/youtube-upload.test.js && node tests/analytics.test.js && node tests/self-prompting.test.js && node tests/guidance-skills.test.js && node tests/browser-extension-api.test.js && node tests/mcp-discovery.test.js && node tests/connector-detection.test.js && node tests/mcp-client.test.js && node tests/mcp-tool-safety.test.js && node tests/cli-detection.test.js && node tests/api-connector.test.js && node tests/cli-import.test.js && node tests/coding-agent-narration.test.js && node tests/chat-live-narration.test.js"
   },
   "dependencies": {
     "@composio/core": "^0.13.1",
     "@supabase/supabase-js": "^2.110.0",
     "adm-zip": "^0.6.0",
+    "codecraft-ai": "file:..",
     "cors": "^2.8.5",
     "dotenv": "^16.4.5",
     "express": "^4.19.2",
-    "uuid": "^9.0.1"
+    "mammoth": "^1.7.0",
+    "uuid": "^9.0.1",
+    "xlsx": "^0.18.5"
   }
 }

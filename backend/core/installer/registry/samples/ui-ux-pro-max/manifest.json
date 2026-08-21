@@ -1,0 +1,24 @@
+{
+  "id": "ui-ux-pro-max",
+  "name": "UI/UX Pro Max - Design Intelligence",
+  "version": "1.0.0",
+  "author": "user-provided",
+  "description": "UI/UX design intelligence covering styles, palettes, font pairings, charts, and stack-specific guidelines. Reference guidance, not executable code.",
+  "kind": "guidance",
+  "guidanceFile": "guidance.md",
+  "triggers": [
+    "plan", "build", "create", "design", "implement", "review", "fix", "improve", "optimize", "enhance", "refactor",
+    "website", "landing page", "dashboard", "admin panel", "e-commerce", "saas", "portfolio", "blog", "mobile app",
+    ".html", ".tsx", ".vue", ".svelte",
+    "button", "modal", "navbar", "sidebar", "card", "table", "form", "chart",
+    "glassmorphism", "claymorphism", "minimalism", "brutalism", "neumorphism", "bento grid", "dark mode",
+    "responsive", "skeuomorphism", "flat design",
+    "color palette", "accessibility", "animation", "layout", "typography", "font pairing", "spacing", "hover", "shadow", "gradient",
+    "ui", "ux"
+  ],
+  "minimumCoreVersion": "1.0.0",
+  "dependencies": [],
+  "permissions": [],
+  "tools": [],
+  "events": ["skill.loaded", "skill.enabled"]
+}

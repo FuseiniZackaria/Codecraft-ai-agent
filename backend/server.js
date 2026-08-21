@@ -6,6 +6,12 @@ const routes = require('./api/routes');
 const webhookRoutes = require('./api/webhookRoutes');
 const eventsRoutes = require('./api/eventsRoutes');
 const skillsRoutes = require('./api/skillsRoutes');
+const workspaceRoutes = require('./api/workspaceRoutes');
+const workflowsRoutes = require('./api/workflowsRoutes');
+const workflowDefinitionsRoutes = require('./api/workflowDefinitionsRoutes');
+const analyticsRoutes = require('./api/analyticsRoutes');
+const browserRoutes = require('./api/browserRoutes');
+const mcpRoutes = require('./api/mcpRoutes');
 const scheduler = require('./core/scheduler');
 
 const app = express();
@@ -19,6 +25,12 @@ app.use('/api', routes);
 app.use('/webhooks', webhookRoutes);
 app.use('/api/events', eventsRoutes);
 app.use('/api/skills', skillsRoutes);
+app.use('/api/workspace', workspaceRoutes);
+app.use('/api/workflows', workflowsRoutes);
+app.use('/api/workflow-definitions', workflowDefinitionsRoutes);
+app.use('/api/analytics', analyticsRoutes);
+app.use('/api/browser', browserRoutes);
+app.use('/api/mcp', mcpRoutes);
 
 app.get('/health', (req, res) => res.json({ status: 'ok', plugins: loadedPlugins }));
 

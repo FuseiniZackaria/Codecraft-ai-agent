@@ -1,8 +1,9 @@
 const orchestrator = require('./orchestrator');
-const { classify } = require('./orchestrator/planner');
+const { classifyIntent } = require('./intentClassifier');
 const { selectProvider } = require('./router');
 const { businessContextLine } = require('./businessContext');
 const store = require('../memory');
+const { isExtractable, extractText } = require('./documentExtractor');
 
 const REMEMBER_TRIGGERS = ['remember that', 'remember this', "don't forget", 'never forget', 'always remember'];
 
@@ -60,26 +61,48 @@ function buildMultimodalContent(message, attachments) {
  */
 async function handleMessage(message, history = [], attachments = []) {
   if (attachments.length) {
-    const unsupported = attachments.filter((a) => !ALLOWED_ATTACHMENT_TYPES.includes(a.mediaType));
+    const unsupported = attachments.filter((a) => !ALLOWED_ATTACHMENT_TYPES.includes(a.mediaType) && !isExtractable(a.mediaType));
     if (unsupported.length) {
       return {
         reply:
-          `I can only actually read images (JPEG/PNG/GIF/WebP) and PDFs right now - ` +
-          `${unsupported.map((a) => a.filename).join(', ')} isn't a format I can open. ` +
-          `Word/Excel docs aren't supported yet since the AI API can't parse those directly.`,
+          `I can read images (JPEG/PNG/GIF/WebP), PDFs, Word docs (.docx), and Excel files (.xlsx/.xls) - ` +
+          `${unsupported.map((a) => a.filename).join(', ')} isn't a format I can open.`,
         actionable: false,
         task: null,
       };
     }
 
+    const nativeAttachments = attachments.filter((a) => ALLOWED_ATTACHMENT_TYPES.includes(a.mediaType));
+    const documentAttachments = attachments.filter((a) => isExtractable(a.mediaType));
+
+    // Word/Excel aren't formats Claude's API can read directly - extract
+    // their text/data server-side first and fold it into the text prompt,
+    // rather than trying to send the raw file.
+    let extractedText = '';
+    const extractionErrors = [];
+    for (const doc of documentAttachments) {
+      try {
+        const text = await extractText(doc);
+        extractedText += `\n\n--- Content of ${doc.filename} ---\n${text}`;
+      } catch (err) {
+        extractionErrors.push(`${doc.filename}: ${err.message}`);
+      }
+    }
+
     const provider = selectProvider({});
     const facts = await factsLine();
-    const result = await provider.complete({
-      content: buildMultimodalContent(message, attachments),
-      system: buildSystemPrompt(facts),
-      maxTokens: 1500,
-    });
-    return { reply: result.text, actionable: false, task: null };
+    const combinedMessage = (message || 'What is this?') + extractedText;
+
+    const result = nativeAttachments.length
+      ? await provider.complete({
+          content: buildMultimodalContent(combinedMessage, nativeAttachments),
+          system: buildSystemPrompt(facts),
+          maxTokens: 2000,
+        })
+      : await provider.complete({ prompt: combinedMessage, system: buildSystemPrompt(facts), maxTokens: 2000 });
+
+    const errorNote = extractionErrors.length ? `\n\n(Couldn't read: ${extractionErrors.join('; ')})` : '';
+    return { reply: result.text + errorNote, actionable: false, task: null };
   }
 
   if (isRememberIntent(message)) {
@@ -87,10 +110,10 @@ async function handleMessage(message, history = [], attachments = []) {
     return { reply: `Got it — I'll remember that.`, actionable: false, task: null, remembered: true };
   }
 
-  const { isActionable } = classify(message);
+  const { category, isActionable } = await classifyIntent(message, history);
 
   if (isActionable) {
-    const [task] = await orchestrator.submitGoal(message, { history });
+    const [task] = await orchestrator.submitGoal(message, { history, category });
     return { reply: describeTaskOutcome(task), actionable: true, task };
   }
 
@@ -117,7 +140,7 @@ function describeTaskOutcome(task) {
     const note = Array.isArray(task.result) ? task.result[task.result.length - 1] : null;
     return note?.text || note || `Done triaging your inbox — check the Tasks page for anything awaiting approval.`;
   }
-  if (task.agent === 'research' || task.agent === 'marketing' || task.agent === 'ceo') {
+  if (task.agent === 'research' || task.agent === 'marketing' || task.agent === 'ceo' || task.agent === 'coding' || task.agent === 'content-studio') {
     // Both run immediately with no approval step - surface the actual
     // output here rather than pointing to the Tasks page for something
     // that already fully completed.

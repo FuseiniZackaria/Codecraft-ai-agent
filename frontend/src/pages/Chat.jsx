@@ -1,11 +1,22 @@
 import { useState, useRef, useEffect, useCallback } from 'react';
-import { Send, ListChecks, Paperclip, Mic, MicOff, X, FileText, Image as ImageIcon } from 'lucide-react';
+import { Send, ListChecks, Paperclip, Mic, MicOff, X, FileText, Image as ImageIcon, ChevronDown, ChevronUp } from 'lucide-react';
 import { Link } from 'react-router-dom';
+import ReactMarkdown from 'react-markdown';
+import remarkGfm from 'remark-gfm';
 import { useStore } from '../store/useStore';
 import { api } from '../services/api';
 import StatusPill from '../components/StatusPill';
 
-const ACCEPTED_TYPES = ['image/jpeg', 'image/png', 'image/gif', 'image/webp', 'application/pdf'];
+const ACCEPTED_TYPES = [
+  'image/jpeg',
+  'image/png',
+  'image/gif',
+  'image/webp',
+  'application/pdf',
+  'application/vnd.openxmlformats-officedocument.wordprocessingml.document', // .docx
+  'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet', // .xlsx
+  'application/vnd.ms-excel', // legacy .xls
+];
 const MAX_FILE_MB = 20;
 
 function fileToBase64(file) {
@@ -30,8 +41,32 @@ function AttachmentChip({ file, onRemove }) {
   );
 }
 
+const URL_PATTERN = /(https?:\/\/[^\s]+)/g;
+
+function linkify(text) {
+  const parts = text.split(URL_PATTERN);
+  return parts.map((part, i) =>
+    URL_PATTERN.test(part) ? (
+      <a
+        key={i}
+        href={part}
+        target="_blank"
+        rel="noreferrer"
+        className="underline hover:no-underline break-all"
+      >
+        {part}
+      </a>
+    ) : (
+      <span key={i}>{part}</span>
+    )
+  );
+}
+
+const LONG_MESSAGE_THRESHOLD = 500;
+
 function Bubble({ msg }) {
   const isUser = msg.role === 'user';
+  const [collapsed, setCollapsed] = useState((msg.content?.length || 0) > LONG_MESSAGE_THRESHOLD);
   const tasks = useStore((s) => s.tasks);
   // Live status: look up the current task by id (kept fresh by the store's
   // background poll) rather than the frozen snapshot captured when this
@@ -39,10 +74,13 @@ function Bubble({ msg }) {
   // you approve/reject it elsewhere.
   const liveTask = msg.task ? tasks.find((t) => t.id === msg.task.id) || msg.task : null;
 
+  const isLong = (msg.content?.length || 0) > LONG_MESSAGE_THRESHOLD;
+  const displayContent = collapsed && isLong ? `${msg.content.slice(0, LONG_MESSAGE_THRESHOLD)}...` : msg.content;
+
   return (
     <div className={`flex ${isUser ? 'justify-end' : 'justify-start'}`}>
       <div
-        className={`max-w-[80%] rounded-lg px-3.5 py-2.5 text-sm whitespace-pre-wrap ${
+        className={`max-w-[80%] rounded-lg px-3.5 py-2.5 text-sm ${
           isUser
             ? 'bg-[var(--color-accent)] text-black'
             : 'bg-[var(--color-surface)] border border-[var(--color-border)] text-[var(--color-text)]'
@@ -62,7 +100,23 @@ function Bubble({ msg }) {
             ))}
           </div>
         )}
-        {msg.content}
+
+        {msg.content && (
+          <div className={`${isUser ? 'prose-codecraft-on-accent' : 'prose-codecraft'} prose prose-sm max-w-none`}>
+            <ReactMarkdown remarkPlugins={[remarkGfm]}>{displayContent}</ReactMarkdown>
+          </div>
+        )}
+
+        {isLong && (
+          <button
+            onClick={() => setCollapsed((c) => !c)}
+            className={`mt-1.5 flex items-center gap-1 text-xs hover:underline ${isUser ? 'text-black/70' : 'text-[var(--color-text-muted)]'}`}
+          >
+            {collapsed ? 'Show full message' : 'Show less'}
+            {collapsed ? <ChevronDown size={12} /> : <ChevronUp size={12} />}
+          </button>
+        )}
+
         {liveTask && (
           <Link
             to="/tasks"
@@ -85,11 +139,37 @@ export default function Chat() {
   const [input, setInput] = useState('');
   const [files, setFiles] = useState([]);
   const [busy, setBusy] = useState(false);
+  const [liveNarration, setLiveNarration] = useState(null);
   const [listening, setListening] = useState(false);
   const [voiceSupported, setVoiceSupported] = useState(true);
   const bottomRef = useRef(null);
   const fileInputRef = useRef(null);
   const recognitionRef = useRef(null);
+
+  // While waiting on a reply, listen for real, live narration from
+  // whatever agent is working (e.g. the Coding Agent describing each file
+  // as it writes it) and show that instead of a static "…" placeholder.
+  // The chat endpoint is a single blocking request that only resolves once
+  // the whole thing finishes, so this is a separate live channel running
+  // alongside it, not something threaded through the request itself.
+  useEffect(() => {
+    if (!busy) {
+      setLiveNarration(null);
+      return;
+    }
+    const es = new EventSource(api.eventsStreamUrl());
+    es.onmessage = (msg) => {
+      try {
+        const event = JSON.parse(msg.data);
+        if (event.action === 'narration' && event.metadata?.text) {
+          setLiveNarration(event.metadata.text);
+        }
+      } catch {
+        // ignore malformed/comment lines
+      }
+    };
+    return () => es.close();
+  }, [busy]);
 
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: 'smooth' });
@@ -135,7 +215,7 @@ export default function Chat() {
 
     for (const file of selected) {
       if (!ACCEPTED_TYPES.includes(file.type)) {
-        errors.push(`${file.name}: only images and PDFs are supported (not Word/Excel yet)`);
+        errors.push(`${file.name}: unsupported file type (images, PDFs, Word, and Excel files only)`);
         continue;
       }
       if (file.size > MAX_FILE_MB * 1024 * 1024) {
@@ -222,8 +302,14 @@ export default function Chat() {
         ))}
         {busy && (
           <div className="flex justify-start">
-            <div className="rounded-lg px-3.5 py-2.5 text-sm bg-[var(--color-surface)] border border-[var(--color-border)] text-[var(--color-text-muted)]">
-              …
+            <div className="max-w-[80%] rounded-lg px-3.5 py-2.5 text-sm bg-[var(--color-surface)] border border-[var(--color-border)] text-[var(--color-text)] flex items-center gap-2">
+              <span className="relative flex h-2 w-2 shrink-0">
+                <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-[var(--color-accent)] opacity-75" />
+                <span className="relative inline-flex h-2 w-2 rounded-full bg-[var(--color-accent)]" />
+              </span>
+              <span className={liveNarration ? '' : 'text-[var(--color-text-muted)]'}>
+                {liveNarration || '…'}
+              </span>
             </div>
           </div>
         )}

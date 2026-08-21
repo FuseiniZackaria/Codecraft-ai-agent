@@ -1,0 +1,8 @@
+{
+  "name": "speech",
+  "version": "1.0.0",
+  "permissions": ["speech"],
+  "auth": { "type": "api_key", "envVar": "OPENAI_API_KEY" },
+  "actions": ["transcribe"],
+  "events": []
+}

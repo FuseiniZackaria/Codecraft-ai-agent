@@ -1,0 +1,375 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Content Studio — Admin | Rev. Felix Agidipo Ministries</title>
+<meta name="robots" content="noindex, nofollow">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:ital,opsz,wght@0,9..144,400;0,9..144,500;0,9..144,600;0,9..144,700;1,9..144,500&family=Work+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="css/styles.css">
+</head>
+<body class="admin-body">
+
+<div class="beam-backdrop" aria-hidden="true"></div>
+
+<!-- ===================== LOGIN GATE ===================== -->
+<section id="loginGate" class="login-gate">
+  <div class="login-card">
+    <span class="login-beam" aria-hidden="true"></span>
+    <p class="eyebrow">Ministries Administration</p>
+    <h1 class="login-title">Content Studio</h1>
+    <p class="login-sub">Enter the admin passphrase to publish sermons, events, activities, gallery images, and news updates to the live site.</p>
+    <form id="loginForm" novalidate>
+      <label for="adminPassword">Passphrase</label>
+      <input type="password" id="adminPassword" name="password" autocomplete="current-password" required>
+      <p id="loginError" class="form-error" role="alert" hidden>Incorrect passphrase. Please try again.</p>
+      <button type="submit" class="btn btn-gold btn-block">Enter Dashboard</button>
+    </form>
+    <p class="login-hint">Demo credential — <code>felix2024</code></p>
+  </div>
+</section>
+
+<!-- ===================== DASHBOARD ===================== -->
+<div id="dashboardApp" class="dashboard" hidden>
+
+  <header class="admin-topbar">
+    <div class="brand">
+      <span class="brand-mark" aria-hidden="true"></span>
+      <div>
+        <p class="brand-kicker">Rev. Felix Agidipo Ministries</p>
+        <h1>Content Studio</h1>
+      </div>
+    </div>
+    <nav class="admin-nav" aria-label="Admin sections">
+      <button class="nav-tab is-active" data-panel="overview" type="button">Overview</button>
+      <button class="nav-tab" data-panel="activities" type="button">Activities</button>
+      <button class="nav-tab" data-panel="events" type="button">Events</button>
+      <button class="nav-tab" data-panel="sermons" type="button">Sermons</button>
+      <button class="nav-tab" data-panel="gallery" type="button">Gallery</button>
+      <button class="nav-tab" data-panel="news" type="button">News</button>
+    </nav>
+    <div class="topbar-actions">
+      <a href="index.html" class="btn btn-ghost" target="_blank" rel="noopener">View Live Site ↗</a>
+      <button id="logoutBtn" class="btn btn-outline" type="button">Log Out</button>
+    </div>
+  </header>
+
+  <main class="admin-main">
+    <div id="toast" class="toast" role="status" aria-live="polite" hidden></div>
+
+    <!-- ============ OVERVIEW ============ -->
+    <section id="panel-overview" class="admin-panel" data-panel="overview">
+      <div class="panel-head">
+        <p class="eyebrow">Live Snapshot</p>
+        <h2>Publishing Overview</h2>
+        <p class="panel-sub">Everything below reflects what visitors currently see across the public site, updated in real time from this browser's local content store.</p>
+      </div>
+
+      <div class="stat-grid">
+        <div class="stat-card beam-corner"><span class="stat-num" id="stat-activities">0</span><span class="stat-label">Ministry Activities</span></div>
+        <div class="stat-card beam-corner"><span class="stat-num" id="stat-events">0</span><span class="stat-label">Upcoming Events</span></div>
+        <div class="stat-card beam-corner"><span class="stat-num" id="stat-sermons">0</span><span class="stat-label">Sermons Archived</span></div>
+        <div class="stat-card beam-corner"><span class="stat-num" id="stat-gallery">0</span><span class="stat-label">Gallery Images</span></div>
+        <div class="stat-card beam-corner"><span class="stat-num" id="stat-news">0</span><span class="stat-label">News Posts</span></div>
+      </div>
+
+      <div class="overview-grid">
+        <div class="log-card">
+          <h3>Recent Publishing Activity</h3>
+          <ul id="activityLog" class="activity-log">
+            <li class="log-empty">No activity yet this session.</li>
+          </ul>
+        </div>
+        <div class="data-card">
+          <h3>Studio Data Tools</h3>
+          <p>Content is stored locally via <code>localStorage</code>, simulating a live CMS feed into every public page on this site.</p>
+          <div class="data-actions">
+            <button id="exportBtn" class="btn btn-outline" type="button">Export Backup (.json)</button>
+            <button id="importBtn" class="btn btn-outline" type="button">Import Backup</button>
+            <input type="file" id="importFile" accept="application/json" hidden>
+            <button id="resetBtn" class="btn btn-danger" type="button">Reset to Defaults</button>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ============ ACTIVITIES ============ -->
+    <section id="panel-activities" class="admin-panel" data-panel="activities" hidden>
+      <div class="panel-head">
+        <p class="eyebrow">Manage</p>
+        <h2>Ministry Activities</h2>
+        <p class="panel-sub">Ongoing programs such as prayer meetings, Bible studies, choir rehearsals and outreach groups.</p>
+      </div>
+      <div class="crud-grid">
+        <form id="activity-form" class="crud-form beam-corner">
+          <input type="hidden" id="activity-id">
+          <label for="activity-title">Title</label>
+          <input type="text" id="activity-title" required placeholder="e.g. Dawn Prayer Fellowship">
+
+          <label for="activity-category">Category</label>
+          <select id="activity-category">
+            <option>Prayer</option><option>Bible Study</option><option>Worship & Choir</option>
+            <option>Outreach</option><option>Youth</option><option>Women's Fellowship</option><option>Men's Fellowship</option>
+          </select>
+
+          <label for="activity-schedule">Schedule</label>
+          <input type="text" id="activity-schedule" required placeholder="e.g. Every Saturday · 6:00 AM">
+
+          <label for="activity-summary">Short Summary</label>
+          <input type="text" id="activity-summary" required placeholder="One line for the activity card">
+
+          <label for="activity-description">Full Description</label>
+          <textarea id="activity-description" rows="3" required></textarea>
+
+          <label for="activity-image">Image URL</label>
+          <input type="url" id="activity-image" placeholder="https://...">
+
+          <div class="form-actions">
+            <button type="submit" class="btn btn-gold" id="activity-submit">Publish Activity</button>
+            <button type="button" class="btn btn-outline" id="activity-cancel" hidden>Cancel Edit</button>
+          </div>
+        </form>
+
+        <div class="crud-list">
+          <table class="admin-table">
+            <thead><tr><th>Title</th><th>Category</th><th>Schedule</th><th class="col-actions">Actions</th></tr></thead>
+            <tbody id="activities-tbody"></tbody>
+          </table>
+          <p class="empty-state" id="activities-empty" hidden>No activities published yet. Add the first one above.</p>
+        </div>
+      </div>
+    </section>
+
+    <!-- ============ EVENTS ============ -->
+    <section id="panel-events" class="admin-panel" data-panel="events" hidden>
+      <div class="panel-head">
+        <p class="eyebrow">Manage</p>
+        <h2>Events & Gatherings</h2>
+        <p class="panel-sub">Crusades, revivals, conferences and special services with dates and locations.</p>
+      </div>
+      <div class="crud-grid">
+        <form id="event-form" class="crud-form beam-corner">
+          <input type="hidden" id="event-id">
+          <label for="event-title">Event Title</label>
+          <input type="text" id="event-title" required placeholder="e.g. Fire on the Altar Crusade">
+
+          <label for="event-category">Category</label>
+          <select id="event-category">
+            <option>Revival</option><option>Crusade</option><option>Conference</option>
+            <option>Youth Program</option><option>Special Service</option>
+          </select>
+
+          <div class="field-row">
+            <div>
+              <label for="event-date">Date</label>
+              <input type="date" id="event-date" required>
+            </div>
+            <div>
+              <label for="event-time">Time</label>
+              <input type="time" id="event-time">
+            </div>
+          </div>
+
+          <label for="event-location">Location</label>
+          <input type="text" id="event-location" required placeholder="e.g. Gospel Light Cathedral, Ikeja">
+
+          <label for="event-description">Description</label>
+          <textarea id="event-description" rows="3" required></textarea>
+
+          <label for="event-image">Image URL</label>
+          <input type="url" id="event-image" placeholder="https://...">
+
+          <label class="checkbox-label"><input type="checkbox" id="event-featured"> Feature on homepage</label>
+
+          <div class="form-actions">
+            <button type="submit" class="btn btn-gold" id="event-submit">Publish Event</button>
+            <button type="button" class="btn btn-outline" id="event-cancel" hidden>Cancel Edit</button>
+          </div>
+        </form>
+
+        <div class="crud-list">
+          <table class="admin-table">
+            <thead><tr><th>Title</th><th>Date</th><th>Location</th><th>Status</th><th class="col-actions">Actions</th></tr></thead>
+            <tbody id="events-tbody"></tbody>
+          </table>
+          <p class="empty-state" id="events-empty" hidden>No events published yet.</p>
+        </div>
+      </div>
+    </section>
+
+    <!-- ============ SERMONS ============ -->
+    <section id="panel-sermons" class="admin-panel" data-panel="sermons" hidden>
+      <div class="panel-head">
+        <p class="eyebrow">Manage</p>
+        <h2>Sermon Archive</h2>
+        <p class="panel-sub">Audio, video and written messages available for the congregation and online visitors.</p>
+      </div>
+      <div class="crud-grid">
+        <form id="sermon-form" class="crud-form beam-corner">
+          <input type="hidden" id="sermon-id">
+          <label for="sermon-title">Sermon Title</label>
+          <input type="text" id="sermon-title" required placeholder="e.g. Walking in the Light of His Word">
+
+          <label for="sermon-speaker">Speaker</label>
+          <input type="text" id="sermon-speaker" value="Rev. Felix Agidipo" required>
+
+          <div class="field-row">
+            <div>
+              <label for="sermon-date">Date</label>
+              <input type="date" id="sermon-date" required>
+            </div>
+            <div>
+              <label for="sermon-series">Series</label>
+              <input type="text" id="sermon-series" placeholder="e.g. Living Faith">
+            </div>
+          </div>
+
+          <label for="sermon-scripture">Scripture Reference</label>
+          <input type="text" id="sermon-scripture" placeholder="e.g. Isaiah 60:1-3">
+
+          <label for="sermon-video">Video URL (YouTube embed)</label>
+          <input type="url" id="sermon-video" placeholder="https://www.youtube.com/embed/...">
+
+          <label for="sermon-audio">Audio URL</label>
+          <input type="url" id="sermon-audio" placeholder="https://...">
+
+          <label for="sermon-description">Summary</label>
+          <textarea id="sermon-description" rows="3" required></textarea>
+
+          <div class="form-actions">
+            <button type="submit" class="btn btn-gold" id="sermon-submit">Publish Sermon</button>
+            <button type="button" class="btn btn-outline" id="sermon-cancel" hidden>Cancel Edit</button>
+          </div>
+        </form>
+
+        <div class="crud-list">
+          <table class="admin-table">
+            <thead><tr><th>Title</th><th>Speaker</th><th>Date</th><th>Series</th><th class="col-actions">Actions</th></tr></thead>
+            <tbody id="sermons-tbody"></tbody>
+          </table>
+          <p class="empty-state" id="sermons-empty" hidden>No sermons published yet.</p>
+        </div>
+      </div>
+    </section>
+
+    <!-- ============ GALLERY ============ -->
+    <section id="panel-gallery" class="admin-panel" data-panel="gallery" hidden>
+      <div class="panel-head">
+        <p class="eyebrow">Manage</p>
+        <h2>Photo Gallery</h2>
+        <p class="panel-sub">Moments from worship services, crusades, outreach and ministry life.</p>
+      </div>
+      <div class="crud-grid">
+        <form id="gallery-form" class="crud-form beam-corner">
+          <input type="hidden" id="gallery-id">
+          <label for="gallery-title">Caption / Title</label>
+          <input type="text" id="gallery-title" required placeholder="e.g. Sunday Worship Service">
+
+          <label for="gallery-category">Category</label>
+          <select id="gallery-category">
+            <option>Worship</option><option>Crusades</option><option>Outreach</option>
+            <option>Youth</option><option>Choir</option><option>Fellowship</option>
+          </select>
+
+          <label for="gallery-date">Date</label>
+          <input type="date" id="gallery-date">
+
+          <label for="gallery-image">Image URL</label>
+          <input type="url" id="gallery-image" required placeholder="https://...">
+
+          <div class="form-actions">
+            <button type="submit" class="btn btn-gold" id="gallery-submit">Publish Image</button>
+            <button type="button" class="btn btn-outline" id="gallery-cancel" hidden>Cancel Edit</button>
+          </div>
+        </form>
+
+        <div class="crud-list">
+          <div id="gallery-grid" class="admin-gallery-grid"></div>
+          <p class="empty-state" id="gallery-empty" hidden>No images published yet.</p>
+        </div>
+      </div>
+    </section>
+
+    <!-- ============ NEWS ============ -->
+    <section id="panel-news" class="admin-panel" data-panel="news" hidden>
+      <div class="panel-head">
+        <p class="eyebrow">Manage</p>
+        <h2>News & Announcements</h2>
+        <p class="panel-sub">Ministry updates, testimonies and announcements shared with the congregation.</p>
+      </div>
+      <div class="crud-grid">
+        <form id="news-form" class="crud-form beam-corner">
+          <input type="hidden" id="news-id">
+          <label for="news-title">Headline</label>
+          <input type="text" id="news-title" required placeholder="e.g. New Building Groundbreaking Set for July">
+
+          <div class="field-row">
+            <div>
+              <label for="news-date">Date</label>
+              <input type="date" id="news-date" required>
+            </div>
+            <div>
+              <label for="news-category">Category</label>
+              <select id="news-category">
+                <option>Announcement</option><option>Testimony</option><option>Outreach Report</option><option>Press</option>
+              </select>
+            </div>
+          </div>
+
+          <label for="news-author">Author</label>
+          <input type="text" id="news-author" value="Ministry Press Desk">
+
+          <label for="news-excerpt">Excerpt</label>
+          <input type="text" id="news-excerpt" required placeholder="One or two sentences for the news card">
+
+          <label for="news-body">Full Story</label>
+          <textarea id="news-body" rows="4" required></textarea>
+
+          <label for="news-image">Image URL</label>
+          <input type="url" id="news-image" placeholder="https://...">
+
+          <label class="checkbox-label"><input type="checkbox" id="news-featured"> Feature on homepage</label>
+
+          <div class="form-actions">
+            <button type="submit" class="btn btn-gold" id="news-submit">Publish News</button>
+            <button type="button" class="btn btn-outline" id="news-cancel" hidden>Cancel Edit</button>
+          </div>
+        </form>
+
+        <div class="crud-list">
+          <table class="admin-table">
+            <thead><tr><th>Headline</th><th>Date</th><th>Category</th><th class="col-actions">Actions</th></tr></thead>
+            <tbody id="news-tbody"></tbody>
+          </table>
+          <p class="empty-state" id="news-empty" hidden>No news posted yet.</p>
+        </div>
+      </div>
+    </section>
+
+  </main>
+</div>
+
+<!-- Confirm delete modal -->
+<div id="confirmModal" class="confirm-modal" hidden role="dialog" aria-modal="true" aria-labelledby="confirmTitle">
+  <div class="confirm-box beam-corner">
+    <h3 id="confirmTitle">Remove this item?</h3>
+    <p id="confirmBody">This will remove it from the live site immediately.</p>
+    <div class="form-actions">
+      <button id="confirmYes" class="btn btn-danger" type="button">Delete</button>
+      <button id="confirmNo" class="btn btn-outline" type="button">Cancel</button>
+    </div>
+  </div>
+</div>
+
+<script src="js/data.js"></script>
+<script src="js/admin.js"></script>
+  <script src="js/main.js"></script>
+  <script src="js/gallery.js"></script>
+  <script src="js/sermons.js"></script>
+  <script src="js/events.js"></script>
+  <script src="js/activities.js"></script>
+  <script src="js/news.js"></script>
+</body>
+</html>

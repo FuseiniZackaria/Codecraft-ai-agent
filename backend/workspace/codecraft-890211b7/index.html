@@ -1,0 +1,156 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>CodeCraft — The Blueprint for Software Craftsmanship</title>
+<meta name="description" content="CodeCraft is a deliberate-practice platform for software craftsmanship. Study the blueprint. Work the bench. Submit to the guild. Hold your tolerances.">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="styles.css">
+</head>
+<body>
+
+<div class="grid-backdrop" aria-hidden="true"></div>
+
+<a class="skip-link" href="#main">Skip to main content</a>
+
+<header class="site-header">
+  <div class="header-inner">
+    <a href="#main" class="logo" aria-label="CodeCraft home">
+      <span class="compass-mark" aria-hidden="true">
+        <svg viewBox="0 0 48 48" width="34" height="34">
+          <circle cx="24" cy="24" r="21" fill="none" stroke="currentColor" stroke-width="1.5"/>
+          <path d="M24 6 L27 22 L24 42 L21 22 Z" fill="currentColor" opacity="0.9"/>
+          <circle cx="24" cy="24" r="2.4" fill="var(--ember)"/>
+          <path d="M24 3 V9 M24 39 V45 M3 24 H9 M39 24 H45" stroke="currentColor" stroke-width="1.2"/>
+        </svg>
+      </span>
+      <span class="logo-text">CodeCraft<span class="logo-sub">/ guild atelier</span></span>
+    </a>
+    <nav class="main-nav" aria-label="Primary">
+      <ul>
+        <li><a href="#panels">Disciplines</a></li>
+        <li><a href="#how-it-works">Method</a></li>
+        <li><a href="#manifesto">Manifesto</a></li>
+        <li><a href="#join" class="nav-cta">Join the Guild</a></li>
+      </ul>
+    </nav>
+    <button class="nav-toggle" aria-expanded="false" aria-controls="mobile-nav" aria-label="Toggle navigation menu">
+      <span></span><span></span><span></span>
+    </button>
+  </div>
+  <ul id="mobile-nav" class="mobile-nav" hidden>
+    <li><a href="#panels">Disciplines</a></li>
+    <li><a href="#how-it-works">Method</a></li>
+    <li><a href="#manifesto">Manifesto</a></li>
+    <li><a href="#join" class="nav-cta">Join the Guild</a></li>
+  </ul>
+</header>
+
+<main id="main">
+
+  <!-- ===================== HERO ===================== -->
+  <section class="hero" aria-labelledby="hero-title">
+    <div class="sheet-frame">
+      <span class="reg-mark corner tl" aria-hidden="true"></span>
+      <span class="reg-mark corner tr" aria-hidden="true"></span>
+      <span class="reg-mark corner bl" aria-hidden="true"></span>
+      <span class="reg-mark corner br" aria-hidden="true"></span>
+      <div class="sheet-label" aria-hidden="true">DWG NO. CC—001 &nbsp;·&nbsp; SCALE 1:1 &nbsp;·&nbsp; SHEET 1 OF 1</div>
+
+      <div class="hero-grid">
+        <div class="hero-copy">
+          <p class="eyebrow">Deliberate practice for software craftsmanship</p>
+          <h1 id="hero-title">Every great system<br> starts as a <span class="ember-underline">blueprint.</span></h1>
+          <p class="hero-lede">CodeCraft trains engineers the way master builders trained apprentices: study the drawing, work the bench, submit the joint for inspection, hold your tolerances. No courses to binge — a discipline to keep.</p>
+          <div class="hero-actions">
+            <a href="#join" class="btn btn-primary">Join the Guild</a>
+            <a href="#panels" class="btn btn-ghost">See the Disciplines ↓</a>
+          </div>
+          <dl class="hero-stats">
+            <div><dt>Katas drafted</dt><dd>412</dd></div>
+            <div><dt>Guild reviewers</dt><dd>86</dd></div>
+            <div><dt>Avg. tolerance pass</dt><dd>±0.02%</dd></div>
+          </dl>
+        </div>
+
+        <div class="hero-blueprint" role="img" aria-label="Animated blueprint diagram of a JavaScript function, with dimension lines and brass pushpin labels for signature, guard clause, core logic, and return contract.">
+          <svg class="blueprint-svg" viewBox="0 0 560 460" xmlns="http://www.w3.org/2000/svg">
+            <defs>
+              <marker id="arrow-start" markerWidth="8" markerHeight="8" refX="1" refY="4" orient="auto">
+                <path d="M7,1 L1,4 L7,7" fill="none" stroke="var(--paper)" stroke-width="1"/>
+              </marker>
+              <marker id="arrow-end" markerWidth="8" markerHeight="8" refX="7" refY="4" orient="auto">
+                <path d="M1,1 L7,4 L1,7" fill="none" stroke="var(--paper)" stroke-width="1"/>
+              </marker>
+            </defs>
+
+            <!-- dimension lines -->
+            <g class="dim-lines" stroke="var(--paper-dim)" stroke-width="1">
+              <line x1="30" y1="30" x2="30" y2="410" marker-start="url(#arrow-start)" marker-end="url(#arrow-end)"/>
+              <text x="14" y="220" class="dim-text" transform="rotate(-90 14 220)">FUNCTION BODY — 380px</text>
+
+              <line x1="60" y1="425" x2="500" y2="425" marker-start="url(#arrow-start)" marker-end="url(#arrow-end)"/>
+              <text x="280" y="445" class="dim-text" text-anchor="middle">MODULE WIDTH — 440px</text>
+            </g>
+
+            <!-- code draw -->
+            <g class="code-draw" font-family="'IBM Plex Mono', monospace" font-size="17">
+              <text x="60" y="70" class="code-line l1"><tspan fill="var(--ember)">export function</tspan> <tspan fill="var(--paper)">reconcileLedger</tspan><tspan fill="var(--paper-dim)">(entries) {</tspan></text>
+              <text x="90" y="105" class="code-line l2"><tspan fill="var(--brass)">if</tspan> <tspan fill="var(--paper-dim)">(!entries.length)</tspan></text>
+              <text x="120" y="135" class="code-line l3"><tspan fill="var(--brass)">return</tspan> <tspan fill="var(--paper-dim)">{ balance: 0, flags: [] };</tspan></text>
+              <text x="90" y="175" class="code-line l4"><tspan fill="var(--paper)">const ledger</tspan> <tspan fill="var(--paper-dim)">= new Ledger();</tspan></text>
+              <text x="90" y="210" class="code-line l5"><tspan fill="var(--brass)">for</tspan> <tspan fill="var(--paper-dim)">(</tspan><tspan fill="var(--paper)">const e</tspan> <tspan fill="var(--paper-dim)">of entries) {</tspan></text>
+              <text x="120" y="245" class="code-line l6"><tspan fill="var(--paper)">ledger.post</tspan><tspan fill="var(--paper-dim)">(e.debit, e.credit);</tspan></text>
+              <text x="90" y="280" class="code-line l7"><tspan fill="var(--paper-dim)">}</tspan></text>
+              <text x="90" y="320" class="code-line l8"><tspan fill="var(--brass)">return</tspan> <tspan fill="var(--paper-dim)">{ balance: ledger.total(), flags: ledger.audit() };</tspan></text>
+              <text x="60" y="360" class="code-line l9"><tspan fill="var(--paper-dim)">}</tspan></text>
+            </g>
+
+            <!-- pushpin callouts -->
+            <g class="callouts">
+              <g class="pin pin-1">
+                <line x1="330" y1="70" x2="430" y2="60" class="leader"/>
+                <circle cx="430" cy="60" r="5" class="pin-head"/>
+                <text x="440" y="64" class="pin-label">SIGNATURE</text>
+              </g>
+              <g class="pin pin-2">
+                <line x1="290" y1="120" x2="430" y2="130" class="leader"/>
+                <circle cx="430" cy="130" r="5" class="pin-head"/>
+                <text x="440" y="134" class="pin-label">GUARD CLAUSE</text>
+              </g>
+              <g class="pin pin-3">
+                <line x1="250" y1="225" x2="430" y2="220" class="leader"/>
+                <circle cx="430" cy="220" r="5" class="pin-head"/>
+                <text x="440" y="224" class="pin-label">CORE LOGIC</text>
+              </g>
+              <g class="pin pin-4">
+                <line x1="330" y1="320" x2="430" y2="300" class="leader"/>
+                <circle cx="430" cy="300" r="5" class="pin-head"/>
+                <text x="440" y="304" class="pin-label">RETURN CONTRACT</text>
+              </g>
+            </g>
+          </svg>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ===================== FEATURE PANELS ===================== -->
+  <section class="panels" id="panels" aria-labelledby="panels-title">
+    <div class="section-heading">
+      <p class="eyebrow">The workshop, laid out</p>
+      <h2 id="panels-title">Four rooms. One trade.</h2>
+    </div>
+
+    <div class="panel-grid">
+
+      <article class="panel-card">
+        <span class="reg-mark corner tl small" aria-hidden="true"></span>
+        <span class="reg-mark corner br small" aria-hidden="true"></span>
+        <div class="panel-icon" aria-hidden="true">
+          <svg viewBox="0 0 40 40"><path d="M6 6h28v28H6z" fill="none" stroke="currentColor" stroke-width="1.5"/><path d="M6 14h28M14 6v28" stroke="currentColor" stroke-width="1"/><circle cx="10" cy="10" r="1.4" fill="currentColor"/></svg>
+        </div>
+        <h3>Blueprints</

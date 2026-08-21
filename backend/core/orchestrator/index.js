@@ -9,10 +9,10 @@ const activityLog = require('../activityLog');
  * execute (with approval gate) -> review -> respond" from the architecture doc.
  *
  * @param {string} goal - natural language goal
- * @param {object} options - { payload, overrideProvider, history }
+ * @param {object} options - { payload, overrideProvider, history, category }
  */
 async function submitGoal(goal, options = {}) {
-  const tasks = await decompose(goal, options.payload, options.history);
+  const tasks = await decompose(goal, options.payload, options.history, options.category);
   const results = [];
 
   for (const task of tasks) {

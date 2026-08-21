@@ -1,0 +1,171 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Events — Rev. Felix Agidipo Ministries</title>
+<meta name="description" content="Upcoming crusades, conferences, revivals and past gatherings of Rev. Felix Agidipo Ministries. Find dates, venues, maps and ways to share.">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:ital,opsz,wght@0,9..144,300;0,9..144,500;0,9..144,600;0,9..144,700;1,9..144,500&family=Work+Sans:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="css/styles.css">
+</head>
+<body class="page-events">
+
+<a class="skip-link" href="#main">Skip to content</a>
+
+<header class="site-header">
+  <div class="header-inner">
+    <a class="brand" href="index.html">
+      <span class="brand-mark" aria-hidden="true"></span>
+      <span class="brand-text">Rev. Felix Agidipo<em>Ministries</em></span>
+    </a>
+    <button class="nav-toggle" id="navToggle" aria-expanded="false" aria-controls="primaryNav">
+      <span></span><span></span><span></span>
+      <span class="sr-only">Menu</span>
+    </button>
+    <nav class="primary-nav" id="primaryNav">
+      <a href="index.html">Home</a>
+      <a href="about.html">About</a>
+      <a href="activities.html">Activities</a>
+      <a href="events.html" aria-current="page">Events</a>
+      <a href="sermons.html">Sermons</a>
+      <a href="gallery.html">Gallery</a>
+      <a href="news.html">News</a>
+      <a href="contact.html">Contact</a>
+    </nav>
+  </div>
+</header>
+
+<main id="main">
+
+  <section class="beam-hero beam-hero--sub">
+    <div class="beam-rays" aria-hidden="true"></div>
+    <div class="beam-hero-inner">
+      <p class="eyebrow">Gathered in His Name</p>
+      <h1>Events &amp; Gatherings</h1>
+      <p class="hero-sub">Crusades, conferences, prayer retreats and community outreaches — where the light breaks through. Find what's coming, revisit what's passed, and invite someone to join.</p>
+    </div>
+  </section>
+
+  <section class="section section--alabaster events-filter-section">
+    <div class="container">
+      <div class="filter-bar" id="eventsFilter" role="tablist" aria-label="Filter events">
+        <button type="button" class="filter-chip is-active" data-filter="all" role="tab" aria-selected="true">All</button>
+        <button type="button" class="filter-chip" data-filter="upcoming" role="tab" aria-selected="false">Upcoming</button>
+        <button type="button" class="filter-chip" data-filter="past" role="tab" aria-selected="false">Past</button>
+        <button type="button" class="filter-chip" data-filter="crusade" role="tab" aria-selected="false">Crusades</button>
+        <button type="button" class="filter-chip" data-filter="conference" role="tab" aria-selected="false">Conferences</button>
+        <button type="button" class="filter-chip" data-filter="outreach" role="tab" aria-selected="false">Outreach</button>
+      </div>
+    </div>
+  </section>
+
+  <section class="section section--indigo">
+    <div class="container">
+      <div class="section-head">
+        <span class="beam-tick" aria-hidden="true"></span>
+        <h2>Upcoming Events</h2>
+        <p class="section-lede">Mark your calendar. Bring a friend. Come expectant.</p>
+      </div>
+
+      <div class="events-grid" id="upcomingEventsGrid" aria-live="polite">
+        <p class="js-empty" id="upcomingEmpty" hidden>No upcoming events are scheduled at this moment. Please check back soon.</p>
+        <noscript><p class="js-empty">Enable JavaScript to view live event listings, or contact us directly for the current schedule.</p></noscript>
+      </div>
+    </div>
+  </section>
+
+  <section class="section section--alabaster">
+    <div class="container">
+      <div class="section-head">
+        <span class="beam-tick beam-tick--wine" aria-hidden="true"></span>
+        <h2>Past Gatherings</h2>
+        <p class="section-lede">A record of what the Lord has done among us.</p>
+      </div>
+
+      <div class="events-grid events-grid--past" id="pastEventsGrid" aria-live="polite">
+        <p class="js-empty" id="pastEmpty" hidden>No past events on record yet.</p>
+      </div>
+
+      <div class="load-more-wrap">
+        <button type="button" class="btn btn-outline" id="loadMorePast" hidden>Load Earlier Events</button>
+      </div>
+    </div>
+  </section>
+
+  <section class="section section--indigo cta-strip">
+    <div class="beam-rays beam-rays--thin" aria-hidden="true"></div>
+    <div class="container cta-strip-inner">
+      <h2>Hosting a Church, Fellowship or Conference?</h2>
+      <p>Invite Rev. Felix Agidipo to minister at your next gathering — a word in season for your congregation or city.</p>
+      <a class="btn btn-gold" href="contact.html">Request a Ministration</a>
+    </div>
+  </section>
+
+</main>
+
+<template id="eventCardTemplate">
+  <article class="beam-card event-card" data-event-id="">
+    <div class="event-card-corner" aria-hidden="true"></div>
+    <div class="event-card-date">
+      <span class="event-day"></span>
+      <span class="event-month"></span>
+      <span class="event-year"></span>
+    </div>
+    <div class="event-card-body">
+      <span class="event-tag"></span>
+      <h3 class="event-title"></h3>
+      <p class="event-desc"></p>
+      <ul class="event-meta">
+        <li class="event-time"></li>
+        <li class="event-venue"></li>
+      </ul>
+      <div class="event-actions">
+        <a class="btn btn-small btn-ghost event-map-link" href="#" target="_blank" rel="noopener">View on Map</a>
+        <div class="share-group" role="group" aria-label="Share this event">
+          <button type="button" class="share-btn" data-platform="facebook" aria-label="Share on Facebook">f</button>
+          <button type="button" class="share-btn" data-platform="twitter" aria-label="Share on X">X</button>
+          <button type="button" class="share-btn" data-platform="whatsapp" aria-label="Share on WhatsApp">W</button>
+          <button type="button" class="share-btn" data-platform="copy" aria-label="Copy event link">⎘</button>
+        </div>
+      </div>
+    </div>
+  </article>
+</template>
+
+<footer class="site-footer">
+  <div class="beam-rays beam-rays--footer" aria-hidden="true"></div>
+  <div class="container footer-inner">
+    <div class="footer-brand">
+      <span class="brand-mark" aria-hidden="true"></span>
+      <p>Rev. Felix Agidipo Ministries</p>
+      <p class="footer-tag">Carrying the light of the gospel to every nation.</p>
+    </div>
+    <nav class="footer-nav" aria-label="Footer">
+      <a href="about.html">About</a>
+      <a href="activities.html">Activities</a>
+      <a href="sermons.html">Sermons</a>
+      <a href="gallery.html">Gallery</a>
+      <a href="news.html">News</a>
+      <a href="contact.html">Contact</a>
+      <a href="admin.html">Staff Login</a>
+    </nav>
+  </div>
+  <div class="container footer-bottom">
+    <p>&copy; <span id="footerYear"></span> Rev. Felix Agidipo Ministries. All rights reserved.</p>
+  </div>
+</footer>
+
+<div class="toast" id="toast" role="status" aria-live="polite"></div>
+
+<script src="js/data.js"></script>
+<script src="js/main.js"></script>
+<script src="js/events.js"></script>
+  <script src="js/gallery.js"></script>
+  <script src="js/sermons.js"></script>
+  <script src="js/activities.js"></script>
+  <script src="js/news.js"></script>
+  <script src="js/admin.js"></script>
+</body>
+</html>

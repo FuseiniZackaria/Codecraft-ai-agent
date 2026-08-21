@@ -1,0 +1,140 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Ministry Activities — Rev. Felix Agidipo Ministries</title>
+<meta name="description" content="Explore the ongoing works of Rev. Felix Agidipo Ministries — outreach, youth discipleship, missions, prayer, and community development. Filter by category to follow what the Lord is doing.">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:ital,opsz,wght@0,9..144,300;0,9..144,500;0,9..144,600;0,9..144,700;1,9..144,500&family=Work+Sans:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="css/styles.css">
+</head>
+<body class="page-activities">
+
+<a class="skip-link" href="#main">Skip to content</a>
+
+<header class="site-header">
+  <div class="header-inner">
+    <a href="index.html" class="brand">
+      <span class="brand-mark" aria-hidden="true"></span>
+      <span class="brand-text">
+        <strong>Rev. Felix Agidipo</strong>
+        <em>Ministries</em>
+      </span>
+    </a>
+    <button class="nav-toggle" type="button" aria-expanded="false" aria-controls="siteNav" aria-label="Toggle navigation menu">
+      <span></span><span></span><span></span>
+    </button>
+    <nav class="site-nav" id="siteNav">
+      <ul>
+        <li><a href="index.html">Home</a></li>
+        <li><a href="about.html">About</a></li>
+        <li><a href="activities.html" aria-current="page">Activities</a></li>
+        <li><a href="events.html">Events</a></li>
+        <li><a href="sermons.html">Sermons</a></li>
+        <li><a href="gallery.html">Gallery</a></li>
+        <li><a href="news.html">News</a></li>
+        <li><a href="contact.html" class="nav-cta">Contact</a></li>
+      </ul>
+    </nav>
+  </div>
+</header>
+
+<main id="main">
+
+  <section class="hero-strip hero-activities">
+    <div class="beam-field" aria-hidden="true">
+      <span class="beam beam-a"></span>
+      <span class="beam beam-b"></span>
+      <span class="beam beam-c"></span>
+    </div>
+    <div class="hero-strip-inner">
+      <p class="eyebrow">The Works Of Our Hands</p>
+      <h1>Ministry Activities</h1>
+      <p class="hero-strip-lede">From the market squares of Ijebu-Ode to prison yards and campus fellowships, these are the ongoing labors of Rev. Felix Agidipo Ministries — filtered by the field of service the Lord has assigned.</p>
+    </div>
+  </section>
+
+  <section class="filter-section" aria-label="Filter activities">
+    <div class="filter-bar" id="filterBar" role="tablist" aria-label="Activity categories">
+      <button class="filter-tab is-active" type="button" data-filter="all" role="tab" aria-selected="true">All Activities</button>
+      <button class="filter-tab" type="button" data-filter="outreach" role="tab" aria-selected="false">Outreach &amp; Missions</button>
+      <button class="filter-tab" type="button" data-filter="youth" role="tab" aria-selected="false">Youth Ministry</button>
+      <button class="filter-tab" type="button" data-filter="discipleship" role="tab" aria-selected="false">Discipleship</button>
+      <button class="filter-tab" type="button" data-filter="prayer" role="tab" aria-selected="false">Prayer &amp; Fasting</button>
+      <button class="filter-tab" type="button" data-filter="community" role="tab" aria-selected="false">Community Development</button>
+      <button class="filter-tab" type="button" data-filter="worship" role="tab" aria-selected="false">Worship &amp; Music</button>
+    </div>
+
+    <div class="sort-row">
+      <label for="sortSelect">Sort by</label>
+      <select id="sortSelect">
+        <option value="newest">Newest first</option>
+        <option value="oldest">Oldest first</option>
+        <option value="az">A–Z</option>
+      </select>
+      <span class="live-count" id="resultCount" aria-live="polite">Loading activities…</span>
+    </div>
+  </section>
+
+  <section class="activities-section">
+    <div class="activities-grid" id="activitiesGrid" aria-live="polite">
+      <!-- Cards injected by js/activities.js. Skeletons shown while loading. -->
+      <div class="activity-card is-skeleton" aria-hidden="true"></div>
+      <div class="activity-card is-skeleton" aria-hidden="true"></div>
+      <div class="activity-card is-skeleton" aria-hidden="true"></div>
+    </div>
+
+    <p class="empty-state" id="emptyState" hidden>No activities found in this category yet — check back soon, the harvest is still coming in.</p>
+
+    <noscript>
+      <p class="noscript-note">Enable JavaScript to view our live, filterable activities feed. In the meantime, please <a href="contact.html">contact the ministry office</a> for a current schedule of programs.</p>
+    </noscript>
+  </section>
+
+  <section class="beam-divider" aria-hidden="true"></section>
+
+  <section class="cta-band">
+    <div class="cta-band-inner">
+      <h2>Want to serve alongside us?</h2>
+      <p>Every outreach, feeding program, and prayer vigil runs on willing hands and covenant partners. Join a team or sponsor an activity this month.</p>
+      <div class="cta-band-actions">
+        <a href="contact.html" class="btn btn-gold">Get Involved</a>
+        <a href="events.html" class="btn btn-outline-light">See Upcoming Events</a>
+      </div>
+    </div>
+  </section>
+
+</main>
+
+<footer class="site-footer">
+  <div class="footer-inner">
+    <div class="footer-brand">
+      <span class="brand-mark" aria-hidden="true"></span>
+      <p>Rev. Felix Agidipo Ministries<br>Carrying the light, one testimony at a time.</p>
+    </div>
+    <nav class="footer-nav" aria-label="Footer">
+      <a href="about.html">About</a>
+      <a href="activities.html">Activities</a>
+      <a href="events.html">Events</a>
+      <a href="sermons.html">Sermons</a>
+      <a href="gallery.html">Gallery</a>
+      <a href="news.html">News</a>
+      <a href="contact.html">Contact</a>
+      <a href="admin.html">Admin</a>
+    </nav>
+    <p class="footer-copy">&copy; <span id="footerYear"></span> Rev. Felix Agidipo Ministries. All rights reserved.</p>
+  </div>
+</footer>
+
+<script src="js/data.js"></script>
+<script src="js/activities.js"></script>
+<script src="js/main.js"></script>
+  <script src="js/gallery.js"></script>
+  <script src="js/sermons.js"></script>
+  <script src="js/events.js"></script>
+  <script src="js/news.js"></script>
+  <script src="js/admin.js"></script>
+</body>
+</html>

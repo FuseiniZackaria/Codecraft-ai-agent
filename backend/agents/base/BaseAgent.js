@@ -4,6 +4,7 @@ const activityLog = require('../../core/activityLog');
 const { selectProvider } = require('../../core/router');
 const toolRegistry = require('../../tools/ToolRegistry');
 const { businessContextLine } = require('../../core/businessContext');
+const guidanceRegistry = require('../../core/guidanceRegistry');
 
 /**
  * BaseAgent - common contract every specialized agent implements:
@@ -65,14 +66,17 @@ class BaseAgent {
       const prompt = priorContext
         ? `Context from previous steps:\n${priorContext}\n\n---\n\nNow: ${step.instruction}`
         : step.instruction;
+      const guidance = guidanceRegistry.guidanceLine(step.instruction);
       const result = await provider.complete({
         prompt,
-        system: `${businessContextLine()}You are the ${this.role} inside CodeCraft AI. Be concise and actionable. If business context is provided above, use it instead of asking the user for it.`,
+        system: `${businessContextLine()}${guidance}You are the ${this.role} inside CodeCraft AI. Be concise and actionable. If business context is provided above, use it instead of asking the user for it.`,
         maxTokens: step.maxTokens,
       });
       await activityLog.record(this.role, 'llm_call', provider.provider, {
         taskId: task.id,
         cost: result.costEstimate,
+        inputTokens: result.inputTokens,
+        outputTokens: result.outputTokens,
         status: 'done',
       });
       return result;
@@ -83,6 +87,28 @@ class BaseAgent {
         throw new Error(`${this.role} is not permitted to use tool "${step.tool}"`);
       }
       await activityLog.record(this.role, 'step_started', step.tool, { taskId: task.id, stepType: 'tool_call' });
+
+      // Any tool marked irreversible - whether a built-in plugin action or a
+      // dynamically registered MCP tool - is deferred to human approval
+      // instead of executed directly, the same way SalesAgent/SupportAgent
+      // already hand-defer gmail.sendEmail and reddit.postComment. This is
+      // the generic version of that same check, applied automatically to
+      // every tool_call step rather than relying on each agent remembering
+      // to gate it by hand.
+      if (toolRegistry.isIrreversible(step.tool)) {
+        const approvalTask = await this.createApprovalTask({
+          instruction: `${this.role} wants to call "${step.tool}"`,
+          tool: step.tool,
+          payload: step.args,
+        });
+        await activityLog.record(this.role, 'tool_call', step.tool, {
+          taskId: task.id,
+          args: step.args,
+          status: 'deferred_for_approval',
+          approvalTaskId: approvalTask.id,
+        });
+        return { deferred: true, approvalTaskId: approvalTask.id, text: `Deferred "${step.tool}" for approval (task ${approvalTask.id}).` };
+      }
 
       const result = await toolRegistry.call(step.tool, step.args, { role: this.role });
       await activityLog.record(this.role, 'tool_call', step.tool, {

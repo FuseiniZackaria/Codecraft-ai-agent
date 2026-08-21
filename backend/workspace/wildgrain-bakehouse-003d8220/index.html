@@ -1,0 +1,274 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Cinder &amp; Levain — Naturally Leavened Neighborhood Bakery</title>
+<meta name="description" content="Cinder & Levain bakes naturally fermented bread on a 24-hour rhythm, from the 4am levain feed to the afternoon sell-out. Visit us in the Hollow.">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,400;12..96,600;12..96,700;12..96,800&family=Karla:ital,wght@0,400;0,500;0,700;1,400&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="styles.css">
+</head>
+<body>
+<a class="skip-link" href="#main">Skip to content</a>
+
+<header class="site-header">
+  <nav class="nav" aria-label="Primary">
+    <a class="brand" href="#top">Cinder <span>&amp;</span> Levain</a>
+    <button class="nav-toggle" id="navToggle" aria-expanded="false" aria-controls="navMenu" aria-label="Toggle menu">
+      <span></span><span></span><span></span>
+    </button>
+    <ul class="nav-menu" id="navMenu">
+      <li><a href="#bake">Today's Bake</a></li>
+      <li><a href="#clock">The Proofing Clock</a></li>
+      <li><a href="#philosophy">Flour, Water, Time</a></li>
+      <li><a href="#visit">Visit</a></li>
+    </ul>
+  </nav>
+</header>
+
+<main id="main">
+
+  <section class="hero" id="top">
+    <div class="hero-inner">
+      <p class="eyebrow">Naturally leavened &middot; wood-fired &middot; open daily except Monday</p>
+      <h1>Bread that keeps a clock instead of a recipe card.</h1>
+      <p class="hero-lede">Every loaf we sell starts as a jar of wild starter fed at 4am and ends on your table before the afternoon sell-out. No commercial yeast, no shortcuts — just flour, water, salt, and the hours in between.</p>
+      <div class="hero-cta">
+        <a class="btn btn-primary" href="#bake">See today's bake</a>
+        <a class="btn btn-ghost" href="#clock">Walk the 24-hour clock</a>
+      </div>
+    </div>
+    <div class="hero-crumb" aria-hidden="true"></div>
+  </section>
+
+  <section class="bake" id="bake" aria-labelledby="bake-heading">
+    <div class="section-head">
+      <p class="eyebrow eyebrow-light">The board</p>
+      <h2 id="bake-heading">Today's Bake</h2>
+      <p class="section-sub">Chalked up fresh each morning. Quantities are limited on purpose — everything's shaped by hand and baked in three hearth loads.</p>
+    </div>
+    <ul class="chalkboard">
+      <li>
+        <div class="chalk-row">
+          <span class="chalk-name">Country Levain</span>
+          <span class="chalk-dots" aria-hidden="true"></span>
+          <span class="chalk-price">$9</span>
+        </div>
+        <p class="chalk-note">72-hour cold ferment, open crumb, dark cracklin' crust.</p>
+      </li>
+      <li>
+        <div class="chalk-row">
+          <span class="chalk-name">Seeded Rye</span>
+          <span class="chalk-dots" aria-hidden="true"></span>
+          <span class="chalk-price">$10</span>
+        </div>
+        <p class="chalk-note">Caraway, flax, sunflower — dense enough to hold a week of butter.</p>
+      </li>
+      <li>
+        <div class="chalk-row">
+          <span class="chalk-name">Olive Fougasse</span>
+          <span class="chalk-dots" aria-hidden="true"></span>
+          <span class="chalk-price">$8</span>
+        </div>
+        <p class="chalk-note">Ligurian olives, rosemary from the back planter, torn not sliced.</p>
+      </li>
+      <li>
+        <div class="chalk-row">
+          <span class="chalk-name">Cherry-Almond Miche</span>
+          <span class="chalk-dots" aria-hidden="true"></span>
+          <span class="chalk-price">$12</span>
+        </div>
+        <p class="chalk-note">Weekend special. Dried sour cherries, toasted almond, whole spelt.</p>
+      </li>
+      <li>
+        <div class="chalk-row">
+          <span class="chalk-name">Sesame Semolina</span>
+          <span class="chalk-dots" aria-hidden="true"></span>
+          <span class="chalk-price">$8</span>
+        </div>
+        <p class="chalk-note">Golden crumb, black and white sesame crust, mild tang.</p>
+      </li>
+      <li>
+        <div class="chalk-row">
+          <span class="chalk-name">Buckwheat Boule</span>
+          <span class="chalk-dots" aria-hidden="true"></span>
+          <span class="chalk-price">$9</span>
+        </div>
+        <p class="chalk-note">Gluten-light, nutty, our slowest riser at 36 hours.</p>
+      </li>
+    </ul>
+    <p class="bake-footnote">Sold out most days by 4pm. Call ahead to hold a loaf — we always bake a few extra for regulars.</p>
+  </section>
+
+  <section class="clock-section" id="clock" aria-labelledby="clock-heading">
+    <div class="section-head">
+      <p class="eyebrow">The signature</p>
+      <h2 id="clock-heading">The Proofing Clock</h2>
+      <p class="section-sub">Our whole day coils around one basket. Follow the weave clockwise from the 4am feed to the afternoon sell-out — the same spiral we score into every banneton.</p>
+    </div>
+
+    <div class="clock-wrap">
+      <svg class="proof-clock" viewBox="0 0 500 500" role="img" aria-labelledby="clockTitle clockDesc">
+        <title id="clockTitle">The Proofing Clock, a 24-hour bakery timeline</title>
+        <desc id="clockDesc">A circular diagram styled like a banneton basket's woven spiral, marking eight moments in the bakery's day from the 4am levain feed to the evening rest.</desc>
+
+        <defs>
+          <filter id="rough" x="-20%" y="-20%" width="140%" height="140%">
+            <feTurbulence type="fractalNoise" baseFrequency="0.012" numOctaves="2" result="noise" seed="7"/>
+            <feDisplacementMap in="SourceGraphic" in2="noise" scale="6"/>
+          </filter>
+        </defs>
+
+        <g class="weave" filter="url(#rough)">
+          <circle cx="250" cy="250" r="60"/>
+          <circle cx="250" cy="250" r="90" stroke-dasharray="10 6"/>
+          <circle cx="250" cy="250" r="120"/>
+          <circle cx="250" cy="250" r="150" stroke-dasharray="14 8"/>
+          <circle cx="250" cy="250" r="195" class="ring-outer"/>
+        </g>
+
+        <g class="spokes" filter="url(#rough)">
+          <line x1="250" y1="55" x2="250" y2="445"/>
+          <line x1="55" y1="250" x2="445" y2="250"/>
+          <line x1="112" y1="112" x2="388" y2="388"/>
+          <line x1="388" y1="112" x2="112" y2="388"/>
+        </g>
+
+        <g class="clock-center">
+          <text x="250" y="242" text-anchor="middle" class="center-title">24 HRS</text>
+          <text x="250" y="264" text-anchor="middle" class="center-sub">in the life of a loaf</text>
+        </g>
+
+        <g class="clock-marker" data-order="1" transform="translate(250,55)">
+          <circle r="34" class="marker-bg"/>
+          <path class="marker-icon" d="M-10,6 Q0,-14 10,6 Z M-10,6 L10,6" />
+          <text y="52" text-anchor="middle" class="marker-time">4:00 AM</text>
+          <text y="68" text-anchor="middle" class="marker-label">Levain Feed</text>
+        </g>
+
+        <g class="clock-marker" data-order="2" transform="translate(387.9,112.1)">
+          <circle r="34" class="marker-bg"/>
+          <path class="marker-icon" d="M-12,-6 L12,-6 M-9,0 L9,0 M-6,6 L6,6"/>
+          <text y="52" text-anchor="middle" class="marker-time">6:00 AM</text>
+          <text y="68" text-anchor="middle" class="marker-label">Mix &amp; Autolyse</text>
+        </g>
+
+        <g class="clock-marker" data-order="3" transform="translate(445,250)">
+          <circle r="34" class="marker-bg"/>
+          <path class="marker-icon" d="M-12,8 Q0,-16 12,8 Q0,2 -12,8 Z"/>
+          <text y="52" text-anchor="middle" class="marker-time">8:00 AM</text>
+          <text y="68" text-anchor="middle" class="marker-label">Bulk Ferment</text>
+        </g>
+
+        <g class="clock-marker" data-order="4" transform="translate(387.9,387.9)">
+          <circle r="34" class="marker-bg"/>
+          <path class="marker-icon" d="M-10,-10 L10,10 M10,-10 L-10,10 M0,-13 L0,13 M-13,0 L13,0"/>
+          <text y="52" text-anchor="middle" class="marker-time">11:00 AM</text>
+          <text y="68" text-anchor="middle" class="marker-label">Shape &amp; Proof</text>
+        </g>
+
+        <g class="clock-marker" data-order="5" transform="translate(250,445)">
+          <circle r="34" class="marker-bg"/>
+          <path class="marker-icon" d="M0,12 C-8,4 -8,-6 0,-13 C8,-6 8,4 0,12 Z"/>
+          <text y="52" text-anchor="middle" class="marker-time">1:00 PM</text>
+          <text y="68" text-anchor="middle" class="marker-label">Bake in the Hearth</text>
+        </g>
+
+        <g class="clock-marker" data-order="6" transform="translate(112.1,387.9)">
+          <circle r="34" class="marker-bg"/>
+          <path class="marker-icon" d="M-12,-10 L12,-10 L12,12 L-12,12 Z M0,-10 L0,-16"/>
+          <text y="52" text-anchor="middle" class="marker-time">3:00 PM</text>
+          <text y="68" text-anchor="middle" class="marker-label">Doors Open</text>
+        </g>
+
+        <g class="clock-marker" data-order="7" transform="translate(55,250)">
+          <circle r="34" class="marker-bg"/>
+          <path class="marker-icon" d="M-13,-6 L13,-6 M-13,2 L13,2 M-13,10 L13,10"/>
+          <text y="52" text-anchor="middle" class="marker-time">5:30 PM</text>
+          <text y="68" text-anchor="middle" class="marker-label">Sell-Out</text>
+        </g>
+
+        <g class="clock-marker" data-order="8" transform="translate(112.1,112.1)">
+          <circle r="34" class="marker-bg"/>
+          <path class="marker-icon" d="M8,-12 A12,12 0 1 0 8,12 A9,9 0 0 1 8,-12 Z"/>
+          <text y="52" text-anchor="middle" class="marker-time">9:00 PM</text>
+          <text y="68" text-anchor="middle" class="marker-label">Starter Sleeps</text>
+        </g>
+      </svg>
+    </div>
+  </section>
+
+  <section class="philosophy" id="philosophy" aria-labelledby="phil-heading">
+    <div class="section-head">
+      <p class="eyebrow">What goes in the dough</p>
+      <h2 id="phil-heading">Flour, Water, Time</h2>
+    </div>
+    <div class="card-grid">
+      <article class="p-card">
+        <span class="p-num">01</span>
+        <h3>Flour</h3>
+        <p>Stone-milled at a family gristmill two counties over, whole grain and never bleached. We rotate in einkorn, spelt, and rye so the board changes with what the mill has that week — the bread tastes like the harvest, not a formula.</p>
+      </article>
+      <article class="p-card">
+        <span class="p-num">02</span>
+        <h3>Water</h3>
+        <p>Filtered and brought to the exact temperature the dough needs, down to the degree, because the starter reacts to warmth the way it reacts to nothing else. Hydration runs high — 78 to 85 percent — for that open, glassy crumb.</p>
+      </article>
+      <article class="p-card">
+        <span class="p-num">03</span>
+        <h3>Time</h3>
+        <p>No commercial yeast ever touches this kitchen. Our starter, Bertha, has been fed twice daily since 2014. Fermentation runs 24 to 72 hours in the walk-in — slow enough for the wild yeast and bacteria to do the actual work.</p>
+      </article>
+    </div>
+  </section>
+
+  <section class="visit" id="visit" aria-labelledby="visit-heading">
+    <div class="placard">
+      <p class="eyebrow eyebrow-light">Come find us</p>
+      <h2 id="visit-heading">Visit the Bakery</h2>
+      <div class="placard-grid">
+        <div class="placard-block">
+          <h3>Hours</h3>
+          <dl class="hours-list">
+            <div><dt>Tue &ndash; Fri</dt><dd>7:00am &ndash; 6:00pm</dd></div>
+            <div><dt>Saturday</dt><dd>7:00am &ndash; 5:00pm</dd></div>
+            <div><dt>Sunday</dt><dd>8:00am &ndash; 2:00pm</dd></div>
+            <div><dt>Monday</dt><dd>Closed &mdash; dough day</dd></div>
+          </dl>
+        </div>
+        <div class="placard-block">
+          <h3>Address</h3>
+          <p class="address">214 Hollow Mill Lane<br>The Hollow District<br>Beside the old feed store</p>
+          <p class="address-note">Street parking after 6pm; bike racks out front.</p>
+        </div>
+      </div>
+    </div>
+  </section>
+
+</main>
+
+<footer class="site-footer">
+  <div class="footer-inner">
+    <div class="footer-sub">
+      <h2>The Crumb List</h2>
+      <p>A short note every Sunday: what's on the board, when we're sold out early, and the occasional recipe from Bertha's jar.</p>
+      <form class="sub-form" action="#" method="post">
+        <label class="sr-only" for="email">Email address</label>
+        <input type="email" id="email" name="email" placeholder="you@example.com" required>
+        <button type="submit" class="btn btn-primary">Subscribe</button>
+      </form>
+    </div>
+    <div class="footer-meta">
+      <p class="brand foot-brand">Cinder <span>&amp;</span> Levain</p>
+      <p>214 Hollow Mill Lane, The Hollow District</p>
+      <p><a href="https://instagram.com" target="_blank" rel="noopener">Instagram</a> &middot; <a href="mailto:hello@cinderandlevain.example">hello@cinderandlevain.example</a></p>
+      <p class="copyright">&copy; 2024 Cinder &amp; Levain Bakery. Baked daily, sold honestly.</p>
+    </div>
+  </div>
+</footer>
+
+<script src="script.js"></script>
+</body>
+</html>

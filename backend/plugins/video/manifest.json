@@ -1,0 +1,8 @@
+{
+  "name": "video",
+  "version": "1.0.0",
+  "permissions": ["video"],
+  "auth": { "type": "none", "note": "shells out to a local ffmpeg binary - no API key, but ffmpeg must be installed and on PATH" },
+  "actions": ["edit"],
+  "events": []
+}

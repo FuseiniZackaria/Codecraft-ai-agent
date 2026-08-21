@@ -1,0 +1,201 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>News & Reflections | Rev. Felix Agidipo Ministries</title>
+<meta name="description" content="Latest news, testimonies, outreach reports and devotional reflections from Rev. Felix Agidipo Ministries.">
+<link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><rect width=%22100%22 height=%22100%22 fill=%22%23161A3A%22/><path d=%22M0 60 L50 20 L100 60%22 stroke=%22%23D9A63F%22 stroke-width=%228%22 fill=%22none%22/></svg>">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:ital,opsz,wght@0,9..144,300;0,9..144,500;0,9..144,600;0,9..144,700;1,9..144,500&family=Work+Sans:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="css/styles.css">
+</head>
+<body class="page-news">
+<a class="skip-link" href="#main">Skip to main content</a>
+
+<header class="site-header">
+  <div class="wrap header-inner">
+    <a href="index.html" class="brand">
+      <span class="brand-mark" aria-hidden="true">
+        <svg viewBox="0 0 60 60"><path d="M4 40 L20 14 L30 28 L40 10 L56 40" fill="none" stroke="currentColor" stroke-width="4" stroke-linecap="round" stroke-linejoin="round"/></svg>
+      </span>
+      <span class="brand-text">Rev. Felix Agidipo<em>Ministries</em></span>
+    </a>
+    <button class="nav-toggle" id="navToggle" aria-expanded="false" aria-controls="primaryNav">
+      <span></span><span></span><span></span>
+      <span class="sr-only">Menu</span>
+    </button>
+    <nav class="primary-nav" id="primaryNav">
+      <ul>
+        <li><a href="index.html">Home</a></li>
+        <li><a href="about.html">About</a></li>
+        <li><a href="activities.html">Activities</a></li>
+        <li><a href="events.html">Events</a></li>
+        <li><a href="sermons.html">Sermons</a></li>
+        <li><a href="gallery.html">Gallery</a></li>
+        <li><a href="news.html" aria-current="page">News</a></li>
+        <li><a href="contact.html">Contact</a></li>
+      </ul>
+    </nav>
+  </div>
+</header>
+
+<main id="main">
+
+  <!-- HERO -->
+  <section class="page-hero page-hero--news">
+    <svg class="beam-bg" viewBox="0 0 1440 420" preserveAspectRatio="none" aria-hidden="true">
+      <defs>
+        <linearGradient id="beamGoldNews" x1="0" y1="0" x2="1" y2="1">
+          <stop offset="0" stop-color="#D9A63F" stop-opacity="0.55"/>
+          <stop offset="1" stop-color="#D9A63F" stop-opacity="0"/>
+        </linearGradient>
+      </defs>
+      <path d="M-100 420 L360 -40 L560 420 Z" fill="url(#beamGoldNews)"/>
+      <path d="M300 420 L760 -60 L980 420 Z" fill="url(#beamGoldNews)" opacity="0.7"/>
+      <path d="M900 420 L1340 -30 L1560 420 Z" fill="url(#beamGoldNews)" opacity="0.5"/>
+    </svg>
+    <div class="wrap page-hero-inner">
+      <p class="eyebrow">Word from the field</p>
+      <h1>News &amp; Reflections</h1>
+      <p class="page-hero-lede">Testimonies of grace, reports from outreach, and devotional light from the ministry's ongoing work — updated as it happens.</p>
+    </div>
+  </section>
+
+  <!-- FILTER BAR -->
+  <section class="section section--alabaster news-controls">
+    <div class="wrap">
+      <div class="news-controls-row">
+        <div class="filter-pills" id="categoryFilters" role="group" aria-label="Filter news by category">
+          <button class="pill is-active" data-filter="all" type="button">All Stories</button>
+          <button class="pill" data-filter="testimony" type="button">Testimonies</button>
+          <button class="pill" data-filter="outreach" type="button">Outreach Reports</button>
+          <button class="pill" data-filter="church" type="button">Church Updates</button>
+          <button class="pill" data-filter="devotional" type="button">Devotionals</button>
+          <button class="pill" data-filter="announcement" type="button">Announcements</button>
+        </div>
+        <label class="news-search" for="newsSearch">
+          <span class="sr-only">Search news</span>
+          <input type="search" id="newsSearch" placeholder="Search stories…">
+        </label>
+      </div>
+    </div>
+  </section>
+
+  <!-- FEATURED STORY -->
+  <section class="section section--alabaster news-featured" id="newsFeaturedSection">
+    <div class="wrap">
+      <div class="light-card light-card--featured" id="featuredStory">
+        <p class="loading-note">Loading featured story…</p>
+      </div>
+    </div>
+  </section>
+
+  <!-- NEWS GRID -->
+  <section class="section section--indigo news-list-section">
+    <svg class="beam-divider" viewBox="0 0 1440 120" preserveAspectRatio="none" aria-hidden="true">
+      <path d="M0 120 L480 0 L960 120 Z" fill="#D9A63F" opacity="0.12"/>
+    </svg>
+    <div class="wrap">
+      <div class="section-head">
+        <h2>All Stories</h2>
+        <p id="resultsCount" class="results-count" aria-live="polite"></p>
+      </div>
+      <div class="news-grid" id="newsGrid" aria-live="polite">
+        <p class="loading-note">Gathering the latest news…</p>
+      </div>
+      <div class="load-more-wrap">
+        <button class="btn btn-outline-gold" id="loadMoreBtn" type="button" hidden>Load More Stories</button>
+      </div>
+      <p class="empty-state" id="emptyState" hidden>No stories match your search just yet. Try a different keyword or category.</p>
+    </div>
+  </section>
+
+  <!-- NEWSLETTER CTA -->
+  <section class="section section--alabaster news-cta">
+    <div class="wrap news-cta-inner">
+      <svg class="beam-corner" viewBox="0 0 200 200" aria-hidden="true"><path d="M0 200 L100 40 L200 200 Z" fill="#D9A63F" opacity="0.15"/></svg>
+      <div>
+        <p class="eyebrow">Stay in the light</p>
+        <h2>Never miss a testimony</h2>
+        <p>Subscribe to receive new stories, sermon releases, and event announcements directly to your inbox — sent as the Spirit moves and the ministry grows.</p>
+      </div>
+      <form class="newsletter-form" id="newsletterForm" novalidate>
+        <label for="newsletterEmail" class="sr-only">Email address</label>
+        <input type="email" id="newsletterEmail" placeholder="you@example.com" required>
+        <button type="submit" class="btn btn-gold">Subscribe</button>
+        <p class="form-note" id="newsletterNote" role="status"></p>
+      </form>
+    </div>
+  </section>
+
+</main>
+
+<!-- STORY MODAL -->
+<div class="modal" id="storyModal" role="dialog" aria-modal="true" aria-labelledby="storyModalTitle" hidden>
+  <div class="modal-backdrop" data-close-modal></div>
+  <div class="modal-panel modal-panel--story">
+    <button class="modal-close" id="storyModalClose" aria-label="Close story">&times;</button>
+    <p class="modal-category" id="storyModalCategory"></p>
+    <h2 id="storyModalTitle"></h2>
+    <p class="modal-meta" id="storyModalMeta"></p>
+    <div class="modal-image-wrap">
+      <img id="storyModalImage" src="" alt="">
+    </div>
+    <div class="modal-body" id="storyModalBody"></div>
+  </div>
+</div>
+
+<footer class="site-footer">
+  <svg class="beam-bg beam-bg--footer" viewBox="0 0 1440 200" preserveAspectRatio="none" aria-hidden="true">
+    <path d="M-100 200 L400 10 L700 200 Z" fill="#D9A63F" opacity="0.08"/>
+    <path d="M700 200 L1100 20 L1540 200 Z" fill="#D9A63F" opacity="0.06"/>
+  </svg>
+  <div class="wrap footer-inner">
+    <div class="footer-col footer-brand">
+      <span class="brand-text">Rev. Felix Agidipo<em>Ministries</em></span>
+      <p>Carrying the light of the Gospel into homes, cities, and nations.</p>
+    </div>
+    <div class="footer-col">
+      <h3>Explore</h3>
+      <ul>
+        <li><a href="activities.html">Activities</a></li>
+        <li><a href="events.html">Events</a></li>
+        <li><a href="sermons.html">Sermons</a></li>
+        <li><a href="gallery.html">Gallery</a></li>
+        <li><a href="news.html">News</a></li>
+      </ul>
+    </div>
+    <div class="footer-col">
+      <h3>Ministry</h3>
+      <ul>
+        <li><a href="about.html">About Rev. Felix</a></li>
+        <li><a href="contact.html">Contact &amp; Partnership</a></li>
+        <li><a href="admin.html">Admin Panel</a></li>
+      </ul>
+    </div>
+    <div class="footer-col">
+      <h3>Connect</h3>
+      <ul class="footer-social">
+        <li><a href="#">Facebook</a></li>
+        <li><a href="#">Instagram</a></li>
+        <li><a href="#">YouTube</a></li>
+      </ul>
+    </div>
+  </div>
+  <div class="wrap footer-bottom">
+    <p>&copy; <span id="year"></span> Rev. Felix Agidipo Ministries. All rights reserved.</p>
+  </div>
+</footer>
+
+<script src="js/data.js"></script>
+<script src="js/main.js"></script>
+<script src="js/news.js"></script>
+  <script src="js/gallery.js"></script>
+  <script src="js/sermons.js"></script>
+  <script src="js/events.js"></script>
+  <script src="js/activities.js"></script>
+  <script src="js/admin.js"></script>
+</body>
+</html>

@@ -18,6 +18,8 @@ module.exports = {
       text: `[mock response] Task understood: "${preview}". ` +
             `(Configure OPENAI_API_KEY or AI_API_KEY to use a real model.)`,
       costEstimate: 0,
+      inputTokens: 0,
+      outputTokens: 0,
     };
   },
 };

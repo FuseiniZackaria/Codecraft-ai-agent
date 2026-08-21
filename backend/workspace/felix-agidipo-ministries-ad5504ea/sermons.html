@@ -1,0 +1,173 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Sermon Library — Rev. Felix Agidipo Ministries</title>
+<meta name="description" content="Search the full sermon library of Rev. Felix Agidipo by speaker, topic, and scripture. Watch, listen, and grow in the Word.">
+<link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>✦</text></svg>">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:ital,opsz,wght@0,9..144,300;0,9..144,500;0,9..144,600;0,9..144,700;1,9..144,500&family=Work+Sans:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="css/styles.css">
+</head>
+<body class="page-sermons">
+
+<a class="skip-link" href="#main">Skip to content</a>
+
+<header class="site-header">
+  <div class="header-inner">
+    <a href="index.html" class="brand">
+      <span class="brand-mark" aria-hidden="true">✦</span>
+      <span class="brand-text">Rev. Felix Agidipo <em>Ministries</em></span>
+    </a>
+    <button class="nav-toggle" id="navToggle" aria-expanded="false" aria-controls="primaryNav">
+      <span></span><span></span><span></span>
+      <span class="sr-only">Menu</span>
+    </button>
+    <nav class="primary-nav" id="primaryNav" aria-label="Primary">
+      <ul>
+        <li><a href="index.html">Home</a></li>
+        <li><a href="about.html">About</a></li>
+        <li><a href="activities.html">Activities</a></li>
+        <li><a href="events.html">Events</a></li>
+        <li><a href="sermons.html" aria-current="page">Sermons</a></li>
+        <li><a href="gallery.html">Gallery</a></li>
+        <li><a href="news.html">News</a></li>
+        <li><a href="contact.html">Contact</a></li>
+      </ul>
+    </nav>
+  </div>
+</header>
+
+<main id="main">
+
+  <!-- HERO -->
+  <section class="page-hero page-hero--indigo beam-hero">
+    <div class="beam-graphic beam-graphic--hero" aria-hidden="true">
+      <svg viewBox="0 0 800 500" preserveAspectRatio="none">
+        <defs>
+          <linearGradient id="beamGradSermons" x1="0%" y1="0%" x2="100%" y2="100%">
+            <stop offset="0%" stop-color="#D9A63F" stop-opacity="0.55"/>
+            <stop offset="100%" stop-color="#D9A63F" stop-opacity="0"/>
+          </linearGradient>
+        </defs>
+        <polygon points="0,500 260,0 340,0 60,500" fill="url(#beamGradSermons)"/>
+        <polygon points="140,500 420,0 470,0 210,500" fill="url(#beamGradSermons)"/>
+        <polygon points="360,500 640,0 680,0 430,500" fill="url(#beamGradSermons)"/>
+      </svg>
+    </div>
+    <div class="page-hero-inner">
+      <p class="eyebrow">The Word, Rightly Divided</p>
+      <h1>Sermon Library</h1>
+      <p class="page-hero-lede">Every message preached at Gospel Light Assembly, gathered in one place — searchable by speaker, subject, and scripture, so the light keeps reaching wherever you are.</p>
+    </div>
+  </section>
+
+  <!-- FILTER BAR -->
+  <section class="filter-bar" aria-label="Sermon filters">
+    <div class="filter-bar-inner">
+      <div class="filter-field filter-field--search">
+        <label for="sermonSearch">Search sermons</label>
+        <input type="search" id="sermonSearch" name="sermonSearch" placeholder="Search by title or keyword…" autocomplete="off">
+      </div>
+
+      <div class="filter-field">
+        <label for="filterSpeaker">Speaker</label>
+        <select id="filterSpeaker" name="filterSpeaker">
+          <option value="">All Speakers</option>
+        </select>
+      </div>
+
+      <div class="filter-field">
+        <label for="filterTopic">Topic</label>
+        <select id="filterTopic" name="filterTopic">
+          <option value="">All Topics</option>
+        </select>
+      </div>
+
+      <div class="filter-field">
+        <label for="filterScripture">Scripture</label>
+        <select id="filterScripture" name="filterScripture">
+          <option value="">All Scriptures</option>
+        </select>
+      </div>
+
+      <button type="button" class="btn btn-ghost filter-reset" id="filterReset">Reset filters</button>
+    </div>
+    <p class="filter-count" id="filterCount" role="status" aria-live="polite">Loading sermon library…</p>
+  </section>
+
+  <!-- BEAM DIVIDER -->
+  <div class="beam-divider" aria-hidden="true">
+    <svg viewBox="0 0 1200 60" preserveAspectRatio="none">
+      <polygon points="0,60 500,0 560,0 60,60" fill="#D9A63F" opacity="0.85"/>
+      <polygon points="620,60 1120,0 1180,0 680,60" fill="#D9A63F" opacity="0.4"/>
+    </svg>
+  </div>
+
+  <!-- SERMON GRID -->
+  <section class="sermon-library">
+    <div class="section-inner">
+
+      <div class="sermon-grid" id="sermonGrid" aria-live="polite">
+        <p class="loading-msg">Gathering messages of grace…</p>
+      </div>
+
+      <p class="empty-state" id="emptyState" hidden>No sermons match those filters yet. Try widening your search, or check back — new messages are added after every service.</p>
+
+    </div>
+  </section>
+
+  <!-- CTA STRIP -->
+  <section class="cta-strip beam-hero" data-tone="indigo">
+    <div class="beam-graphic beam-graphic--strip" aria-hidden="true">
+      <svg viewBox="0 0 800 200" preserveAspectRatio="none">
+        <polygon points="0,200 300,0 360,0 60,200" fill="#D9A63F" opacity="0.5"/>
+        <polygon points="380,200 680,0 730,0 430,200" fill="#D9A63F" opacity="0.25"/>
+      </svg>
+    </div>
+    <div class="cta-strip-inner">
+      <h2>Never miss a message.</h2>
+      <p>New sermons are published to this library the moment they're preached. Subscribe to our services calendar and walk in step with the Word.</p>
+      <a href="events.html" class="btn btn-gold">View Service Times</a>
+    </div>
+  </section>
+
+</main>
+
+<footer class="site-footer">
+  <div class="footer-inner">
+    <div class="footer-brand">
+      <span class="brand-mark" aria-hidden="true">✦</span>
+      <p>Rev. Felix Agidipo Ministries</p>
+      <p class="footer-tagline">Carrying the light of the Gospel, one testimony at a time.</p>
+    </div>
+    <nav class="footer-nav" aria-label="Footer">
+      <ul>
+        <li><a href="about.html">About</a></li>
+        <li><a href="activities.html">Activities</a></li>
+        <li><a href="events.html">Events</a></li>
+        <li><a href="sermons.html">Sermons</a></li>
+        <li><a href="gallery.html">Gallery</a></li>
+        <li><a href="news.html">News</a></li>
+        <li><a href="contact.html">Contact</a></li>
+      </ul>
+    </nav>
+    <div class="footer-meta">
+      <p>&copy; <span id="footerYear">2024</span> Rev. Felix Agidipo Ministries. All rights reserved.</p>
+      <p><a href="admin.html">Admin</a></p>
+    </div>
+  </div>
+</footer>
+
+<script src="js/data.js"></script>
+<script src="js/sermons.js"></script>
+<script src="js/main.js"></script>
+  <script src="js/gallery.js"></script>
+  <script src="js/events.js"></script>
+  <script src="js/activities.js"></script>
+  <script src="js/news.js"></script>
+  <script src="js/admin.js"></script>
+</body>
+</html>

@@ -61,8 +61,8 @@ class MemoryStore {
     this.auditLog.push({ id: randomUUID(), actor, action, target, metadata, at: new Date().toISOString() });
   }
 
-  async getAuditLog() {
-    return this.auditLog;
+  async getAuditLog(limit) {
+    return limit ? this.auditLog.slice(-limit) : this.auditLog;
   }
 
   // --- Long-term memory (durable facts the user explicitly asks to remember) ---
@@ -108,6 +108,96 @@ class MemoryStore {
 
   async deleteSkill(id) {
     return this.skills ? this.skills.delete(id) : false;
+  }
+
+  // --- Workflows (scheduled recurring goals) ---
+  async saveWorkflow(workflow) {
+    if (!this.workflows) this.workflows = new Map();
+    this.workflows.set(workflow.id, { ...workflow, updatedAt: new Date().toISOString() });
+    return workflow;
+  }
+
+  async getWorkflow(id) {
+    return (this.workflows && this.workflows.get(id)) || null;
+  }
+
+  async listWorkflows() {
+    return this.workflows ? Array.from(this.workflows.values()) : [];
+  }
+
+  async updateWorkflow(id, patch) {
+    const existing = await this.getWorkflow(id);
+    if (!existing) return null;
+    const updated = { ...existing, ...patch, updatedAt: new Date().toISOString() };
+    this.workflows.set(id, updated);
+    return updated;
+  }
+
+  async deleteWorkflow(id) {
+    return this.workflows ? this.workflows.delete(id) : false;
+  }
+
+  // --- Chat history (server-side persistence, survives refresh/device change) ---
+  async addChatMessage(msg) {
+    if (!this.chatMessages) this.chatMessages = [];
+    const stored = { id: require('crypto').randomUUID(), ...msg, createdAt: new Date().toISOString() };
+    this.chatMessages.push(stored);
+    return stored;
+  }
+
+  async listChatMessages(limit = 200) {
+    return this.chatMessages ? this.chatMessages.slice(-limit) : [];
+  }
+
+  // --- Workflow definitions (graph-based workflow engine, Phase 1) ---
+  async saveWorkflowDefinition(def) {
+    if (!this.workflowDefinitions) this.workflowDefinitions = new Map();
+    this.workflowDefinitions.set(def.id, { ...def, updatedAt: new Date().toISOString() });
+    return def;
+  }
+
+  async getWorkflowDefinition(id) {
+    return (this.workflowDefinitions && this.workflowDefinitions.get(id)) || null;
+  }
+
+  async listWorkflowDefinitions() {
+    return this.workflowDefinitions ? Array.from(this.workflowDefinitions.values()) : [];
+  }
+
+  async updateWorkflowDefinition(id, patch) {
+    const existing = await this.getWorkflowDefinition(id);
+    if (!existing) return null;
+    const updated = { ...existing, ...patch, updatedAt: new Date().toISOString() };
+    this.workflowDefinitions.set(id, updated);
+    return updated;
+  }
+
+  async deleteWorkflowDefinition(id) {
+    return this.workflowDefinitions ? this.workflowDefinitions.delete(id) : false;
+  }
+
+  // --- Workflow runs (execution state, including paused-for-approval) ---
+  async saveWorkflowRun(run) {
+    if (!this.workflowRuns) this.workflowRuns = new Map();
+    this.workflowRuns.set(run.id, { ...run });
+    return run;
+  }
+
+  async getWorkflowRun(id) {
+    return (this.workflowRuns && this.workflowRuns.get(id)) || null;
+  }
+
+  async updateWorkflowRun(id, patch) {
+    const existing = await this.getWorkflowRun(id);
+    if (!existing) return null;
+    const updated = { ...existing, ...patch };
+    this.workflowRuns.set(id, updated);
+    return updated;
+  }
+
+  async listWorkflowRuns(workflowId) {
+    if (!this.workflowRuns) return [];
+    return Array.from(this.workflowRuns.values()).filter((r) => !workflowId || r.workflowId === workflowId);
   }
 }
 

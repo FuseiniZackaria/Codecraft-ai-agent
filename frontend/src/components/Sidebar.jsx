@@ -1,5 +1,5 @@
 import { NavLink } from 'react-router-dom';
-import { LayoutDashboard, Bot, ListChecks, Puzzle, MessageSquare, Workflow, Search, Terminal, Package } from 'lucide-react';
+import { LayoutDashboard, Bot, ListChecks, Puzzle, MessageSquare, Workflow, Search, Terminal, Package, BarChart3 } from 'lucide-react';
 import Logo from './Logo';
 import { useStore } from '../store/useStore';
 
@@ -11,6 +11,7 @@ const links = [
   { to: '/tasks', label: 'Tasks', icon: ListChecks, badgeKey: 'pendingCount' },
   { to: '/research', label: 'Research', icon: Search },
   { to: '/workflows', label: 'Workflows', icon: Workflow },
+  { to: '/analytics', label: 'Analytics', icon: BarChart3 },
   { to: '/plugins', label: 'Plugins', icon: Puzzle },
   { to: '/chat', label: 'Chat', icon: MessageSquare },
 ];

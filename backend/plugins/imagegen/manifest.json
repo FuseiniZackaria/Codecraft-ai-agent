@@ -1,0 +1,8 @@
+{
+  "name": "imagegen",
+  "version": "1.0.0",
+  "permissions": ["imagegen"],
+  "auth": { "type": "api_key", "envVar": "OPENAI_API_KEY" },
+  "actions": ["generateImage"],
+  "events": []
+}

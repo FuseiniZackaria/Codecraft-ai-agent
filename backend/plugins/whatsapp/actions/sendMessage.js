@@ -1,4 +1,4 @@
-const whatsapp = require('../../../core/whatsappDirect');
+const whatsapp = require('../../../core/whatsappProvider');
 
 module.exports = {
   name: 'sendMessage',

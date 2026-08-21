@@ -136,4 +136,23 @@ async function checkConnectionStatus(toolkitSlug) {
   }
 }
 
-module.exports = { execute, checkConnectionStatus };
+/**
+ * Stages a local file with Composio so it can be referenced in a tool call
+ * (e.g. video upload). Composio genuinely requires this two-step dance for
+ * file-accepting tools - confirmed for real, since this exact requirement
+ * surfaced as a live SDK warning earlier in this project for Gmail's
+ * attachment field. The general shape is documented as
+ * composio.files.upload({ file, toolSlug, toolkitSlug }) - whether `file`
+ * wants a path string, Buffer, or stream isn't fully confirmed; this passes
+ * the raw path first, the more common convenience shape for upload helpers.
+ */
+async function uploadFile(filePath, actionSlug, toolkitSlug) {
+  const composio = getClient();
+  try {
+    return await composio.files.upload({ file: filePath, toolSlug: actionSlug, toolkitSlug });
+  } catch (err) {
+    throw new Error(`Composio file upload failed: ${err.message}`);
+  }
+}
+
+module.exports = { execute, checkConnectionStatus, uploadFile };

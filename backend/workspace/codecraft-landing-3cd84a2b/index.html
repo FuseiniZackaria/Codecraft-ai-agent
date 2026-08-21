@@ -1,0 +1,278 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>CodeCraft — A Cohort for Coders Who Draft Before They Build</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="css/styles.css">
+</head>
+<body>
+
+<div class="grid-overlay" aria-hidden="true"></div>
+
+<header class="site-header">
+  <div class="header-inner">
+    <a href="#top" class="logo">
+      <span class="logo-mark">✎</span>
+      <span>CodeCraft</span>
+    </a>
+    <nav class="main-nav" aria-label="Primary">
+      <a href="#manifesto">Manifesto</a>
+      <a href="#curriculum">Curriculum</a>
+      <a href="#schedule">Schedule</a>
+      <a href="#testimonials">Notes</a>
+      <a href="#apply" class="nav-cta">Apply</a>
+    </nav>
+  </div>
+</header>
+
+<main id="top">
+
+  <!-- HERO -->
+  <section class="hero spec-sheet" id="hero">
+    <div class="spec-corner tl"></div>
+    <div class="spec-corner tr"></div>
+    <div class="spec-corner bl"></div>
+    <div class="spec-corner br"></div>
+    <div class="spec-tag">FIG. 01 — COHORT PROSPECTUS</div>
+
+    <div class="hero-inner">
+      <div class="hero-copy">
+        <p class="eyebrow">A drafting table for software craft</p>
+        <h1>Code is drafted <br> before it's built.</h1>
+        <p class="hero-lede">
+          CodeCraft is a twelve-week cohort for engineers who want to think in
+          schematics: sketch the function, letter the logic, tolerance the
+          output. No bootcamp shortcuts — just disciplined drafting, reviewed
+          line by line by working software craftspeople.
+        </p>
+        <div class="hero-actions">
+          <a href="#apply" class="btn btn-primary">Apply to Cohort 07</a>
+          <a href="#curriculum" class="btn btn-ghost">View the Blueprint</a>
+        </div>
+        <div class="hero-meta">
+          <span>Next intake: <strong>March 3</strong></span>
+          <span class="dot">•</span>
+          <span><strong>18</strong> seats, reviewed by hand</span>
+        </div>
+      </div>
+
+      <div class="hero-diagram" aria-hidden="true">
+        <svg viewBox="0 0 560 460" class="schematic" xmlns="http://www.w3.org/2000/svg">
+          <rect x="8" y="8" width="544" height="444" class="sheet-border" rx="4"/>
+
+          <!-- input box -->
+          <rect x="40" y="70" class="draft-box box-input" width="130" height="70" rx="3"/>
+          <text x="105" y="110" class="box-label" text-anchor="middle">x</text>
+
+          <!-- arrow input -> logic -->
+          <path class="draft-line line-1" d="M170 105 H235" />
+          <path class="draft-arrow line-1" d="M225 98 L238 105 L225 112" />
+
+          <!-- logic box (function body) -->
+          <rect x="235" y="150" class="draft-box box-logic" width="200" height="160" rx="3"/>
+          <text x="335" y="185" class="box-title" text-anchor="middle">function craft(x)</text>
+          <path class="draft-line code-line l1" d="M255 205 H345" />
+          <path class="draft-line code-line l2" d="M255 225 H395" />
+          <path class="draft-line code-line l3" d="M255 245 H370" />
+          <path class="draft-line code-line l4" d="M255 265 H410" />
+          <path class="draft-line code-line l5" d="M255 285 H330" />
+
+          <!-- arrow logic -> output -->
+          <path class="draft-line line-2" d="M335 310 V370" />
+          <path class="draft-arrow line-2" d="M328 358 L335 373 L342 358" />
+
+          <!-- output box -->
+          <rect x="270" y="378" class="draft-box box-output" width="130" height="60" rx="3"/>
+          <text x="335" y="413" class="box-label" text-anchor="middle">return y</text>
+
+          <!-- leader lines + labels -->
+          <path class="leader" d="M105 70 V40 H30" />
+          <circle class="leader-dot" cx="105" cy="70" r="3" />
+          <text x="34" y="34" class="leader-label">INPUT</text>
+
+          <path class="leader leader-2" d="M435 220 H500 V190" />
+          <circle class="leader-dot leader-dot-2" cx="435" cy="220" r="3" />
+          <text x="440" y="184" class="leader-label" text-anchor="end" transform="translate(60,0)">LOGIC</text>
+
+          <path class="leader leader-3" d="M400 408 H450 V440" />
+          <circle class="leader-dot leader-dot-3" cx="400" cy="408" r="3" />
+          <text x="454" y="452" class="leader-label">OUTPUT</text>
+        </svg>
+      </div>
+    </div>
+  </section>
+
+  <!-- MANIFESTO -->
+  <section class="manifesto spec-sheet" id="manifesto">
+    <div class="spec-corner tl"></div><div class="spec-corner tr"></div>
+    <div class="spec-corner bl"></div><div class="spec-corner br"></div>
+    <div class="spec-tag">FIG. 02 — DESIGN PRINCIPLES</div>
+    <h2>We treat code like a load-bearing structure.</h2>
+    <div class="manifesto-grid">
+      <article>
+        <span class="m-num">§1</span>
+        <h3>Draft first, execute second</h3>
+        <p>Every function starts as a pencil sketch: inputs named, edge cases
+        annotated, failure modes drawn in the margin before a single test runs.</p>
+      </article>
+      <article>
+        <span class="m-num">§2</span>
+        <h3>Tolerances, not vibes</h3>
+        <p>Good code states its tolerances — what it accepts, what it rejects,
+        where it breaks. We teach you to letter those boundaries explicitly.</p>
+      </article>
+      <article>
+        <span class="m-num">§3</span>
+        <h3>Reviewed like a drawing set</h3>
+        <p>Your pull requests get red-pencil markup from working engineers, the
+        same way a blueprint gets redlined before it goes to the shop floor.</p>
+      </article>
+      <article>
+        <span class="m-num">§4</span>
+        <h3>Built to be re-read</h3>
+        <p>We optimize for the engineer who inherits your code in three years,
+        not for the version that merely compiles today.</p>
+      </article>
+    </div>
+  </section>
+
+  <!-- CURRICULUM -->
+  <section class="curriculum spec-sheet" id="curriculum">
+    <div class="spec-corner tl"></div><div class="spec-corner tr"></div>
+    <div class="spec-corner bl"></div><div class="spec-corner br"></div>
+    <div class="spec-tag">FIG. 03 — TWELVE-WEEK SEQUENCE</div>
+    <h2>Four phases, one drawing set.</h2>
+
+    <ol class="phases">
+      <li class="phase">
+        <div class="phase-num">01</div>
+        <div class="phase-body">
+          <h3>Blueprint</h3>
+          <span class="phase-weeks">Weeks 1–3</span>
+          <p>Problem decomposition, data modeling, and system sketches on
+          whiteboard and paper before any code is written. You learn to
+          draft an interface the way you'd draft a floor plan.</p>
+        </div>
+      </li>
+      <li class="phase">
+        <div class="phase-num">02</div>
+        <div class="phase-body">
+          <h3>Joinery</h3>
+          <span class="phase-weeks">Weeks 4–6</span>
+          <p>Where pieces meet. APIs, modules, and services are fitted
+          together with the same care a joiner gives a dovetail — tight,
+          load-tested, no visible gaps.</p>
+        </div>
+      </li>
+      <li class="phase">
+        <div class="phase-num">03</div>
+        <div class="phase-body">
+          <h3>Finish</h3>
+          <span class="phase-weeks">Weeks 7–9</span>
+          <p>Sanding down the rough edges: readability, naming, error
+          handling, and the quiet details that separate working code from
+          well-made code.</p>
+        </div>
+      </li>
+      <li class="phase">
+        <div class="phase-num">04</div>
+        <div class="phase-body">
+          <h3>Ship</h3>
+          <span class="phase-weeks">Weeks 10–12</span>
+          <p>A capstone system, built solo and reviewed like client work —
+          deployed, documented, and defended in a live crit with practicing
+          engineers.</p>
+        </div>
+      </li>
+    </ol>
+  </section>
+
+  <!-- SCHEDULE -->
+  <section class="schedule spec-sheet" id="schedule">
+    <div class="spec-corner tl"></div><div class="spec-corner tr"></div>
+    <div class="spec-corner bl"></div><div class="spec-corner br"></div>
+    <div class="spec-tag">FIG. 04 — COHORT SCHEDULE</div>
+    <h2>Cohort 07 — logistics table.</h2>
+    <div class="table-wrap">
+      <table>
+        <thead>
+          <tr><th>Item</th><th>Detail</th><th>Notes</th></tr>
+        </thead>
+        <tbody>
+          <tr><td>Start date</td><td>March 3</td><td>Rolling admissions, 18 seats</td></tr>
+          <tr><td>Format</td><td>Live, remote, 3 sessions/week</td><td>Tue · Thu · Sat, 6–9pm ET</td></tr>
+          <tr><td>Duration</td><td>12 weeks</td><td>Plus 2 weeks capstone crit</td></tr>
+          <tr><td>Cohort size</td><td>18 engineers</td><td>1 mentor per 6 students</td></tr>
+          <tr><td>Prerequisite</td><td>6+ months writing code</td><td>Any language, take-home assessed</td></tr>
+          <tr><td>Tuition</td><td>$4,200</td><td>Payment plans + 4 sponsored seats</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </section>
+
+  <!-- TESTIMONIALS -->
+  <section class="testimonials spec-sheet" id="testimonials">
+    <div class="spec-corner tl"></div><div class="spec-corner tr"></div>
+    <div class="spec-corner bl"></div><div class="spec-corner br"></div>
+    <div class="spec-tag">FIG. 05 — FIELD NOTES</div>
+    <h2>From the shop floor.</h2>
+    <div class="quotes-grid">
+      <blockquote>
+        <p>"I'd shipped production code for two years and still learned to
+        name a variable properly in week two. The redlines stung. Then they
+        didn't."</p>
+        <cite>— Priya N., Cohort 04, now backend eng. at a logistics startup</cite>
+      </blockquote>
+      <blockquote>
+        <p>"It's the only program that made me draw before I typed. My
+        pull requests are half the size and twice as clear."</p>
+        <cite>— Marcus T., Cohort 05, infrastructure engineer</cite>
+      </blockquote>
+      <blockquote>
+        <p>"The capstone crit felt like defending a thesis. Terrifying,
+        then the best line on my resume."</p>
+        <cite>— Aiko F., Cohort 06, frontend + platform</cite>
+      </blockquote>
+    </div>
+  </section>
+
+  <!-- CTA -->
+  <section class="cta-section spec-sheet" id="apply">
+    <div class="spec-corner tl"></div><div class="spec-corner tr"></div>
+    <div class="spec-corner bl"></div><div class="spec-corner br"></div>
+    <div class="spec-tag">FIG. 06 — SUBMISSION</div>
+    <h2>Eighteen seats. One drawing set each.</h2>
+    <p>Applications for Cohort 07 close February 14. Every application gets a
+    real technical read from a mentor — no automated rejections.</p>
+    <a href="mailto:admissions@codecraft.example" class="btn btn-primary btn-large">Start Your Application</a>
+  </section>
+
+</main>
+
+<footer class="site-footer">
+  <div class="footer-inner">
+    <div class="footer-brand">
+      <span class="logo-mark">✎</span> CodeCraft
+      <p>Drafted, not generated. A cohort for people who build things meant to last.</p>
+    </div>
+    <div class="footer-links">
+      <a href="#manifesto">Manifesto</a>
+      <a href="#curriculum">Curriculum</a>
+      <a href="#schedule">Schedule</a>
+      <a href="#testimonials">Notes</a>
+      <a href="#apply">Apply</a>
+    </div>
+    <div class="footer-meta">
+      <span>© 2024 CodeCraft Cohort</span>
+      <span>Drawn on vellum, revision 07</span>
+    </div>
+  </div>
+</footer>
+
+<script src="js/main.js"></script>
+</body>
+</html>

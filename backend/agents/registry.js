@@ -5,6 +5,8 @@ const WhatsAppAgent = require('./whatsapp/WhatsAppAgent');
 const SupportAgent = require('./support/SupportAgent');
 const MarketingAgent = require('./marketing/MarketingAgent');
 const CEOAgent = require('./ceo/CEOAgent');
+const CodingAgent = require('./coding/CodingAgent');
+const ContentStudioAgent = require('./content-studio/ContentStudioAgent');
 
 const agents = {
   research: new ResearchAgent(),
@@ -14,6 +16,8 @@ const agents = {
   support: new SupportAgent(),
   marketing: new MarketingAgent(),
   ceo: new CEOAgent(),
+  coding: new CodingAgent(),
+  'content-studio': new ContentStudioAgent(),
 };
 
 function getAgent(name) {

@@ -42,8 +42,7 @@ class SkillManager {
 
   async enable(id) {
     const skill = await this.info(id);
-    const entryPath = this.activator.resolveEntryPath(skill.sourcePath, skill.manifest.entry);
-    const activated = this.activator.activate(id, entryPath);
+    const activated = this.activator.activate(id, skill.sourcePath, skill.manifest);
     const updated = await memory.updateSkill(id, { status: 'enabled' });
     await activityLog.record('skill-manager', 'skill.enabled', id, { toolsRegistered: activated.tools.length });
     return updated;
@@ -81,8 +80,7 @@ class SkillManager {
 
     let activationOk = true;
     try {
-      const entryPath = this.activator.resolveEntryPath(skill.sourcePath, skill.manifest.entry);
-      this.activator.activate(id, entryPath);
+      this.activator.activate(id, skill.sourcePath, skill.manifest);
     } catch {
       activationOk = false;
     }
@@ -140,8 +138,7 @@ class SkillManager {
     fs.rmSync(skill.sourcePath, { recursive: true, force: true });
     const zip = new AdmZip(backupPath);
     zip.extractAllTo(skill.sourcePath, true);
-    const entryPath = this.activator.resolveEntryPath(skill.sourcePath, skill.manifest.entry);
-    this.activator.activate(id, entryPath);
+    this.activator.activate(id, skill.sourcePath, skill.manifest);
     await activityLog.record('skill-manager', 'skill.restored', id, { backupPath });
     return { restored: true };
   }

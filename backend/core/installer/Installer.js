@@ -120,11 +120,11 @@ class Installer {
       registeredSkillId = manifest.id;
       await activityLog.record('installer', 'skill.registered', manifest.id, { version: manifest.version });
 
-      const entryPath = this.activator.resolveEntryPath(installedDir, manifest.entry);
-      const activated = this.activator.activate(manifest.id, entryPath);
+      const activated = this.activator.activate(manifest.id, installedDir, manifest);
       await activityLog.record('installer', 'skill.activated', manifest.id, {
         toolsRegistered: activated.tools.length,
         agentRegistered: !!activated.agent,
+        guidanceRegistered: !!activated.guidance,
       });
 
       await activityLog.record('installer', 'install.completed', manifest.id, {

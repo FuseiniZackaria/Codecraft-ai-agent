@@ -1,0 +1,209 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>CodeCraft — Ship Code Faster, Smarter</title>
+<meta name="description" content="CodeCraft is the AI-powered coding companion that helps you write, refactor, and ship code faster than ever.">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="styles.css">
+</head>
+<body>
+
+<!-- ===== NAVBAR ===== -->
+<header class="navbar" id="navbar">
+  <div class="container navbar__inner">
+    <a href="#hero" class="logo">
+      <span class="logo__bracket">&lt;</span>CodeCraft<span class="logo__bracket">/&gt;</span>
+    </a>
+
+    <nav class="nav-links" id="navLinks">
+      <a href="#features">Features</a>
+      <a href="#how-it-works">How it Works</a>
+      <a href="#pricing">Pricing</a>
+      <a href="#faq">FAQ</a>
+      <a href="#contact">Contact</a>
+    </nav>
+
+    <div class="navbar__actions">
+      <a href="#pricing" class="btn btn--ghost">Sign In</a>
+      <a href="#pricing" class="btn btn--primary">Get Started</a>
+    </div>
+
+    <button class="hamburger" id="hamburger" aria-label="Toggle menu" aria-expanded="false">
+      <span></span>
+      <span></span>
+      <span></span>
+    </button>
+  </div>
+</header>
+
+<main>
+  <!-- ===== HERO ===== -->
+  <section class="hero" id="hero">
+    <div class="container hero__inner">
+      <span class="badge">🚀 Now with AI Pair Programming</span>
+      <h1 class="hero__headline">
+        Craft Better Code, <span class="gradient-text">Ship It Faster</span>
+      </h1>
+      <p class="hero__subheadline">
+        CodeCraft is the all-in-one coding companion that writes, reviews, and refactors
+        your code — so your team can focus on building things people love.
+      </p>
+      <div class="hero__cta">
+        <a href="#pricing" class="btn btn--primary btn--lg">Get Started</a>
+        <button class="btn btn--outline btn--lg" id="watchDemoBtn">
+          <span class="play-icon">▶</span> Watch Demo
+        </button>
+      </div>
+      <div class="hero__trust">
+        <p>Trusted by developers at</p>
+        <div class="hero__logos">
+          <span>Nimbus</span>
+          <span>Quarklab</span>
+          <span>Vertex</span>
+          <span>Pixel&amp;Co</span>
+          <span>Dockside</span>
+        </div>
+      </div>
+    </div>
+    <div class="hero__glow"></div>
+  </section>
+
+  <!-- ===== FEATURES ===== -->
+  <section class="features" id="features">
+    <div class="container">
+      <div class="section-heading">
+        <span class="eyebrow">Features</span>
+        <h2>Everything you need to code with confidence</h2>
+        <p>Powerful tools that fit right into your workflow — no context switching required.</p>
+      </div>
+
+      <div class="features__grid">
+        <div class="feature-card">
+          <div class="feature-card__icon">⚡</div>
+          <h3>Instant Autocomplete</h3>
+          <p>Context-aware suggestions that finish your thoughts, not just your syntax.</p>
+        </div>
+        <div class="feature-card">
+          <div class="feature-card__icon">🤖</div>
+          <h3>AI Pair Programmer</h3>
+          <p>Chat with an assistant that understands your entire codebase, not just a snippet.</p>
+        </div>
+        <div class="feature-card">
+          <div class="feature-card__icon">🔍</div>
+          <h3>Smart Code Review</h3>
+          <p>Catch bugs, anti-patterns, and security issues before they hit production.</p>
+        </div>
+        <div class="feature-card">
+          <div class="feature-card__icon">🔄</div>
+          <h3>One-Click Refactors</h3>
+          <p>Modernize legacy code and clean up messy functions in a single click.</p>
+        </div>
+        <div class="feature-card">
+          <div class="feature-card__icon">🔗</div>
+          <h3>Seamless Integrations</h3>
+          <p>Works with GitHub, GitLab, VS Code, and the tools your team already loves.</p>
+        </div>
+        <div class="feature-card">
+          <div class="feature-card__icon">📊</div>
+          <h3>Team Insights</h3>
+          <p>Track velocity, code health, and review turnaround with built-in analytics.</p>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ===== HOW IT WORKS ===== -->
+  <section class="how-it-works" id="how-it-works">
+    <div class="container">
+      <div class="section-heading">
+        <span class="eyebrow">How it Works</span>
+        <h2>From idea to shipped in three steps</h2>
+        <p>Get up and running in minutes — no complex setup required.</p>
+      </div>
+
+      <div class="steps">
+        <div class="step">
+          <div class="step__number">1</div>
+          <h3>Connect your repo</h3>
+          <p>Link your GitHub or GitLab project in seconds with our secure OAuth flow.</p>
+        </div>
+        <div class="step step--connector"></div>
+        <div class="step">
+          <div class="step__number">2</div>
+          <h3>Let CodeCraft learn</h3>
+          <p>Our engine indexes your codebase to understand patterns, style, and structure.</p>
+        </div>
+        <div class="step step--connector"></div>
+        <div class="step">
+          <div class="step__number">3</div>
+          <h3>Code &amp; ship faster</h3>
+          <p>Get real-time suggestions, reviews, and refactors right inside your editor.</p>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ===== TESTIMONIALS ===== -->
+  <section class="testimonial" id="testimonials">
+    <div class="container testimonial__inner">
+      <blockquote>
+        <p>“CodeCraft cut our code review time in half and caught bugs we would've
+        shipped straight to production. It's like having a senior engineer on every PR.”</p>
+        <footer>
+          <img src="https://i.pravatar.cc/64?img=32" alt="Portrait of Maya Chen" loading="lazy">
+          <div>
+            <cite>Maya Chen</cite>
+            <span>Engineering Lead, Nimbus</span>
+          </div>
+        </footer>
+      </blockquote>
+    </div>
+  </section>
+
+  <!-- ===== PRICING ===== -->
+  <section class="pricing" id="pricing">
+    <div class="container">
+      <div class="section-heading">
+        <span class="eyebrow">Pricing</span>
+        <h2>Simple pricing that scales with you</h2>
+        <p>Start free. Upgrade when your team is ready for more power.</p>
+      </div>
+
+      <div class="pricing__grid">
+        <div class="pricing-card">
+          <h3>Free</h3>
+          <p class="pricing-card__desc">For hobbyists and small side projects.</p>
+          <div class="pricing-card__price">
+            <span class="amount">$0</span><span class="period">/mo</span>
+          </div>
+          <ul class="pricing-card__features">
+            <li>Autocomplete suggestions</li>
+            <li>1 connected repository</li>
+            <li>Community support</li>
+            <li>Basic code review</li>
+          </ul>
+          <a href="#contact" class="btn btn--outline">Get Started</a>
+        </div>
+
+        <div class="pricing-card pricing-card--featured">
+          <span class="pricing-card__badge">Most Popular</span>
+          <h3>Pro</h3>
+          <p class="pricing-card__desc">For professional developers who ship often.</p>
+          <div class="pricing-card__price">
+            <span class="amount">$19</span><span class="period">/mo</span>
+          </div>
+          <ul class="pricing-card__features">
+            <li>Everything in Free</li>
+            <li>Unlimited repositories</li>
+            <li>AI pair programmer</li>
+            <li>Advanced code review</li>
+            <li>Priority support</li>
+          </ul>
+          <a href="#contact" class="btn btn--primary">Get Started</a>
+        </div>
+
+        <div class="pricing-card">
+          <h3>Team</h3>
+          <p class="pricing-card__desc">For

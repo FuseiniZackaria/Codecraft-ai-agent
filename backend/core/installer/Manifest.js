@@ -1,8 +1,9 @@
 const fs = require('fs');
 const path = require('path');
 
-const REQUIRED_FIELDS = ['id', 'name', 'version', 'entry'];
+const REQUIRED_FIELDS = ['id', 'name', 'version'];
 const ID_PATTERN = /^[a-z0-9][a-z0-9-]*$/; // npm-style: lowercase, hyphens, no spaces
+const VALID_KINDS = ['tool', 'guidance'];
 
 class ManifestError extends Error {}
 
@@ -12,6 +13,14 @@ class ManifestError extends Error {}
  * filesystem beyond reading the one file, does not check dependencies or
  * permissions against the running system (that's DependencyResolver /
  * PermissionManager's job).
+ *
+ * Two kinds of skill:
+ *   "tool"     (default) - executable code, needs `entry`, becomes a
+ *              callable tool/agent via Activator's require().
+ *   "guidance" - reference text (e.g. a design-system doc), needs
+ *              `guidanceFile`, gets injected into agent prompts instead
+ *              of run as code. Never executed, so it carries no
+ *              permissions and can't declare tools/events.
  */
 class Manifest {
   static load(packageDir) {
@@ -44,13 +53,29 @@ class Manifest {
       throw new ManifestError(`Invalid version "${raw.version}" - expected semver (e.g. "1.0.0")`);
     }
 
+    const kind = raw.kind || 'tool';
+    if (!VALID_KINDS.includes(kind)) {
+      throw new ManifestError(`Invalid kind "${raw.kind}" - must be one of: ${VALID_KINDS.join(', ')}`);
+    }
+    if (kind === 'tool' && !raw.entry) {
+      throw new ManifestError('manifest.json is missing required field(s): entry (required when kind is "tool")');
+    }
+    if (kind === 'guidance' && !raw.guidanceFile) {
+      throw new ManifestError(
+        'manifest.json is missing required field(s): guidanceFile (required when kind is "guidance")'
+      );
+    }
+
     return {
       id: raw.id,
       name: raw.name,
       version: raw.version,
       author: raw.author || 'unknown',
       description: raw.description || '',
-      entry: raw.entry,
+      kind,
+      entry: raw.entry || null,
+      guidanceFile: raw.guidanceFile || null,
+      triggers: Array.isArray(raw.triggers) ? raw.triggers : [],
       minimumCoreVersion: raw.minimumCoreVersion || '0.0.0',
       dependencies: Array.isArray(raw.dependencies) ? raw.dependencies : [],
       permissions: Array.isArray(raw.permissions) ? raw.permissions : [],

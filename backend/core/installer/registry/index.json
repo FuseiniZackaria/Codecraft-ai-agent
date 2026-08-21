@@ -10,5 +10,41 @@
     "rating": null,
     "compatibility": { "minimumCoreVersion": "1.0.0" },
     "samplePath": "greeting-skill"
+  },
+  {
+    "id": "ui-guidance",
+    "name": "UI/UX Design Guidance",
+    "description": "Reference guidance for professional UI - accessibility, contrast, spacing, injected into agent prompts on relevant tasks.",
+    "category": "guidance",
+    "author": "CodeCraft",
+    "version": "1.0.0",
+    "downloads": 0,
+    "rating": null,
+    "compatibility": { "minimumCoreVersion": "1.0.0" },
+    "samplePath": "ui-guidance"
+  },
+  {
+    "id": "ui-ux-pro-max",
+    "name": "UI/UX Pro Max - Design Intelligence",
+    "description": "Full design intelligence guide - styles, palettes, typography, accessibility, and a pre-delivery checklist, as guidance text.",
+    "category": "guidance",
+    "author": "user-provided",
+    "version": "1.0.0",
+    "downloads": 0,
+    "rating": null,
+    "compatibility": { "minimumCoreVersion": "1.0.0" },
+    "samplePath": "ui-ux-pro-max"
+  },
+  {
+    "id": "api-connector",
+    "name": "Generic API Connector",
+    "description": "Connects to any REST API via a configured base URL and optional bearer token. Reads run freely; writes require approval.",
+    "category": "connector",
+    "author": "CodeCraft",
+    "version": "1.0.0",
+    "downloads": 0,
+    "rating": null,
+    "compatibility": { "minimumCoreVersion": "1.0.0" },
+    "samplePath": "api-connector"
   }
 ]

@@ -1,4 +1,5 @@
 const BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:4000/api';
+const BROWSER_TOKEN = import.meta.env.VITE_BROWSER_EXTENSION_TOKEN || null;
 
 async function request(path, options = {}) {
   const res = await fetch(`${BASE_URL}${path}`, {
@@ -10,6 +11,36 @@ async function request(path, options = {}) {
     throw new Error(body.error || `Request failed: ${res.status}`);
   }
   return res.json();
+}
+
+// /api/browser/* is token-gated (same secret the extension uses) because
+// CORS is wide open on this backend - without a check, any website's own
+// JS could read your browsing history cross-origin. This mirrors that
+// token into the frontend's own requests via a matching Vite env var.
+async function browserRequest(path) {
+  if (!BROWSER_TOKEN) return null; // not configured - features using this fail quiet, not with an error toast
+  const res = await fetch(`${BASE_URL}${path}`, {
+    headers: { 'X-CodeCraft-Token': BROWSER_TOKEN },
+  });
+  if (!res.ok) return null;
+  return res.json();
+}
+
+// Same token gate, but for POSTs where the error body itself is useful to
+// show (e.g. "server responded with HTTP 404") rather than just failing
+// quiet like the read-only browserRequest above.
+async function browserPost(path, body) {
+  if (!BROWSER_TOKEN) return { ok: false, error: 'VITE_BROWSER_EXTENSION_TOKEN is not configured in the frontend.' };
+  try {
+    const res = await fetch(`${BASE_URL}${path}`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'X-CodeCraft-Token': BROWSER_TOKEN },
+      body: JSON.stringify(body),
+    });
+    return await res.json();
+  } catch (err) {
+    return { ok: false, error: err.message };
+  }
 }
 
 export const api = {
@@ -50,13 +81,45 @@ export const api = {
   checkSkillUpdate: (id) => request(`/skills/${id}/update-check`),
   updateSkill: (id, approvedPermissions) =>
     request(`/skills/${id}/update`, { method: 'POST', body: JSON.stringify({ approvedPermissions }) }),
+
+  // --- Workflows ---
+  listWorkflows: () => request('/workflows'),
+  createWorkflow: (workflow) => request('/workflows', { method: 'POST', body: JSON.stringify(workflow) }),
+  updateWorkflow: (id, patch) => request(`/workflows/${id}`, { method: 'PATCH', body: JSON.stringify(patch) }),
+  deleteWorkflow: (id) => request(`/workflows/${id}`, { method: 'DELETE' }),
+  runWorkflowNow: (id) => request(`/workflows/${id}/run-now`, { method: 'POST' }),
+
+  // --- Chat history ---
+  getChatHistory: (limit = 200) => request(`/chat/history?limit=${limit}`),
+
+  // --- Graph-based workflows (Phase 1) ---
+  listWorkflowDefinitions: () => request('/workflow-definitions'),
+  createWorkflowDefinition: (def) => request('/workflow-definitions', { method: 'POST', body: JSON.stringify(def) }),
+  runWorkflowDefinition: (id) => request(`/workflow-definitions/${id}/run`, { method: 'POST' }),
+  resumeWorkflowRun: (runId) => request(`/workflow-definitions/runs/${runId}/resume`, { method: 'POST' }),
+  cancelWorkflowRun: (runId) => request(`/workflow-definitions/runs/${runId}/cancel`, { method: 'POST' }),
+  searchWorkflowRegistry: (q = '') => request(`/workflow-definitions/registry/search?q=${encodeURIComponent(q)}`),
+  installWorkflowFromRegistry: (id) => request(`/workflow-definitions/registry/${id}/install`, { method: 'POST' }),
+  getAnalyticsSummary: (sinceDays = 30) => request(`/analytics/summary?sinceDays=${sinceDays}`),
+
+  // Returns null if VITE_BROWSER_EXTENSION_TOKEN isn't configured, or if the
+  // request fails for any reason - callers should treat null as "nothing to
+  // show" rather than an error state.
+  getBrowserPrompt: () => browserRequest('/browser/prompt'),
+
+  connectMCP: (url) => browserPost('/mcp/connect', { url }),
+
+  // Turns a page's own text into a reference skill for agents to consult -
+  // never runs the command itself. See core/cliImport.js for the safety
+  // reasoning: it's always guidance-kind, never executable.
+  importCLIAsSkill: (url, command) => browserPost('/browser/cli/import', { url, command }),
 };
 
 // Shown when the backend isn't reachable, so the shell is still browsable on its own.
 export const DEMO = {
   summary: {
-    activeAgents: 3,
-    installedTools: ['gmail.sendEmail', 'gmail.readInbox', 'github.createRepository'],
+    activeAgents: 9,
+    installedTools: ['gmail.sendEmail', 'gmail.readInbox', 'whatsapp.sendMessage', 'github.createRepository', 'reddit.postComment', 'websearch.search'],
     availableProviders: ['mock', 'ai'],
     tasks: { total: 12, pending_approval: 2, done: 9, failed: 1 },
     auditLog: [
@@ -66,12 +129,15 @@ export const DEMO = {
     ],
   },
   agents: [
-    { key: 'research', role: 'Research Agent', goals: ['Gather accurate, relevant information'], tools: ['gmail.readInbox'] },
-    { key: 'personal-assistant', role: 'Personal Assistant Agent', goals: ['Keep the inbox triaged - draft replies to what genuinely needs one'], tools: ['gmail.readInbox', 'gmail.replyToThread'] },
-    { key: 'sales', role: 'Sales Agent', goals: ['Move qualified leads toward a close with relevant, personalized outreach'], tools: ['websearch.search', 'gmail.sendEmail'] },
-    { key: 'marketing', role: 'Marketing Agent', goals: ['Draft compelling, on-brand marketing content'], tools: ['websearch.search'] },
-    { key: 'ceo', role: 'CEO Agent', goals: ['Think through strategy, priorities, and tradeoffs like a co-founder'], tools: ['websearch.search'] },
+    { key: 'research', role: 'Research Agent', goals: ['Gather accurate, relevant information for other agents and the user'], tools: ['gmail.readInbox', 'websearch.search'] },
+    { key: 'personal-assistant', role: 'Personal Assistant Agent', goals: ['Keep the inbox triaged - draft replies to what genuinely needs one, leave the rest'], tools: ['gmail.readInbox', 'gmail.replyToThread'] },
+    { key: 'sales', role: 'Sales Agent', goals: ['Move qualified leads toward a close with relevant, personalized outreach'], tools: ['websearch.search', 'gmail.sendEmail', 'reddit.postComment'] },
+    { key: 'whatsapp', role: 'WhatsApp Agent', goals: ['Draft timely, on-brand replies to incoming customer messages for human approval'], tools: ['whatsapp.sendMessage'] },
     { key: 'support', role: 'Customer Support Agent', goals: ['Resolve customer questions and issues clearly and quickly'], tools: ['gmail.sendEmail'] },
+    { key: 'marketing', role: 'Marketing Agent', goals: ['Draft compelling, on-brand marketing content - social posts, ad copy, campaigns'], tools: ['websearch.search'] },
+    { key: 'ceo', role: 'CEO Agent', goals: ['Think through strategy, priorities, and tradeoffs like a co-founder would'], tools: ['websearch.search'] },
+    { key: 'coding', role: 'Coding Agent', goals: ['Build real, working websites and small systems from a plain-language request'], tools: ['filesystem.writeFile', 'filesystem.listFiles', 'filesystem.zipProject'] },
+    { key: 'content-studio', role: 'Content Studio Agent', goals: ['Turn one idea into a complete, ready-to-use content package: research, strategy, scripts, captions, hashtags'], tools: ['websearch.search'] },
   ],
   tasks: [
     {

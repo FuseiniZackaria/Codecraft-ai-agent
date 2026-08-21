@@ -64,6 +64,60 @@ create table if not exists whatsapp_messages (
   created_at timestamptz default now()
 );
 
+-- Graph-based workflow engine (Phase 1) - deliberately separate from
+-- scheduled_workflows above, which stays exactly as-is for simple
+-- single-goal automations. This supports multi-node graphs with branching
+-- and approval pauses.
+create table if not exists workflow_definitions (
+  id text primary key,
+  name text not null,
+  graph jsonb not null,                 -- { nodes: [...], edges: [...] }
+  enabled boolean default true,
+  schedule_type text,                   -- 'interval' | 'daily' | 'folder_watch' | null (manual-only)
+  interval_minutes integer,
+  daily_time text,
+  days_of_week jsonb,
+  watch_folder text,                    -- for 'folder_watch' - local path polled for new video files
+  last_run_at timestamptz,
+  created_at timestamptz default now(),
+  updated_at timestamptz default now()
+);
+
+create table if not exists workflow_runs (
+  id text primary key,
+  workflow_id text not null,
+  status text not null,                 -- 'running' | 'paused_for_approval' | 'done' | 'failed'
+  context jsonb default '{}',           -- accumulated node outputs, keyed by node id
+  current_node_id text,                 -- where execution is paused, for resume
+  paused_task_id text,                  -- the pending_approval task id, if paused
+  error text,
+  started_at timestamptz default now(),
+  completed_at timestamptz
+);
+
+create table if not exists chat_messages (
+  id uuid primary key default gen_random_uuid(),
+  role text not null,                   -- 'user' | 'assistant'
+  content text not null,
+  attachment_names jsonb default '[]',
+  task_id text,                          -- the task this reply is about, if actionable
+  created_at timestamptz default now()
+);
+
+create table if not exists scheduled_workflows (
+  id text primary key,
+  name text not null,
+  goal text not null,
+  schedule_type text not null,          -- 'interval' | 'daily'
+  interval_minutes integer,             -- for 'interval'
+  daily_time text,                      -- 'HH:MM' server-local time, for 'daily'
+  days_of_week jsonb,                   -- e.g. [1,2,3,4,5] for weekdays; null/empty = every day
+  enabled boolean default true,
+  last_run_at timestamptz,
+  created_at timestamptz default now(),
+  updated_at timestamptz default now()
+);
+
 create table if not exists skills (
   id text primary key,
   name text not null,
@@ -108,14 +162,6 @@ create table if not exists plugins (
   version text,
   enabled boolean default false,
   config jsonb default '{}'
-);
-
-create table if not exists workflows (
-  id uuid primary key default gen_random_uuid(),
-  name text,
-  definition jsonb,   -- DAG of steps
-  enabled boolean default true,
-  created_at timestamptz default now()
 );
 
 create table if not exists roles (

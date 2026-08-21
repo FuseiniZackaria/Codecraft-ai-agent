@@ -1,0 +1,287 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>CodeCraft — Deliberate Practice for Software Craftspeople</title>
+<meta name="description" content="An apprenticeship membership for programmers who want to work like craftspeople: bench sessions, senior review, and drawings you can actually build from.">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,400;12..96,500;12..96,700;12..96,800&family=IBM+Plex+Sans:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="styles.css">
+</head>
+<body>
+
+<div class="reg-mark reg-tl" aria-hidden="true"></div>
+<div class="reg-mark reg-tr" aria-hidden="true"></div>
+<div class="reg-mark reg-bl" aria-hidden="true"></div>
+<div class="reg-mark reg-br" aria-hidden="true"></div>
+
+<header class="site-nav">
+  <div class="nav-inner">
+    <a href="#top" class="logo">
+      <span class="logo-mark" aria-hidden="true">⟟</span>
+      CodeCraft
+      <span class="logo-sub">SHOP NO. 04</span>
+    </a>
+    <nav class="nav-links" aria-label="Primary">
+      <a href="#method">Method</a>
+      <a href="#tracks">Tracks</a>
+      <a href="#bench">Bench Sessions</a>
+      <a href="#review">Review</a>
+      <a href="#membership" class="nav-cta">Join the Shop</a>
+    </nav>
+    <button class="nav-toggle" aria-expanded="false" aria-controls="mobile-nav" aria-label="Toggle menu">
+      <span></span><span></span><span></span>
+    </button>
+  </div>
+  <nav id="mobile-nav" class="mobile-nav" aria-label="Mobile">
+    <a href="#method">Method</a>
+    <a href="#tracks">Tracks</a>
+    <a href="#bench">Bench Sessions</a>
+    <a href="#review">Review</a>
+    <a href="#membership">Join the Shop</a>
+  </nav>
+</header>
+
+<main id="top">
+
+  <section class="hero" id="hero">
+    <div class="sheet-header">
+      <span>DRAWING NO. CC-000-HERO</span>
+      <span>SCALE 1:1</span>
+      <span>REV. C</span>
+    </div>
+    <div class="hero-inner">
+      <div class="hero-copy">
+        <p class="kicker">A DELIBERATE-PRACTICE MEMBERSHIP</p>
+        <h1>Software, drawn and built<br> like a craft.</h1>
+        <p class="hero-lede">CodeCraft treats programming the way a good workshop treats woodwork —
+        apprenticeship tracks, live bench sessions, and senior review that sands your
+        rough edges smooth. No lecture halls. Just a bench, a queue of real work, and
+        people watching your joints.</p>
+        <div class="hero-actions">
+          <a href="#membership" class="btn btn-primary">Apply for the Bench</a>
+          <a href="#tracks" class="btn btn-ghost">See the Tracks</a>
+        </div>
+      </div>
+
+      <div class="blueprint-panel" aria-label="Annotated code diagram">
+        <svg class="annotation-svg" viewBox="0 0 600 480" preserveAspectRatio="none" aria-hidden="true">
+          <path class="dim-path dim-1" d="M 300 66 L 210 66 L 210 30" fill="none" marker-end="url(#arrow)"/>
+          <path class="dim-path dim-2" d="M 300 168 L 420 168 L 420 210" fill="none" marker-end="url(#arrow)"/>
+          <path class="dim-path dim-3" d="M 300 232 L 210 232 L 210 300" fill="none" marker-end="url(#arrow)"/>
+          <path class="dim-path dim-4" d="M 300 302 L 460 302 L 460 340" fill="none" marker-end="url(#arrow)"/>
+          <defs>
+            <marker id="arrow" markerWidth="8" markerHeight="8" refX="4" refY="4" orient="auto">
+              <path d="M0,0 L8,4 L0,8 z" fill="var(--brass)"/>
+            </marker>
+          </defs>
+        </svg>
+
+        <div class="callout callout-1">JOINERY<span>— how this connects to the queue</span></div>
+        <div class="callout callout-2">TOLERANCE<span>— naming precise enough to survive review</span></div>
+        <div class="callout callout-3">FINISH WORK<span>— error handling, sanded smooth</span></div>
+        <div class="callout callout-4">GRAIN<span>— retry follows the shape of the failure</span></div>
+
+        <pre class="code-sheet" tabindex="0"><code><span class="ln">1</span><span class="tok-kw">function</span> <span class="tok-fn">commitTask</span>(<span class="tok-var">queue</span>) {
+<span class="ln">2</span>  <span class="tok-kw">const</span> <span class="tok-var">task</span> = queue.<span class="tok-fn">shift</span>();
+<span class="ln">3</span>  <span class="tok-kw">if</span> (!task) <span class="tok-kw">return</span> <span class="tok-lit">null</span>;
+<span class="ln">4</span>
+<span class="ln">5</span>  <span class="tok-kw">try</span> {
+<span class="ln">6</span>    <span class="tok-kw">return</span> <span class="tok-fn">run</span>(task);
+<span class="ln">7</span>  } <span class="tok-kw">catch</span> (err) {
+<span class="ln">8</span>    log.<span class="tok-fn">warn</span>(err);
+<span class="ln">9</span>    <span class="tok-kw">return</span> <span class="tok-fn">retryWithBackoff</span>(task);
+<span class="ln">10</span>  }
+<span class="ln">11</span>}</code></pre>
+      </div>
+    </div>
+  </section>
+
+  <div class="rivet-row" aria-hidden="true"><span></span><span></span><span></span><span></span><span></span></div>
+
+  <section class="panel panel-navy" id="method">
+    <div class="sheet-header light">
+      <span>SEC. 01 — METHOD</span>
+      <span>MATERIAL: PRACTICE</span>
+      <span>QTY: WEEKLY</span>
+    </div>
+    <div class="panel-inner">
+      <h2>The shop floor, not the classroom.</h2>
+      <p class="panel-lede">Three things happen every week, on repeat, until they're muscle memory.</p>
+      <div class="offer-grid">
+        <article class="offer-card">
+          <span class="offer-glyph">✎</span>
+          <h3>Assigned stock</h3>
+          <p>A real problem, cut to your track's grain — not a toy kata. You work it alone first, tools down before the bell.</p>
+        </article>
+        <article class="offer-card">
+          <span class="offer-glyph">▤</span>
+          <h3>Bench sessions</h3>
+          <p>Live, camera-on pairing with a senior engineer watching your hands on the keyboard, not just your finished PR.</p>
+        </article>
+        <article class="offer-card">
+          <span class="offer-glyph">✓</span>
+          <h3>Senior review</h3>
+          <p>Line-by-line marks on the drawing: what's load-bearing, what's decorative, what won't survive contact with production.</p>
+        </article>
+      </div>
+    </div>
+  </section>
+
+  <div class="rivet-row" aria-hidden="true"><span></span><span></span><span></span><span></span><span></span></div>
+
+  <section class="panel panel-paper" id="tracks">
+    <div class="sheet-header">
+      <span>SEC. 02 — APPRENTICESHIP TRACKS</span>
+      <span>SEQUENCE: LINEAR</span>
+      <span>DURATION: 4–6 MO EACH</span>
+    </div>
+    <div class="panel-inner">
+      <h2>Three stations. One bench.</h2>
+      <p class="panel-lede">You move through them in order — each one depends on the joints made in the last.</p>
+
+      <div class="track-list">
+        <article class="track-card">
+          <div class="track-num">01</div>
+          <div class="track-body">
+            <h3>Foundations</h3>
+            <p class="track-sub">Hand tools</p>
+            <p>Syntax as muscle memory, data structures by feel, git without panic, debugging as a calm, repeatable procedure. You leave able to read any codebase without flinching.</p>
+            <ul class="track-tags"><li>Reading code</li><li>Data structures</li><li>Debugging</li><li>Version control</li></ul>
+          </div>
+        </article>
+        <article class="track-card">
+          <div class="track-num">02</div>
+          <div class="track-body">
+            <h3>Joinery</h3>
+            <p class="track-sub">How things connect</p>
+            <p>APIs, databases, queues, state — the joints that hold a system together under load. You practice making connections that don't creak two years from now.</p>
+            <ul class="track-tags"><li>APIs & services</li><li>Data modeling</li><li>Concurrency</li><li>System design</li></ul>
+          </div>
+        </article>
+        <article class="track-card">
+          <div class="track-num">03</div>
+          <div class="track-body">
+            <h3>Finishing</h3>
+            <p class="track-sub">Sand, polish, ship</p>
+            <p>Code review as craft, refactoring without fear, production readiness, and the taste to know when a thing is actually done — not just working.</p>
+            <ul class="track-tags"><li>Code review</li><li>Refactoring</li><li>Observability</li><li>Production taste</li></ul>
+          </div>
+        </article>
+      </div>
+    </div>
+  </section>
+
+  <div class="rivet-row" aria-hidden="true"><span></span><span></span><span></span><span></span><span></span></div>
+
+  <section class="panel panel-navy" id="bench">
+    <div class="sheet-header light">
+      <span>SEC. 03 — LIVE BENCH SESSIONS</span>
+      <span>FORMAT: SYNCHRONOUS</span>
+      <span>CAP: 6 PER BENCH</span>
+    </div>
+    <div class="panel-inner">
+      <h2>Standing appointments at the bench.</h2>
+      <p class="panel-lede">Small groups, cameras on, one senior engineer per bench. You bring the problem you're stuck on — real ones only.</p>
+      <div class="bench-grid">
+        <article class="bench-card">
+          <p class="bench-day">TUESDAY</p>
+          <h3>The Bench</h3>
+          <p>Pairing block. You drive, a senior engineer narrates the shop-floor thinking you can't get from a diff: why this abstraction, why not that one yet.</p>
+        </article>
+        <article class="bench-card">
+          <p class="bench-day">THURSDAY</p>
+          <h3>Teardown</h3>
+          <p>A production incident or gnarly PR, opened up on the table and taken apart in front of the group, joint by joint.</p>
+        </article>
+        <article class="bench-card">
+          <p class="bench-day">MONTHLY</p>
+          <h3>Crit Night</h3>
+          <p>You present a piece of your own work for open review — brass-tacks feedback, delivered the way a foreman marks up a drawing.</p>
+        </article>
+      </div>
+    </div>
+  </section>
+
+  <div class="rivet-row" aria-hidden="true"><span></span><span></span><span></span><span></span><span></span></div>
+
+  <section class="panel panel-paper" id="review">
+    <div class="sheet-header">
+      <span>SEC. 04 — FROM THE BENCH</span>
+      <span>SOURCE: MEMBERS</span>
+      <span>VERIFIED</span>
+    </div>
+    <div class="panel-inner">
+      <h2>Engineers, on the record.</h2>
+      <div class="quote-grid">
+        <figure class="quote-card">
+          <blockquote>"My reviews used to be 'LGTM.' Now I catch myself asking whether a function is load-bearing before I approve it. That's a different brain."</blockquote>
+          <figcaption>— Priya N., backend engineer, Foundations → Joinery</figcaption>
+        </figure>
+        <figure class="quote-card">
+          <blockquote>"The Thursday teardown is the closest thing I've found to watching a senior engineer actually think, in real time, mistakes included."</figcaption>
+          <figcaption>— Marcus T., platform engineer, Finishing</figcaption>
+        </figure>
+        <figure class="quote-card">
+          <blockquote>"I'd read about state machines for years. It took one bench session, someone drawing it on screen, for it to click into my hands."</blockquote>
+          <figcaption>— Odalys R., frontend engineer, Joinery</figcaption>
+        </figure>
+      </div>
+    </div>
+  </section>
+
+  <div class="rivet-row" aria-hidden="true"><span></span><span></span><span></span><span></span><span></span></div>
+
+  <section class="panel panel-navy cta-panel" id="membership">
+    <div class="sheet-header light">
+      <span>SEC. 05 — MEMBERSHIP</span>
+      <span>ENROLLMENT: ROLLING</span>
+      <span>SEATS LIMITED PER BENCH</span>
+    </div>
+    <div class="panel-inner">
+      <h2>Take a seat at the bench.</h2>
+      <p class="panel-lede">One membership. Every track, every bench session, senior review on everything you ship. Cancel any time — but the callus takes a few months to form.</p>
+      <div class="cta-box">
+        <div class="cta-price">
+          <span class="cta-amount">$149</span>
+          <span class="cta-period">/ month</span>
+        </div>
+        <ul class="cta-list">
+          <li>Foundations, Joinery & Finishing tracks</li>
+          <li>Weekly live bench sessions, capped at six</li>
+          <li>Senior review on every submission</li>
+          <li>Monthly crit night with the full shop</li>
+        </ul>
+        <a href="#top" class="btn btn-primary btn-large">Apply for the Bench</a>
+        <p class="cta-note">Applications reviewed within 3 business days. We keep benches small on purpose.</p>
+      </div>
+    </div>
+  </section>
+
+</main>
+
+<footer class="site-footer">
+  <div class="footer-inner">
+    <div class="footer-brand">
+      <span class="logo-mark" aria-hidden="true">⟟</span>
+      <div>
+        <p class="footer-name">CodeCraft</p>
+        <p class="footer-tag">Deliberate practice for software craftspeople</p>
+      </div>
+    </div>
+    <nav class="footer-links" aria-label="Footer">
+      <a href="#method">Method</a>
+      <a href="#tracks">Tracks</a>
+      <a href="#bench">Bench Sessions</a>
+      <a href="#review">Review</a>
+      <a href="#membership">Membership</a>
+    </nav>
+    <p class="footer-meta">DRAWING NO. CC-2024-01 · APPROVED FOR APPRENTICESHIP · © CodeCraft Workshop</p>
+  </div>
+</footer>
+
+<script src="script.js"></script>
+</body>
+</html>

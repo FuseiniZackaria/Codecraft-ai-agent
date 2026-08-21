@@ -1,0 +1,46 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8" />
+  <style>
+    body { font-family: -apple-system, system-ui, sans-serif; width: 300px; padding: 14px; margin: 0; color: #1f2937; }
+    h1 { font-size: 14px; margin: 0 0 10px; }
+    label { display: block; font-size: 12px; font-weight: 600; margin: 10px 0 4px; color: #374151; }
+    input[type="text"], input[type="password"] {
+      width: 100%; box-sizing: border-box; padding: 6px 8px; border: 1px solid #d1d5db; border-radius: 6px; font-size: 12px;
+    }
+    .row { display: flex; align-items: center; gap: 8px; margin-top: 10px; }
+    button {
+      background: #16a34a; color: white; border: none; border-radius: 6px; padding: 7px 12px; font-size: 12px;
+      cursor: pointer; font-weight: 600;
+    }
+    button:hover { background: #15803d; }
+    #status { margin-top: 12px; padding: 8px; border-radius: 6px; font-size: 11px; background: #f3f4f6; line-height: 1.5; }
+    #status.ok { background: #dcfce7; color: #166534; }
+    #status.err { background: #fee2e2; color: #991b1b; }
+    .toggle { margin-top: 10px; display: flex; align-items: center; gap: 6px; font-size: 12px; }
+  </style>
+</head>
+<body>
+  <h1>CodeCraft AI - Browser Reporter</h1>
+
+  <label for="backendUrl">Backend URL</label>
+  <input type="text" id="backendUrl" placeholder="http://localhost:4000" />
+
+  <label for="token">Pairing token (BROWSER_EXTENSION_TOKEN)</label>
+  <input type="password" id="token" placeholder="paste the same value from your .env" />
+
+  <div class="toggle">
+    <input type="checkbox" id="enabled" checked />
+    <label for="enabled" style="margin:0;">Reporting enabled</label>
+  </div>
+
+  <div class="row">
+    <button id="save">Save</button>
+  </div>
+
+  <div id="status">Not paired yet.</div>
+
+  <script src="popup.js"></script>
+</body>
+</html>

@@ -22,6 +22,28 @@ export const useStore = create((set, get) => ({
       return { chatMessages };
     }),
 
+  // One-time hydration from the backend on app mount - chat history now
+  // lives server-side (survives a refresh or a different device/browser).
+  // localStorage stays as an offline fallback: used as the initial state
+  // above, and kept in sync here so it's still useful if the backend is
+  // ever unreachable later in the session.
+  async loadChatHistory() {
+    try {
+      const serverMessages = await api.getChatHistory();
+      const chatMessages = serverMessages.map((m) => ({
+        role: m.role,
+        content: m.content,
+        attachmentNames: m.attachmentNames,
+        task: m.taskId ? { id: m.taskId } : undefined,
+      }));
+      localStorage.setItem('cc_chat', JSON.stringify(chatMessages));
+      set({ chatMessages });
+    } catch {
+      // Backend not reachable - keep whatever was already loaded from
+      // localStorage as a reasonable offline fallback.
+    }
+  },
+
   async refresh() {
     try {
       const [summary, agents, tasks] = await Promise.all([
@@ -68,6 +90,18 @@ export const useStore = create((set, get) => ({
   async rejectTask(id) {
     if (!get().connected) return;
     await api.rejectTask(id);
+    await get().refresh();
+  },
+
+  async resumeWorkflowRun(runId) {
+    if (!get().connected) return;
+    await api.resumeWorkflowRun(runId);
+    await get().refresh();
+  },
+
+  async cancelWorkflowRun(runId) {
+    if (!get().connected) return;
+    await api.cancelWorkflowRun(runId);
     await get().refresh();
   },
 

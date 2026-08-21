@@ -1,0 +1,338 @@
+/* ==========================================================================
+   CodeCraft — Cyanotype Blueprint Design System
+   Palette:
+     --cyanotype-navy : #1B3A5C  (deep print ground)
+     --print-blue     : #2F5B85  (mid blueprint blue)
+     --paper          : #EAF1F0  (drafting paper / cards)
+     --brass          : #B08D57  (brass tool accents, pins, screws)
+     --ember          : #D9622B  (ember flux — action & highlight)
+     --ink            : #22282C  (graphite ink — body text on paper)
+   ========================================================================== */
+
+@import url('https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=IBM+Plex+Mono:ital,wght@0,400;0,500;0,600;1,400&display=swap');
+
+:root{
+  --cyanotype-navy: #1B3A5C;
+  --print-blue: #2F5B85;
+  --paper: #EAF1F0;
+  --brass: #B08D57;
+  --ember: #D9622B;
+  --ink: #22282C;
+
+  --line-glow: rgba(234, 241, 240, 0.85);
+  --line-faint: rgba(234, 241, 240, 0.16);
+  --line-mid: rgba(234, 241, 240, 0.32);
+
+  --font-display: "Space Grotesk", sans-serif;
+  --font-mono: "IBM Plex Mono", monospace;
+
+  --grid-size: 42px;
+  --panel-radius: 3px;
+  --shadow-card: 0 18px 40px -20px rgba(10, 20, 35, 0.65);
+
+  --focus-color: var(--ember);
+}
+
+/* ---------------------------------------------------------------------- */
+/* Reset & base                                                            */
+/* ---------------------------------------------------------------------- */
+
+*, *::before, *::after{
+  box-sizing: border-box;
+}
+
+html{
+  scroll-behavior: smooth;
+}
+
+body{
+  margin: 0;
+  font-family: var(--font-mono);
+  color: var(--paper);
+  background-color: var(--cyanotype-navy);
+  background-image:
+    linear-gradient(var(--print-blue) 1px, transparent 1px),
+    linear-gradient(90deg, var(--print-blue) 1px, transparent 1px),
+    radial-gradient(ellipse at 20% -10%, rgba(47, 91, 133, 0.55), transparent 55%),
+    radial-gradient(ellipse at 90% 110%, rgba(47, 91, 133, 0.4), transparent 55%);
+  background-size: var(--grid-size) var(--grid-size), var(--grid-size) var(--grid-size), auto, auto;
+  background-position: -1px -1px, -1px -1px, 0 0, 0 0;
+  line-height: 1.6;
+  font-size: 16px;
+  -webkit-font-smoothing: antialiased;
+  overflow-x: hidden;
+}
+
+/* faint dashed drafting overlay grid, denser subdivision */
+body::before{
+  content: "";
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+  z-index: 0;
+  background-image:
+    repeating-linear-gradient(0deg, var(--line-faint) 0 1px, transparent 1px calc(var(--grid-size)/3)),
+    repeating-linear-gradient(90deg, var(--line-faint) 0 1px, transparent 1px calc(var(--grid-size)/3));
+  opacity: 0.5;
+  mix-blend-mode: screen;
+}
+
+img, svg{ max-width: 100%; display: block; }
+
+h1, h2, h3, h4{
+  font-family: var(--font-display);
+  color: var(--paper);
+  margin: 0 0 0.5em;
+  letter-spacing: 0.01em;
+}
+
+p{ margin: 0 0 1em; }
+
+a{
+  color: var(--ember);
+  text-decoration: none;
+}
+
+ul{ margin: 0; padding: 0; list-style: none; }
+
+button{
+  font-family: var(--font-mono);
+  cursor: pointer;
+}
+
+/* ---------------------------------------------------------------------- */
+/* Focus states — visible everywhere                                      */
+/* ---------------------------------------------------------------------- */
+
+a:focus-visible,
+button:focus-visible,
+input:focus-visible,
+textarea:focus-visible,
+[tabindex]:focus-visible{
+  outline: 2px dashed var(--focus-color);
+  outline-offset: 4px;
+  border-radius: 2px;
+}
+
+::selection{
+  background: var(--ember);
+  color: var(--cyanotype-navy);
+}
+
+/* ---------------------------------------------------------------------- */
+/* Layout shell                                                            */
+/* ---------------------------------------------------------------------- */
+
+.wrap{
+  position: relative;
+  z-index: 1;
+  max-width: 1180px;
+  margin: 0 auto;
+  padding: 0 28px;
+}
+
+section{
+  position: relative;
+  padding: 110px 0;
+}
+
+.eyebrow{
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  font-family: var(--font-mono);
+  font-size: 12.5px;
+  letter-spacing: 0.22em;
+  text-transform: uppercase;
+  color: var(--brass);
+  margin-bottom: 18px;
+}
+
+.eyebrow::before{
+  content: "";
+  width: 22px;
+  height: 1px;
+  background: var(--brass);
+  display: inline-block;
+}
+
+/* ---------------------------------------------------------------------- */
+/* Site header / title block                                              */
+/* ---------------------------------------------------------------------- */
+
+.site-header{
+  position: sticky;
+  top: 0;
+  z-index: 50;
+  background: rgba(27, 58, 92, 0.86);
+  backdrop-filter: blur(10px);
+  border-bottom: 1px solid var(--line-mid);
+}
+
+.title-block{
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 18px 28px;
+  max-width: 1180px;
+  margin: 0 auto;
+}
+
+.logo{
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  font-family: var(--font-display);
+  font-weight: 700;
+  font-size: 20px;
+  letter-spacing: 0.02em;
+  color: var(--paper);
+}
+
+.logo span{
+  color: var(--ember);
+}
+
+.logo small{
+  font-family: var(--font-mono);
+  font-size: 10.5px;
+  letter-spacing: 0.18em;
+  color: var(--brass);
+  font-weight: 400;
+  text-transform: uppercase;
+}
+
+.nav-links{
+  display: flex;
+  gap: 30px;
+  align-items: center;
+}
+
+.nav-links a{
+  color: var(--paper);
+  font-size: 13.5px;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  position: relative;
+  padding-bottom: 3px;
+  opacity: 0.85;
+  transition: opacity 0.2s ease, color 0.2s ease;
+}
+
+.nav-links a:hover{
+  color: var(--ember);
+  opacity: 1;
+}
+
+.nav-links a::after{
+  content: "";
+  position: absolute;
+  left: 0; bottom: 0;
+  width: 0%;
+  height: 1px;
+  background: var(--ember);
+  transition: width 0.25s ease;
+}
+
+.nav-links a:hover::after{ width: 100%; }
+
+.nav-cta{
+  border: 1px solid var(--brass);
+  padding: 8px 16px;
+  color: var(--paper);
+  border-radius: 2px;
+  font-size: 12.5px;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  transition: background 0.2s ease, color 0.2s ease;
+}
+
+.nav-cta:hover{
+  background: var(--brass);
+  color: var(--cyanotype-navy);
+}
+
+.menu-toggle{
+  display: none;
+  background: none;
+  border: 1px solid var(--line-mid);
+  color: var(--paper);
+  padding: 8px 10px;
+  border-radius: 2px;
+}
+
+/* ---------------------------------------------------------------------- */
+/* Drafting panel — the paper-white card                                   */
+/* ---------------------------------------------------------------------- */
+
+.panel{
+  position: relative;
+  background: var(--paper);
+  color: var(--ink);
+  border-radius: var(--panel-radius);
+  box-shadow: var(--shadow-card);
+  padding: 40px;
+  border: 1px solid rgba(27, 58, 92, 0.15);
+}
+
+.panel::before,
+.panel::after,
+.panel .corner-tl,
+.panel .corner-br{
+  content: "";
+  position: absolute;
+  width: 16px;
+  height: 16px;
+  pointer-events: none;
+}
+
+/* registration corner marks: plus-shaped ticks at each corner */
+.panel::before{
+  top: 8px; left: 8px;
+  background:
+    linear-gradient(var(--print-blue), var(--print-blue)) center/2px 12px no-repeat,
+    linear-gradient(90deg, var(--print-blue), var(--print-blue)) center/12px 2px no-repeat;
+}
+
+.panel::after{
+  bottom: 8px; right: 8px;
+  background:
+    linear-gradient(var(--print-blue), var(--print-blue)) center/2px 12px no-repeat,
+    linear-gradient(90deg, var(--print-blue), var(--print-blue)) center/12px 2px no-repeat;
+}
+
+.panel-label{
+  position: absolute;
+  top: -11px;
+  left: 32px;
+  background: var(--brass);
+  color: var(--cyanotype-navy);
+  font-family: var(--font-mono);
+  font-size: 10.5px;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  padding: 3px 10px;
+  border-radius: 2px;
+  font-weight: 600;
+}
+
+.panel h3{
+  color: var(--cyanotype-navy);
+}
+
+.panel p{
+  color: var(--ink);
+}
+
+/* variant: panel drawn directly on blue with translucent glass */
+.panel-ghost{
+  background: rgba(234, 241, 240, 0.06);
+  color: var(--paper);
+  border: 1px dashed var(--line-mid);
+  box-shadow: none;
+}
+
+.panel-ghost h3{ color: var(--paper); }
+.panel-ghost p{ color: rgba(234, 241, 240, 0.75); }
+
+/* ---------------------------------

@@ -1,0 +1,61 @@
+[
+  {
+    "id": "competitor-watch-alert",
+    "name": "Competitor Watch & Alert",
+    "description": "Researches what your top competitors did this week, and only bothers you with a recommendation if something is actually worth reacting to. Pauses for your approval before saving the final recommendation.",
+    "category": "strategy",
+    "author": "CodeCraft",
+    "nodeCount": 6,
+    "nodeTypes": ["trigger", "agent", "condition", "agent", "approval", "tool"],
+    "graph": {
+      "nodes": [
+        { "id": "trigger_1", "type": "trigger", "config": {} },
+        { "id": "node_2", "type": "agent", "config": { "agentKey": "research", "goal": "Research what our top 3 competitors launched or announced this week" } },
+        { "id": "node_3", "type": "condition", "config": { "question": "Does this research mention something concerning or worth reacting to for our business? {{node_2.output}}" } },
+        { "id": "node_4", "type": "agent", "config": { "agentKey": "ceo", "goal": "Given this: {{node_2.output}}, draft a recommended response as our co-founder would" } },
+        { "id": "node_5", "type": "approval", "config": { "label": "Review the recommended response before saving it" } },
+        { "id": "node_6", "type": "tool", "config": { "tool": "filesystem.writeFile", "args": { "projectId": "competitor-watch", "path": "recommendation.txt", "content": "{{node_4.output}}" } } }
+      ],
+      "edges": [
+        { "id": "e1", "source": "trigger_1", "target": "node_2" },
+        { "id": "e2", "source": "node_2", "target": "node_3" },
+        { "id": "e3", "source": "node_3", "target": "node_4", "branch": "yes" },
+        { "id": "e4", "source": "node_4", "target": "node_5" },
+        { "id": "e5", "source": "node_5", "target": "node_6" }
+      ]
+    }
+  },
+  {
+    "id": "lead-research-outreach-loop",
+    "name": "Lead Research & Outreach Loop",
+    "description": "Finds a handful of leads, then drafts a personalized outreach email for each one individually. Every single email waits for your approval on the Tasks page before it can send - nothing goes out automatically.",
+    "category": "sales",
+    "author": "CodeCraft",
+    "nodeCount": 3,
+    "nodeTypes": ["trigger", "agent", "loop"],
+    "graph": {
+      "nodes": [
+        { "id": "trigger_1", "type": "trigger", "config": {} },
+        { "id": "find_leads", "type": "agent", "config": { "agentKey": "research", "goal": "Find 3 potential leads for [describe your product or service], one per line" } },
+        {
+          "id": "outreach_loop",
+          "type": "loop",
+          "config": {
+            "mode": "list",
+            "listExpression": "{{find_leads.output}}",
+            "maxIterations": 5,
+            "resultNodeId": "draft_outreach",
+            "body": {
+              "nodes": [{ "id": "draft_outreach", "type": "agent", "config": { "agentKey": "sales", "goal": "Reach out to this lead: {{loop.item}}" } }],
+              "edges": []
+            }
+          }
+        }
+      ],
+      "edges": [
+        { "id": "e1", "source": "trigger_1", "target": "find_leads" },
+        { "id": "e2", "source": "find_leads", "target": "outreach_loop" }
+      ]
+    }
+  }
+]

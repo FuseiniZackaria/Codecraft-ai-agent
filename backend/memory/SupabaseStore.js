@@ -108,12 +108,12 @@ class SupabaseStore {
     if (error) throw new Error(`SupabaseStore.audit: ${error.message}`);
   }
 
-  async getAuditLog() {
+  async getAuditLog(limit = 100) {
     const { data, error } = await this.client
       .from('audit_log')
       .select('*')
       .order('created_at', { ascending: false })
-      .limit(100);
+      .limit(limit);
     if (error) throw new Error(`SupabaseStore.getAuditLog: ${error.message}`);
     return (data || []).reverse().map((r) => ({ ...r, at: r.created_at }));
   }
@@ -213,6 +213,238 @@ class SupabaseStore {
       checksum: row.checksum,
       installedAt: row.installed_at,
       updatedAt: row.updated_at,
+    };
+  }
+
+  // --- Workflows (scheduled recurring goals) ---
+  async saveWorkflow(workflow) {
+    const { error } = await this.client.from('scheduled_workflows').upsert({
+      id: workflow.id,
+      name: workflow.name,
+      goal: workflow.goal,
+      schedule_type: workflow.scheduleType,
+      interval_minutes: workflow.intervalMinutes ?? null,
+      daily_time: workflow.dailyTime ?? null,
+      days_of_week: workflow.daysOfWeek ?? null,
+      enabled: workflow.enabled,
+      last_run_at: workflow.lastRunAt ?? null,
+      updated_at: new Date().toISOString(),
+    });
+    if (error) throw new Error(`SupabaseStore.saveWorkflow: ${error.message}`);
+    return workflow;
+  }
+
+  async getWorkflow(id) {
+    const { data, error } = await this.client.from('scheduled_workflows').select('*').eq('id', id).maybeSingle();
+    if (error) throw new Error(`SupabaseStore.getWorkflow: ${error.message}`);
+    return data ? this._workflowFromRow(data) : null;
+  }
+
+  async listWorkflows() {
+    const { data, error } = await this.client.from('scheduled_workflows').select('*').order('created_at', { ascending: false });
+    if (error) throw new Error(`SupabaseStore.listWorkflows: ${error.message}`);
+    return (data || []).map((r) => this._workflowFromRow(r));
+  }
+
+  async updateWorkflow(id, patch) {
+    const row = {};
+    if (patch.enabled !== undefined) row.enabled = patch.enabled;
+    if (patch.name !== undefined) row.name = patch.name;
+    if (patch.goal !== undefined) row.goal = patch.goal;
+    if (patch.scheduleType !== undefined) row.schedule_type = patch.scheduleType;
+    if (patch.intervalMinutes !== undefined) row.interval_minutes = patch.intervalMinutes;
+    if (patch.dailyTime !== undefined) row.daily_time = patch.dailyTime;
+    if (patch.daysOfWeek !== undefined) row.days_of_week = patch.daysOfWeek;
+    if (patch.lastRunAt !== undefined) row.last_run_at = patch.lastRunAt;
+    row.updated_at = new Date().toISOString();
+    const { data, error } = await this.client.from('scheduled_workflows').update(row).eq('id', id).select().maybeSingle();
+    if (error) throw new Error(`SupabaseStore.updateWorkflow: ${error.message}`);
+    return data ? this._workflowFromRow(data) : null;
+  }
+
+  async deleteWorkflow(id) {
+    const { error } = await this.client.from('scheduled_workflows').delete().eq('id', id);
+    if (error) throw new Error(`SupabaseStore.deleteWorkflow: ${error.message}`);
+    return true;
+  }
+
+  _workflowFromRow(row) {
+    return {
+      id: row.id,
+      name: row.name,
+      goal: row.goal,
+      scheduleType: row.schedule_type,
+      intervalMinutes: row.interval_minutes,
+      dailyTime: row.daily_time,
+      daysOfWeek: row.days_of_week,
+      enabled: row.enabled,
+      lastRunAt: row.last_run_at,
+      createdAt: row.created_at,
+      updatedAt: row.updated_at,
+    };
+  }
+
+  // --- Chat history (server-side persistence, survives refresh/device change) ---
+  async addChatMessage(msg) {
+    const { data, error } = await this.client
+      .from('chat_messages')
+      .insert({
+        role: msg.role,
+        content: msg.content,
+        attachment_names: msg.attachmentNames || [],
+        task_id: msg.taskId || null,
+      })
+      .select()
+      .maybeSingle();
+    if (error) throw new Error(`SupabaseStore.addChatMessage: ${error.message}`);
+    return this._chatMessageFromRow(data);
+  }
+
+  async listChatMessages(limit = 200) {
+    const { data, error } = await this.client
+      .from('chat_messages')
+      .select('*')
+      .order('created_at', { ascending: false })
+      .limit(limit);
+    if (error) throw new Error(`SupabaseStore.listChatMessages: ${error.message}`);
+    return (data || []).reverse().map((r) => this._chatMessageFromRow(r));
+  }
+
+  _chatMessageFromRow(row) {
+    return {
+      id: row.id,
+      role: row.role,
+      content: row.content,
+      attachmentNames: row.attachment_names || [],
+      taskId: row.task_id,
+      createdAt: row.created_at,
+    };
+  }
+
+  // --- Workflow definitions (graph-based workflow engine, Phase 1) ---
+  async saveWorkflowDefinition(def) {
+    const { error } = await this.client.from('workflow_definitions').upsert({
+      id: def.id,
+      name: def.name,
+      graph: def.graph,
+      enabled: def.enabled,
+      schedule_type: def.scheduleType || null,
+      interval_minutes: def.intervalMinutes ?? null,
+      daily_time: def.dailyTime ?? null,
+      days_of_week: def.daysOfWeek ?? null,
+      watch_folder: def.watchFolder ?? null,
+      last_run_at: def.lastRunAt ?? null,
+      updated_at: new Date().toISOString(),
+    });
+    if (error) throw new Error(`SupabaseStore.saveWorkflowDefinition: ${error.message}`);
+    return def;
+  }
+
+  async getWorkflowDefinition(id) {
+    const { data, error } = await this.client.from('workflow_definitions').select('*').eq('id', id).maybeSingle();
+    if (error) throw new Error(`SupabaseStore.getWorkflowDefinition: ${error.message}`);
+    return data ? this._workflowDefFromRow(data) : null;
+  }
+
+  async listWorkflowDefinitions() {
+    const { data, error } = await this.client.from('workflow_definitions').select('*').order('created_at', { ascending: false });
+    if (error) throw new Error(`SupabaseStore.listWorkflowDefinitions: ${error.message}`);
+    return (data || []).map((r) => this._workflowDefFromRow(r));
+  }
+
+  async updateWorkflowDefinition(id, patch) {
+    const row = {};
+    if (patch.name !== undefined) row.name = patch.name;
+    if (patch.graph !== undefined) row.graph = patch.graph;
+    if (patch.enabled !== undefined) row.enabled = patch.enabled;
+    if (patch.scheduleType !== undefined) row.schedule_type = patch.scheduleType;
+    if (patch.intervalMinutes !== undefined) row.interval_minutes = patch.intervalMinutes;
+    if (patch.dailyTime !== undefined) row.daily_time = patch.dailyTime;
+    if (patch.daysOfWeek !== undefined) row.days_of_week = patch.daysOfWeek;
+    if (patch.watchFolder !== undefined) row.watch_folder = patch.watchFolder;
+    if (patch.lastRunAt !== undefined) row.last_run_at = patch.lastRunAt;
+    row.updated_at = new Date().toISOString();
+    const { data, error } = await this.client.from('workflow_definitions').update(row).eq('id', id).select().maybeSingle();
+    if (error) throw new Error(`SupabaseStore.updateWorkflowDefinition: ${error.message}`);
+    return data ? this._workflowDefFromRow(data) : null;
+  }
+
+  async deleteWorkflowDefinition(id) {
+    const { error } = await this.client.from('workflow_definitions').delete().eq('id', id);
+    if (error) throw new Error(`SupabaseStore.deleteWorkflowDefinition: ${error.message}`);
+    return true;
+  }
+
+  _workflowDefFromRow(row) {
+    return {
+      id: row.id,
+      name: row.name,
+      graph: row.graph,
+      enabled: row.enabled,
+      scheduleType: row.schedule_type,
+      intervalMinutes: row.interval_minutes,
+      dailyTime: row.daily_time,
+      daysOfWeek: row.days_of_week,
+      watchFolder: row.watch_folder,
+      lastRunAt: row.last_run_at,
+      createdAt: row.created_at,
+      updatedAt: row.updated_at,
+    };
+  }
+
+  // --- Workflow runs (execution state, including paused-for-approval) ---
+  async saveWorkflowRun(run) {
+    const { error } = await this.client.from('workflow_runs').insert({
+      id: run.id,
+      workflow_id: run.workflowId,
+      status: run.status,
+      context: run.context || {},
+      current_node_id: run.currentNodeId || null,
+      paused_task_id: run.pausedTaskId || null,
+      error: run.error || null,
+    });
+    if (error) throw new Error(`SupabaseStore.saveWorkflowRun: ${error.message}`);
+    return run;
+  }
+
+  async getWorkflowRun(id) {
+    const { data, error } = await this.client.from('workflow_runs').select('*').eq('id', id).maybeSingle();
+    if (error) throw new Error(`SupabaseStore.getWorkflowRun: ${error.message}`);
+    return data ? this._workflowRunFromRow(data) : null;
+  }
+
+  async updateWorkflowRun(id, patch) {
+    const row = {};
+    if (patch.status !== undefined) row.status = patch.status;
+    if (patch.context !== undefined) row.context = patch.context;
+    if (patch.currentNodeId !== undefined) row.current_node_id = patch.currentNodeId;
+    if (patch.pausedTaskId !== undefined) row.paused_task_id = patch.pausedTaskId;
+    if (patch.error !== undefined) row.error = patch.error;
+    if (patch.completedAt !== undefined) row.completed_at = patch.completedAt;
+    const { data, error } = await this.client.from('workflow_runs').update(row).eq('id', id).select().maybeSingle();
+    if (error) throw new Error(`SupabaseStore.updateWorkflowRun: ${error.message}`);
+    return data ? this._workflowRunFromRow(data) : null;
+  }
+
+  async listWorkflowRuns(workflowId) {
+    let query = this.client.from('workflow_runs').select('*').order('started_at', { ascending: false });
+    if (workflowId) query = query.eq('workflow_id', workflowId);
+    const { data, error } = await query;
+    if (error) throw new Error(`SupabaseStore.listWorkflowRuns: ${error.message}`);
+    return (data || []).map((r) => this._workflowRunFromRow(r));
+  }
+
+  _workflowRunFromRow(row) {
+    return {
+      id: row.id,
+      workflowId: row.workflow_id,
+      status: row.status,
+      context: row.context || {},
+      currentNodeId: row.current_node_id,
+      pausedTaskId: row.paused_task_id,
+      error: row.error,
+      startedAt: row.started_at,
+      completedAt: row.completed_at,
     };
   }
 }
