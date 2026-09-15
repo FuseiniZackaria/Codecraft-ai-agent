@@ -1,24 +1,35 @@
-# CodeCraft AI — Frontend Shell
+# CodeCraft AI — Frontend
 
-Dark-first dashboard shell matching the backend's API surface. Runs standalone
-with demo data if the backend isn't reachable, and switches to live data
-automatically when it is.
+Dashboard for the full platform, matching the backend's real API surface. Runs
+standalone with demo data if the backend isn't reachable, and switches to live
+data automatically when it is.
 
 ## Design tokens
-- **Palette**: near-black bg (`#0A0A0B`), orange accent (`#FF5A1F`), off-white text (`#F2F1ED`) — see `src/index.css`.
+- **Palette**: near-black bg (`#0A0A0B`), orange accent (`#FF5A1F`), off-white
+  text (`#F2F1ED`) — see `src/index.css`.
 - **Type**: Space Grotesk (display), Inter (body), IBM Plex Mono (data/logs).
-- **Signature element**: the activity rail on Overview — a real chronological timeline of orchestrator events, not decorative numbering.
+- **Signature element**: the Console page — a real chronological trace of
+  orchestrator events grouped per task, not decorative numbering.
 
 ## Pages
 - **Overview** — stats, pending-approval banner, live activity feed, installed tools/providers
-- **Agents** — cards for each registered agent (role, goals, tools)
-- **Tasks** — full task list with inline approve/reject for irreversible actions
-- **Plugins** — install-style catalog, reflects what's actually loaded on the backend
-- **Workflows** — placeholder for the visual builder (not built yet)
 - **Chat** — submit a goal directly to the orchestrator
+- **Console** — live + historical event trace, grouped per task
+- **Tasks** — full task list with inline approve/reject for irreversible actions
+- **Job Outreach** — the job/lead outreach pipeline
+- **Research** — dedicated research-agent view
+- **Workflows** — create/edit/enable scheduled recurring goals, including
+  per-workflow automated WhatsApp delivery
+- **Intelligence** — the Briefing Agent's aggregated dashboard (trending
+  topics, latest collected articles, a 7-day activity chart)
+- **Analytics** — usage/activity summaries
+- **Agents** — cards for each registered agent (role, goals, tools)
+- **Plugins** — catalog reflecting what's actually loaded on the backend
+- **Skills** — the Universal Skill Installer UI
 
 ## Command palette
-Cmd+K / Ctrl+K anywhere — navigate, or type a goal and hit Enter to submit it straight to the orchestrator.
+Cmd+K / Ctrl+K anywhere — navigate, or type a goal and hit Enter to submit it
+straight to the orchestrator.
 
 ## Running it
 
@@ -27,7 +38,5 @@ npm install
 npm run dev      # http://localhost:5173, expects backend at localhost:4000
 ```
 
-Set `VITE_API_URL` in `.env` to point elsewhere. Without a reachable backend, the UI runs fine on demo data (submit/approve actions are just disabled).
-
-## What's not built yet
-Workflow builder, plugin install flow (UI only, not wired to a real install endpoint), voice input/output, file uploads, multi-conversation chat history. These are separate pieces from the architecture doc, not part of this shell.
+Set `VITE_API_URL` in `.env` to point elsewhere. Without a reachable backend,
+the UI runs fine on demo data (submit/approve actions are just disabled).
