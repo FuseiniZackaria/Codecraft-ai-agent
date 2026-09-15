@@ -5,9 +5,10 @@ const toolRegistry = require('../tools/ToolRegistry');
 const composio = require('../core/composio');
 const chat = require('../core/chat');
 const whatsappProvider = require('../core/whatsappProvider');
+const telegramProvider = require('../core/telegramProvider');
 const { agents } = require('../agents/registry');
 const { availableProviders } = require('../core/router');
-
+const { computeDashboardStats } = require('../core/briefing/dashboardStats');
 const router = express.Router();
 
 // Lightweight connectivity check - actually calls a cheap Gmail action rather
@@ -89,6 +90,17 @@ router.get('/composio/github/status', async (req, res) => {
   res.json(result);
 });
 
+let googlecalendarStatusCache = { at: 0, value: null };
+
+router.get('/composio/googlecalendar/status', async (req, res) => {
+  if (Date.now() - googlecalendarStatusCache.at < GMAIL_STATUS_TTL_MS && googlecalendarStatusCache.value) {
+    return res.json(googlecalendarStatusCache.value);
+  }
+  const result = await composio.checkConnectionStatus('googlecalendar');
+  googlecalendarStatusCache = { at: Date.now(), value: result };
+  res.json(result);
+});
+
 let whatsappStatusCache = { at: 0, value: null };
 
 router.get('/composio/whatsapp/status', async (req, res) => {
@@ -98,6 +110,23 @@ router.get('/composio/whatsapp/status', async (req, res) => {
   const result = await whatsappProvider.checkStatus();
   whatsappStatusCache = { at: Date.now(), value: result };
   res.json(result);
+});
+
+let telegramStatusCache = { at: 0, value: null };
+
+router.get('/composio/telegram/status', async (req, res) => {
+  if (Date.now() - telegramStatusCache.at < GMAIL_STATUS_TTL_MS && telegramStatusCache.value) {
+    return res.json(telegramStatusCache.value);
+  }
+  try {
+    const result = await telegramProvider.checkStatus();
+    telegramStatusCache = { at: Date.now(), value: result };
+    res.json(result);
+  } catch (err) {
+    const result = { connected: false, error: err.message };
+    telegramStatusCache = { at: Date.now(), value: result };
+    res.json(result);
+  }
 });
 
 // Submit a new high-level goal
@@ -203,11 +232,27 @@ router.get('/dashboard/summary', async (req, res) => {
         done: tasks.filter((t) => t.status === 'done').length,
         failed: tasks.filter((t) => t.status === 'failed').length,
       },
-      auditLog: auditLog.slice(-20),
+           auditLog: auditLog.slice(-20),
     });
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
 });
 
+// Political intelligence dashboard - aggregated stats for one specific
+// recurring briefing, identified by its exact goal text (same key
+// briefing_runs/briefing_articles already use).
+router.get('/dashboard/briefing', async (req, res) => {
+  try {
+    const goal = req.query.goal;
+    if (!goal) return res.status(400).json({ error: '"goal" query parameter is required' });
+    const articles = await memory.getBriefingArticles(goal, { sinceDays: 14 });
+    res.json(computeDashboardStats(articles));
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
 module.exports = router;
+
+

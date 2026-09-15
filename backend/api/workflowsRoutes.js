@@ -32,7 +32,7 @@ router.post('/', async (req, res) => {
   if (validationError) return res.status(400).json({ error: validationError });
 
   try {
-    const workflow = {
+       const workflow = {
       id: uuid(),
       name: req.body.name,
       goal: req.body.goal,
@@ -41,6 +41,8 @@ router.post('/', async (req, res) => {
       dailyTime: req.body.scheduleType === 'daily' ? req.body.dailyTime : null,
       daysOfWeek: req.body.scheduleType === 'daily' ? req.body.daysOfWeek || null : null,
       enabled: req.body.enabled !== false,
+      deliverWhatsappEnabled: req.body.deliverWhatsappEnabled === true,
+      deliverWhatsappTo: req.body.deliverWhatsappEnabled ? req.body.deliverWhatsappTo || null : null,
       lastRunAt: null,
       createdAt: new Date().toISOString(),
     };
@@ -54,10 +56,10 @@ router.post('/', async (req, res) => {
 router.patch('/:id', async (req, res) => {
   try {
     const existing = await memory.getWorkflow(req.params.id);
-    if (!existing) return res.status(404).json({ error: 'Workflow not found' });
+        if (!existing) return res.status(404).json({ error: 'Workflow not found' });
 
     const patch = {};
-    for (const field of ['name', 'goal', 'scheduleType', 'intervalMinutes', 'dailyTime', 'daysOfWeek', 'enabled']) {
+    for (const field of ['name', 'goal', 'scheduleType', 'intervalMinutes', 'dailyTime', 'daysOfWeek', 'enabled', 'deliverWhatsappEnabled', 'deliverWhatsappTo']) {
       if (req.body[field] !== undefined) patch[field] = req.body[field];
     }
     const updated = await memory.updateWorkflow(req.params.id, patch);

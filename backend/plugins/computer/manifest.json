@@ -1,0 +1,9 @@
+{
+  "name": "computer",
+  "version": "1.0.0",
+  "permissions": ["computer.read", "computer.delete"],
+  "auth": { "type": "none" },
+  "authNote": "No external auth needed - this operates on the local filesystem directly. Access is instead controlled by COMPUTER_ALLOWED_ROOTS in .env, an explicit allowlist of folders this agent may touch. Empty by default (nothing accessible) until you configure it.",
+  "actions": ["searchFiles", "listDirectory", "openFile", "openFolder", "findLargeFiles", "findOldFiles", "findDuplicateFiles", "deleteToRecycleBin", "launchApp"],
+  "events": []
+}

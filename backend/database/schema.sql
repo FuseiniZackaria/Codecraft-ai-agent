@@ -64,6 +64,12 @@ create table if not exists whatsapp_messages (
   created_at timestamptz default now()
 );
 
+create table if not exists telegram_messages (
+  id text primary key,           -- Telegram's message_id, used for webhook dedup
+  from_chat_id text not null,
+  body text,
+  created_at timestamptz default now()
+);
 -- Graph-based workflow engine (Phase 1) - deliberately separate from
 -- scheduled_workflows above, which stays exactly as-is for simple
 -- single-goal automations. This supports multi-node graphs with branching
@@ -117,6 +123,24 @@ create table if not exists scheduled_workflows (
   created_at timestamptz default now(),
   updated_at timestamptz default now()
 );
+
+-- Stores each BriefingAgent run's final output, keyed by the exact goal
+-- text, so the NEXT run of the "same" recurring briefing (matched by exact
+-- goal string - e.g. a scheduled_workflows.goal that runs daily) can pull
+-- the previous output and explicitly compare "what's new" rather than
+-- producing an isolated snapshot every time. Simple exact-string matching
+-- is a deliberate scope choice - if a goal's wording changes between runs,
+-- it won't match, but keeps this genuinely simple to reason about (no
+-- fuzzy-matching logic to get subtly wrong).
+create table if not exists briefing_runs (
+  id uuid primary key default gen_random_uuid(),
+  goal text not null,
+  workflow_id text,               -- links back to scheduled_workflows.id when run via a workflow; null for manual chat runs
+  output text not null,
+  created_at timestamptz default now()
+);
+
+create index if not exists briefing_runs_goal_created_idx on briefing_runs (goal, created_at desc);
 
 create table if not exists skills (
   id text primary key,
@@ -197,3 +221,21 @@ as $$
   order by embedding <=> query_embedding
   limit match_count;
 $$;
+
+create table briefing_articles (
+  id uuid primary key default gen_random_uuid(),
+  workflow_goal text not null,       -- ties back to which recurring brief this belongs to, same key briefing_runs already uses
+  topic text,                        -- e.g. "politics", "economy" - whichever search topic surfaced this article
+  title text not null,
+  url text not null,
+  source_domain text,                -- extracted from url, powers "distinct sources" stats later
+  summary text,                      -- the search result's own content snippet (see note above)
+  collected_at timestamptz not null default now()
+);
+
+create index briefing_articles_goal_idx on briefing_articles (workflow_goal, collected_at desc);
+create index briefing_articles_topic_idx on briefing_articles (topic, collected_at desc);
+create unique index briefing_articles_dedup_idx on briefing_articles (workflow_goal, url, collected_at::date);7
+
+alter table scheduled_workflows add column deliver_whatsapp_enabled boolean not null default false;
+alter table scheduled_workflows add column deliver_whatsapp_to text;

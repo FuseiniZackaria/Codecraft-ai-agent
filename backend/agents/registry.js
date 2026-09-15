@@ -7,6 +7,13 @@ const MarketingAgent = require('./marketing/MarketingAgent');
 const CEOAgent = require('./ceo/CEOAgent');
 const CodingAgent = require('./coding/CodingAgent');
 const ContentStudioAgent = require('./content-studio/ContentStudioAgent');
+const JobVerificationAgent = require('./job-verification/JobVerificationAgent');
+const ResponseDetectionAgent = require('./response-detection/ResponseDetectionAgent');
+const SchedulingAgent = require('./scheduling/SchedulingAgent');
+const TelegramAgent = require('./telegram/TelegramAgent');
+const ComputerOperatorAgent = require('./computer-operator/ComputerOperatorAgent');
+const BrowserAgent = require('./browser/BrowserAgent');
+const BriefingAgent = require('./briefing/BriefingAgent');
 
 const agents = {
   research: new ResearchAgent(),
@@ -18,6 +25,13 @@ const agents = {
   ceo: new CEOAgent(),
   coding: new CodingAgent(),
   'content-studio': new ContentStudioAgent(),
+  'job-verification': new JobVerificationAgent(),
+  'response-detection': new ResponseDetectionAgent(),
+  scheduling: new SchedulingAgent(),
+  telegram: new TelegramAgent(),
+  'computer-operator': new ComputerOperatorAgent(),
+  browser: new BrowserAgent(),
+  briefing: new BriefingAgent(),
 };
 
 function getAgent(name) {

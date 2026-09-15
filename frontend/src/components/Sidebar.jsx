@@ -1,19 +1,22 @@
 import { NavLink } from 'react-router-dom';
-import { LayoutDashboard, Bot, ListChecks, Puzzle, MessageSquare, Workflow, Search, Terminal, Package, BarChart3 } from 'lucide-react';
+import { LayoutDashboard, Bot, ListChecks, Puzzle, MessageSquare, Workflow, Search, Terminal, Package, BarChart3, Briefcase, Newspaper } from 'lucide-react';
 import Logo from './Logo';
 import { useStore } from '../store/useStore';
 
 const links = [
   { to: '/', label: 'Overview', icon: LayoutDashboard, end: true },
-  { to: '/agents', label: 'Agents', icon: Bot },
-  { to: '/skills', label: 'Skills', icon: Package },
+  { to: '/chat', label: 'Chat', icon: MessageSquare },
   { to: '/console', label: 'Console', icon: Terminal },
   { to: '/tasks', label: 'Tasks', icon: ListChecks, badgeKey: 'pendingCount' },
+  { to: '/outreach', label: 'Job Outreach', icon: Briefcase },
   { to: '/research', label: 'Research', icon: Search },
-  { to: '/workflows', label: 'Workflows', icon: Workflow },
+   { to: '/workflows', label: 'Workflows', icon: Workflow },
+  { to: '/briefing-dashboard', label: 'Intelligence', icon: Newspaper },
   { to: '/analytics', label: 'Analytics', icon: BarChart3 },
+  { to: '/agents', label: 'Agents', icon: Bot },
   { to: '/plugins', label: 'Plugins', icon: Puzzle },
-  { to: '/chat', label: 'Chat', icon: MessageSquare },
+   { to: '/skills', label: 'Skills', icon: Package },
+  
 ];
 
 export default function Sidebar() {

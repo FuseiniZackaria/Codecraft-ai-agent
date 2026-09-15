@@ -15,6 +15,21 @@ function isLeadGenGoal(instruction) {
   return LEAD_GEN_KEYWORDS.some((k) => lower.includes(k));
 }
 
+// Job-opportunity lead-gen is checked SEPARATELY and takes priority over the
+// generic lead-gen path above - matched independently of LEAD_GEN_KEYWORDS
+// so phrasing like "find job opportunities in AI" routes correctly even
+// though it doesn't contain any of the generic keywords. Job leads get
+// routed through the Verified Job Outreach pipeline (verification -> gated
+// outreach -> response detection -> scheduling) instead of the generic
+// path's direct draft-and-send, since a job listing found via web search is
+// exactly the kind of unverified claim that pipeline exists to check before
+// any outreach happens.
+const JOB_LEAD_KEYWORDS = ['job opening', 'job opportunit', 'job posting', 'job listing', 'hiring for', 'open position', 'open role', 'find jobs', 'find job'];
+function isJobLeadGenGoal(instruction) {
+  const lower = instruction.toLowerCase();
+  return JOB_LEAD_KEYWORDS.some((k) => lower.includes(k));
+}
+
 /**
  * Turns a broad lead-gen goal into several targeted searches aimed at
  * genuine buying-intent signals (forum questions, hiring posts, "looking
@@ -77,7 +92,45 @@ class SalesAgent extends BaseAgent {
   }
 
   async plan(task) {
-    const leadGen = isLeadGenGoal(task.instruction);
+    const jobLeadGen = isJobLeadGenGoal(task.instruction);
+    const leadGen = !jobLeadGen && isLeadGenGoal(task.instruction);
+
+    if (jobLeadGen) {
+      // Extracts raw candidate opportunities ONLY - deliberately does NOT
+      // draft outreach here. Drafting happens inside the verification
+      // pipeline itself (outreachPipeline.draftOutreach), and only for
+      // opportunities that actually pass verification - drafting here would
+      // mean generating outreach text for jobs that later get rejected,
+      // wasted work at best and a temptation to reuse an unverified draft
+      // at worst.
+      const jobListInstruction =
+        'From the search results above (from several targeted searches), extract up to 15 distinct genuine ' +
+        'JOB OPENINGS relevant to the goal - actual specific postings, not generic articles about hiring ' +
+        'trends, not job-board homepages. For each, extract ONLY fields actually present in the search ' +
+        'results - never invent or guess a company website, application URL, or posting date; use null if ' +
+        'not genuinely present. Respond with ONLY a JSON array, this exact shape: ' +
+        '[{"company": "...", "jobTitle": "...", "applicationUrl": "..." or null, "companyWebsite": "..." or ' +
+        'null, "postedDate": "..." or null, "contactEmail": "..." or null, "source": "...", "sourceUrl": "...", ' +
+        '"context": "1-2 sentences of relevant context from the listing, for relevance scoring later"}]';
+
+      if (!config.search.tavilyKey) {
+        return [
+          {
+            type: 'llm_call',
+            maxTokens: 2048,
+            instruction: `${task.instruction}\n\nNo web search is configured, so answer from general knowledge only - be upfront that this is not live/verified data. ${jobListInstruction}`,
+          },
+        ];
+      }
+
+      const queries = await generateSearchQueries(task.instruction);
+      const searchSteps = queries.map((q) => ({
+        type: 'tool_call',
+        tool: 'websearch.search',
+        args: { query: q, maxResults: 6 },
+      }));
+      return [...searchSteps, { type: 'llm_call', maxTokens: 6000, instruction: jobListInstruction }];
+    }
 
     if (leadGen) {
       const listInstruction =
@@ -127,6 +180,59 @@ class SalesAgent extends BaseAgent {
 
   async reflect(task, results) {
     const finalStep = results[results.length - 1];
+
+    if (isJobLeadGenGoal(task.instruction)) {
+      let leads = [];
+      try {
+        const match = finalStep?.text?.match(/\[[\s\S]*\]/);
+        if (match) leads = JSON.parse(match[0]);
+      } catch (err) {
+        console.warn(`[SalesAgent] failed to parse job lead list: ${err.message}`);
+      }
+
+      // Only require company + jobTitle to attempt verification - everything
+      // else missing just honestly reduces the score inside
+      // JobVerificationAgent (e.g. no applicationUrl -> flagged, no
+      // postedDate -> POSTING_DATE_UNKNOWN) rather than being invented here.
+      const candidates = leads.filter((l) => l.company && l.jobTitle);
+
+      const outreachPipeline = require('../../core/outreachPipeline');
+      let verified = 0;
+      let rejected = 0;
+      let failed = 0;
+
+      for (const lead of candidates) {
+        const opportunity = {
+          company: lead.company,
+          jobTitle: lead.jobTitle,
+          applicationUrl: lead.applicationUrl || null,
+          companyWebsite: lead.companyWebsite || null,
+          postedDate: lead.postedDate || null,
+          contactEmail: lead.contactEmail || null,
+          source: lead.source || lead.sourceUrl || 'lead-gen search',
+          jobDescription: lead.context || null,
+        };
+        try {
+          const record = await outreachPipeline.processOpportunity(opportunity, { mode: config.outreach.mode });
+          if (record.stage && record.stage.startsWith('rejected')) rejected++;
+          else verified++;
+        } catch (err) {
+          failed++;
+          console.warn(`[SalesAgent] job lead-gen: failed to process opportunity for "${lead.company}": ${err.message}`);
+        }
+      }
+
+      return {
+        summary:
+          `Found ${leads.length} candidate job opening(s), ran ${candidates.length} through verification: ` +
+          `${verified} passed and moved into the outreach pipeline, ${rejected} rejected as unverifiable, ${failed} failed to process. ` +
+          `Check the Job Outreach page for details.`,
+        leadsFound: leads.length,
+        verified,
+        rejected,
+        failed,
+      };
+    }
 
     if (isLeadGenGoal(task.instruction)) {
       let leads = [];

@@ -63,7 +63,9 @@ export const api = {
   getGmailStatus: () => request('/composio/gmail/status'),
   getRedditStatus: () => request('/composio/reddit/status'),
   getWhatsappStatus: () => request('/composio/whatsapp/status'),
+  getTelegramStatus: () => request('/composio/telegram/status'),
   getGithubStatus: () => request('/composio/github/status'),
+   getGooglecalendarStatus: () => request('/composio/googlecalendar/status'),
   getRecentEvents: (limit = 200) => request(`/events/recent?limit=${limit}`),
   eventsStreamUrl: () => `${BASE_URL}/events/stream`,
 
@@ -101,7 +103,7 @@ export const api = {
   searchWorkflowRegistry: (q = '') => request(`/workflow-definitions/registry/search?q=${encodeURIComponent(q)}`),
   installWorkflowFromRegistry: (id) => request(`/workflow-definitions/registry/${id}/install`, { method: 'POST' }),
   getAnalyticsSummary: (sinceDays = 30) => request(`/analytics/summary?sinceDays=${sinceDays}`),
-
+    getBriefingDashboard: (goal) => request(`/dashboard/briefing?goal=${encodeURIComponent(goal)}`),
   // Returns null if VITE_BROWSER_EXTENSION_TOKEN isn't configured, or if the
   // request fails for any reason - callers should treat null as "nothing to
   // show" rather than an error state.

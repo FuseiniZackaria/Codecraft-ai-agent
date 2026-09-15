@@ -83,6 +83,13 @@ class MemoryStore {
     return { isNew: true };
   }
 
+    async recordIncomingTelegramMessage(id, fromChatId, body) {
+    if (!this.telegramMessageIds) this.telegramMessageIds = new Set();
+    if (this.telegramMessageIds.has(id)) return { isNew: false };
+    this.telegramMessageIds.add(id);
+    return { isNew: true };
+  }
+
   // --- Installed skills (Universal Skill Installer) ---
   async saveSkill(skill) {
     if (!this.skills) this.skills = new Map();
@@ -198,6 +205,23 @@ class MemoryStore {
   async listWorkflowRuns(workflowId) {
     if (!this.workflowRuns) return [];
     return Array.from(this.workflowRuns.values()).filter((r) => !workflowId || r.workflowId === workflowId);
+  }
+
+  // --- Briefing runs (memory across BriefingAgent runs, for trend comparison) ---
+  async saveBriefingRun(run) {
+    if (!this.briefingRuns) this.briefingRuns = [];
+    const { randomUUID } = require('crypto');
+    const stored = { id: randomUUID(), workflowId: null, ...run, createdAt: new Date().toISOString() };
+    this.briefingRuns.push(stored);
+    return stored;
+  }
+
+  async getLatestBriefingRun(goal) {
+    if (!this.briefingRuns) return null;
+    const matches = this.briefingRuns
+      .filter((r) => r.goal === goal)
+      .sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
+    return matches[0] || null;
   }
 }
 

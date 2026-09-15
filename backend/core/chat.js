@@ -2,6 +2,7 @@ const orchestrator = require('./orchestrator');
 const { classifyIntent } = require('./intentClassifier');
 const { selectProvider } = require('./router');
 const { businessContextLine } = require('./businessContext');
+const { updateBusinessProfileFromMessage } = require('./businessProfileUpdater');
 const store = require('../memory');
 const { isExtractable, extractText } = require('./documentExtractor');
 
@@ -27,7 +28,15 @@ function buildSystemPrompt(facts) {
     `you never need to tell the user to "go submit a request" for those, it already happened. Irreversible ` +
     `actions (sending an email, replying, WhatsApp messages) instead get drafted and paused for the user's ` +
     `explicit approval on the Tasks page - for those, tell them it's drafted and waiting. For everything ` +
-    `else - questions, brainstorming, small talk - just respond naturally from your own knowledge.`
+    `else - questions, brainstorming, small talk - just respond naturally from your own knowledge. There IS a ` +
+    `local computer-file capability (finding, opening, and viewing files/folders on the user's own machine, ` +
+    `within folders they've allowed) - if a message seems to be asking for that but wasn't routed there, never ` +
+    `confidently claim you can't do it; instead suggest they try rephrasing (e.g. "open my downloads folder", ` +
+    `"find my resume file"). Never promise to "get back to you," "pull results back once the scan completes," ` +
+    `or otherwise imply background work is happening - there is no such mechanism here. Every reply either ` +
+    `genuinely acts right now through a real tool, or it doesn't act at all. If something can't be done in ` +
+    `this exact reply, say so plainly and suggest what to try instead (e.g. resending the request), never ` +
+    `imply it's already in progress somewhere.`
   );
 }
 
@@ -49,6 +58,8 @@ function buildMultimodalContent(message, attachments) {
  * - "Remember that X" style messages are stored permanently (Supabase-backed,
  *   survives restarts and new sessions) and injected into every future
  *   system prompt - no task created.
+ * - Statements telling the assistant new business info (hours, pricing,
+ *   FAQ, etc.) get parsed and merged into business.json - no task created.
  * - Attachments (images/PDFs) always get a direct multimodal analysis reply -
  *   looking at a file isn't an irreversible action, so it never creates a task.
  * - Genuinely actionable messages (send an email, triage inbox, research)
@@ -75,9 +86,6 @@ async function handleMessage(message, history = [], attachments = []) {
     const nativeAttachments = attachments.filter((a) => ALLOWED_ATTACHMENT_TYPES.includes(a.mediaType));
     const documentAttachments = attachments.filter((a) => isExtractable(a.mediaType));
 
-    // Word/Excel aren't formats Claude's API can read directly - extract
-    // their text/data server-side first and fold it into the text prompt,
-    // rather than trying to send the raw file.
     let extractedText = '';
     const extractionErrors = [];
     for (const doc of documentAttachments) {
@@ -112,6 +120,18 @@ async function handleMessage(message, history = [], attachments = []) {
 
   const { category, isActionable } = await classifyIntent(message, history);
 
+  if (category === 'business_profile') {
+    try {
+      const { changedFields } = await updateBusinessProfileFromMessage(message);
+      const reply = changedFields.length
+        ? `Got it — saved that to your business profile (updated: ${changedFields.join(', ')}). I'll use this for future replies, including deciding what's safe to auto-reply to.`
+        : `Thanks, but I didn't catch any new business details to save from that — try being a bit more specific, e.g. "our hours are 9am-5pm Monday to Friday."`;
+      return { reply, actionable: false, task: null };
+    } catch (err) {
+      return { reply: `I had trouble saving that to your business profile: ${err.message}. Mind rephrasing?`, actionable: false, task: null };
+    }
+  }
+
   if (isActionable) {
     const [task] = await orchestrator.submitGoal(message, { history, category });
     return { reply: describeTaskOutcome(task), actionable: true, task };
@@ -140,10 +160,7 @@ function describeTaskOutcome(task) {
     const note = Array.isArray(task.result) ? task.result[task.result.length - 1] : null;
     return note?.text || note || `Done triaging your inbox — check the Tasks page for anything awaiting approval.`;
   }
-  if (task.agent === 'research' || task.agent === 'marketing' || task.agent === 'ceo' || task.agent === 'coding' || task.agent === 'content-studio') {
-    // Both run immediately with no approval step - surface the actual
-    // output here rather than pointing to the Tasks page for something
-    // that already fully completed.
+  if (task.agent === 'research' || task.agent === 'marketing' || task.agent === 'ceo' || task.agent === 'coding' || task.agent === 'content-studio' || task.agent === 'computer-operator') {
     const steps = Array.isArray(task.result) ? task.result : [];
     const lastText = [...steps].reverse().find((s) => s?.text)?.text;
     return lastText || `Couldn't produce anything useful for that — try rephrasing or being more specific.`;

@@ -20,3 +20,9 @@ backend/.skill-backups/
 # Editor/OS
 .DS_Store
 *.log
+
+full-fix/
+backend/workspace/
+backend/output/
+
+backend/data/

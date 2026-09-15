@@ -3,5 +3,14 @@
   "industry": "",
   "targetMarket": "",
   "description": "",
-  "knownCompetitors": []
+  "knownCompetitors": [],
+  "hours": "",
+  "location": "",
+  "website": "",
+  "services": "",
+  "pricing": "",
+  "policies": "",
+  "faq": [
+    { "question": "", "answer": "" }
+  ]
 }

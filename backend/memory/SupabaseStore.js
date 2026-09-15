@@ -63,7 +63,6 @@ class SupabaseStore {
     return true;
   }
 
-  // Maps a DB row back to the shape the orchestrator/agents expect (camelCase toolCall).
   _fromRow(row) {
     return {
       id: row.id,
@@ -108,14 +107,28 @@ class SupabaseStore {
     if (error) throw new Error(`SupabaseStore.audit: ${error.message}`);
   }
 
-  async getAuditLog(limit = 100) {
+    async getAuditLog(limit = 100) {
     const { data, error } = await this.client
       .from('audit_log')
       .select('*')
       .order('created_at', { ascending: false })
       .limit(limit);
     if (error) throw new Error(`SupabaseStore.getAuditLog: ${error.message}`);
-    return (data || []).reverse().map((r) => ({ ...r, at: r.created_at }));
+    // taskId only ever exists nested inside metadata in the database (it
+    // has no own column) - but activityLog.js's live SSE events carry it
+    // at the TOP level. Promoting it here makes historical and live events
+    // the same shape, so Console.jsx's grouping-by-taskId logic treats
+    // them identically instead of silently dumping all history into the
+    // generic "System" bucket.
+    return (data || []).reverse().map((r) => ({
+      id: r.id,
+      actor: r.actor,
+      action: r.action,
+      target: r.target,
+      taskId: r.metadata?.taskId || null,
+      metadata: r.metadata,
+      at: r.created_at,
+    }));
   }
 
   // --- Long-term memory (durable facts the user explicitly asks to remember) ---
@@ -141,6 +154,14 @@ class SupabaseStore {
     if (existing) return { isNew: false };
     const { error } = await this.client.from('whatsapp_messages').insert({ id, from_number: fromNumber, body });
     if (error) throw new Error(`SupabaseStore.recordIncomingMessage: ${error.message}`);
+    return { isNew: true };
+  }
+
+    async recordIncomingTelegramMessage(id, fromChatId, body) {
+    const { data: existing } = await this.client.from('telegram_messages').select('id').eq('id', id).maybeSingle();
+    if (existing) return { isNew: false };
+    const { error } = await this.client.from('telegram_messages').insert({ id, from_chat_id: fromChatId, body });
+    if (error) throw new Error(`SupabaseStore.recordIncomingTelegramMessage: ${error.message}`);
     return { isNew: true };
   }
 
@@ -217,7 +238,7 @@ class SupabaseStore {
   }
 
   // --- Workflows (scheduled recurring goals) ---
-  async saveWorkflow(workflow) {
+      async saveWorkflow(workflow) {
     const { error } = await this.client.from('scheduled_workflows').upsert({
       id: workflow.id,
       name: workflow.name,
@@ -228,6 +249,8 @@ class SupabaseStore {
       days_of_week: workflow.daysOfWeek ?? null,
       enabled: workflow.enabled,
       last_run_at: workflow.lastRunAt ?? null,
+      deliver_whatsapp_enabled: workflow.deliverWhatsappEnabled ?? false,
+      deliver_whatsapp_to: workflow.deliverWhatsappTo ?? null,
       updated_at: new Date().toISOString(),
     });
     if (error) throw new Error(`SupabaseStore.saveWorkflow: ${error.message}`);
@@ -246,7 +269,7 @@ class SupabaseStore {
     return (data || []).map((r) => this._workflowFromRow(r));
   }
 
-  async updateWorkflow(id, patch) {
+      async updateWorkflow(id, patch) {
     const row = {};
     if (patch.enabled !== undefined) row.enabled = patch.enabled;
     if (patch.name !== undefined) row.name = patch.name;
@@ -256,6 +279,8 @@ class SupabaseStore {
     if (patch.dailyTime !== undefined) row.daily_time = patch.dailyTime;
     if (patch.daysOfWeek !== undefined) row.days_of_week = patch.daysOfWeek;
     if (patch.lastRunAt !== undefined) row.last_run_at = patch.lastRunAt;
+    if (patch.deliverWhatsappEnabled !== undefined) row.deliver_whatsapp_enabled = patch.deliverWhatsappEnabled;
+    if (patch.deliverWhatsappTo !== undefined) row.deliver_whatsapp_to = patch.deliverWhatsappTo;
     row.updated_at = new Date().toISOString();
     const { data, error } = await this.client.from('scheduled_workflows').update(row).eq('id', id).select().maybeSingle();
     if (error) throw new Error(`SupabaseStore.updateWorkflow: ${error.message}`);
@@ -268,7 +293,7 @@ class SupabaseStore {
     return true;
   }
 
-  _workflowFromRow(row) {
+     _workflowFromRow(row) {
     return {
       id: row.id,
       name: row.name,
@@ -279,6 +304,8 @@ class SupabaseStore {
       daysOfWeek: row.days_of_week,
       enabled: row.enabled,
       lastRunAt: row.last_run_at,
+      deliverWhatsappEnabled: row.deliver_whatsapp_enabled,
+      deliverWhatsappTo: row.deliver_whatsapp_to,
       createdAt: row.created_at,
       updatedAt: row.updated_at,
     };
@@ -445,6 +472,92 @@ class SupabaseStore {
       error: row.error,
       startedAt: row.started_at,
       completedAt: row.completed_at,
+    };
+  }
+
+  // --- Briefing runs (memory across BriefingAgent runs, for trend comparison) ---
+  async saveBriefingRun(run) {
+    const { randomUUID } = require('crypto');
+    const { data, error } = await this.client
+      .from('briefing_runs')
+      .insert({
+        id: run.id || randomUUID(),
+        goal: run.goal,
+        workflow_id: run.workflowId || null,
+        output: run.output,
+      })
+      .select()
+      .maybeSingle();
+    if (error) throw new Error(`SupabaseStore.saveBriefingRun: ${error.message}`);
+    return this._briefingRunFromRow(data);
+  }
+
+  async getLatestBriefingRun(goal) {
+    const { data, error } = await this.client
+      .from('briefing_runs')
+      .select('*')
+      .eq('goal', goal)
+      .order('created_at', { ascending: false })
+      .limit(1)
+      .maybeSingle();
+    if (error) throw new Error(`SupabaseStore.getLatestBriefingRun: ${error.message}`);
+    return data ? this._briefingRunFromRow(data) : null;
+  }
+
+  _briefingRunFromRow(row) {
+    return {
+      id: row.id,
+      goal: row.goal,
+      workflowId: row.workflow_id,
+      output: row.output,
+      createdAt: row.created_at,
+    };
+  }
+
+  // --- Briefing articles (individual sources collected per run, powers the political intelligence dashboard) ---
+  async saveBriefingArticles(articles) {
+    if (!articles || articles.length === 0) return [];
+    const rows = articles.map((a) => ({
+      workflow_goal: a.workflowGoal,
+      topic: a.topic || null,
+      title: a.title,
+      url: a.url,
+      source_domain: a.sourceDomain || null,
+      summary: a.summary || null,
+    }));
+    // ignoreDuplicates skips rows that collide with the dedup unique index
+    // (same goal+url+day) rather than failing the whole batch - the same
+    // article resurfacing across quick successive runs is expected and
+    // should not error or double-count.
+    const { data, error } = await this.client
+      .from('briefing_articles')
+      .upsert(rows, { onConflict: 'workflow_goal,url,collected_date', ignoreDuplicates: true })
+      .select();
+    if (error) throw new Error(`SupabaseStore.saveBriefingArticles: ${error.message}`);
+    return (data || []).map((r) => this._briefingArticleFromRow(r));
+  }
+
+  async getBriefingArticles(workflowGoal, { sinceDays } = {}) {
+    let query = this.client.from('briefing_articles').select('*').eq('workflow_goal', workflowGoal).order('collected_at', { ascending: false });
+    if (sinceDays) {
+      const since = new Date(Date.now() - sinceDays * 24 * 60 * 60 * 1000).toISOString();
+      query = query.gte('collected_at', since);
+    }
+    const { data, error } = await query;
+    if (error) throw new Error(`SupabaseStore.getBriefingArticles: ${error.message}`);
+    return (data || []).map((r) => this._briefingArticleFromRow(r));
+  }
+
+  _briefingArticleFromRow(row) {
+    return {
+      id: row.id,
+      workflowGoal: row.workflow_goal,
+      topic: row.topic,
+      title: row.title,
+      url: row.url,
+      sourceDomain: row.source_domain,
+      summary: row.summary,
+      collectedAt: row.collected_at,
     };
   }
 }

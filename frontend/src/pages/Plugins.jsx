@@ -2,8 +2,6 @@ import { Mail, MessageCircle, MessageSquare, GitBranch, Calendar, Hash, CheckCir
 import { useStore } from '../store/useStore';
 
 const CATALOG = [
-  { name: 'Telegram', icon: MessageCircle, desc: 'Message contacts and channels.' },
-  { name: 'Google Calendar', icon: Calendar, desc: 'Create and manage events.' },
   { name: 'Slack', icon: Hash, desc: 'Post and read messages in channels.' },
 ];
 
@@ -34,6 +32,7 @@ function ComposioCard({ icon: Icon, name, desc, toolPrefix, connectedKey, viaLab
       ) : (
         <div className="space-y-1.5">
           <div className="text-xs font-medium text-[var(--color-warning)]">Not connected</div>
+          
           <a
             href={manageUrl}
             target="_blank"
@@ -74,6 +73,23 @@ export default function Plugins() {
           manageLabel="Set up on Twilio"
         />
         <ComposioCard icon={GitBranch} name="GitHub" desc="Create repos, commit files, and open pull requests." toolPrefix="github" connectedKey="githubConnected" />
+        <ComposioCard
+          icon={Calendar}
+          name="Google Calendar"
+          desc="Check availability and book calls with reminders."
+          toolPrefix="googlecalendar"
+          connectedKey="googlecalendarConnected"
+        />
+        <ComposioCard
+          icon={MessageCircle}
+          name="Telegram"
+          desc="Draft and send replies to incoming Telegram messages."
+          toolPrefix="telegram"
+          connectedKey="telegramConnected"
+          viaLabel="via Bot API"
+          manageUrl="https://t.me/BotFather"
+          manageLabel="Get a bot token from @BotFather"
+        />
         {CATALOG.map(({ name, icon: Icon, desc }) => {
           const isInstalled = installed.has(name.toLowerCase());
           return (

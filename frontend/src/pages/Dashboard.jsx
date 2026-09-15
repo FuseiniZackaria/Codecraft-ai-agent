@@ -1,5 +1,5 @@
 import { Link } from 'react-router-dom';
-import { Radio, ArrowRight } from 'lucide-react';
+import { Radio, ArrowRight, Briefcase } from 'lucide-react';
 import { useStore } from '../store/useStore';
 import StatCard from '../components/StatCard';
 import StatusPill from '../components/StatusPill';
@@ -7,6 +7,8 @@ import StatusPill from '../components/StatusPill';
 export default function Dashboard() {
   const { summary, tasks } = useStore();
   const pending = tasks.filter((t) => t.status === 'pending_approval');
+  const outreachPipelines = tasks.filter((t) => t.payload?.pipelineType === 'job_outreach_pipeline');
+  const scheduledCalls = outreachPipelines.filter((t) => t.payload.stage === 'call_scheduled').length;
 
   return (
     <div className="p-6 max-w-5xl">
@@ -49,6 +51,27 @@ export default function Dashboard() {
             </div>
             <ArrowRight size={16} className="text-[var(--color-text-muted)] group-hover:text-[var(--color-accent)] transition-colors shrink-0" />
           </Link>
+
+          {outreachPipelines.length > 0 && (
+            <Link
+              to="/outreach"
+              className="group flex items-center justify-between rounded-lg border border-[var(--color-border)] bg-[var(--color-surface)] p-4 hover:border-[var(--color-accent)]/40 transition-colors mt-3"
+            >
+              <div className="flex items-center gap-3">
+                <div className="w-8 h-8 rounded-md bg-[var(--color-accent)]/10 flex items-center justify-center shrink-0">
+                  <Briefcase size={15} className="text-[var(--color-accent)]" />
+                </div>
+                <div>
+                  <div className="text-sm font-medium">Job Outreach</div>
+                  <div className="text-xs text-[var(--color-text-muted)]">
+                    {outreachPipelines.length} opportunit{outreachPipelines.length === 1 ? 'y' : 'ies'} processed
+                    {scheduledCalls > 0 ? ` · ${scheduledCalls} call${scheduledCalls > 1 ? 's' : ''} scheduled` : ''}
+                  </div>
+                </div>
+              </div>
+              <ArrowRight size={16} className="text-[var(--color-text-muted)] group-hover:text-[var(--color-accent)] transition-colors shrink-0" />
+            </Link>
+          )}
         </div>
 
         <div>

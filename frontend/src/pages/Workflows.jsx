@@ -20,15 +20,17 @@ function NewWorkflowForm({ template, onCreated, onCancel }) {
   const [intervalMinutes, setIntervalMinutes] = useState(template?.intervalMinutes || 60);
   const [dailyTime, setDailyTime] = useState(template?.dailyTime || '09:00');
   const [daysOfWeek, setDaysOfWeek] = useState(template?.daysOfWeek || [1, 2, 3, 4, 5]);
+  const [deliverWhatsapp, setDeliverWhatsapp] = useState(false);
+  const [whatsappTo, setWhatsappTo] = useState('');
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState(null);
-
   function toggleDay(d) {
     setDaysOfWeek((prev) => (prev.includes(d) ? prev.filter((x) => x !== d) : [...prev, d].sort()));
   }
 
   async function submit() {
     if (!name.trim() || !goal.trim()) return setError('Name and goal are both required.');
+    if (deliverWhatsapp && !whatsappTo.trim()) return setError('Enter a WhatsApp number, or turn delivery off.');
     setBusy(true);
     setError(null);
     try {
@@ -39,6 +41,8 @@ function NewWorkflowForm({ template, onCreated, onCancel }) {
         intervalMinutes: scheduleType === 'interval' ? Number(intervalMinutes) : undefined,
         dailyTime: scheduleType === 'daily' ? dailyTime : undefined,
         daysOfWeek: scheduleType === 'daily' ? daysOfWeek : undefined,
+        deliverWhatsappEnabled: deliverWhatsapp,
+        deliverWhatsappTo: deliverWhatsapp ? whatsappTo.trim() : null,
         enabled: true,
       });
       onCreated();
@@ -139,6 +143,27 @@ function NewWorkflowForm({ template, onCreated, onCancel }) {
         </div>
       )}
 
+      <div className="rounded-md border border-[var(--color-border)] p-3">
+        <label className="flex items-center gap-2 text-sm cursor-pointer">
+          <input type="checkbox" checked={deliverWhatsapp} onChange={(e) => setDeliverWhatsapp(e.target.checked)} />
+          Send a WhatsApp digest automatically after each run
+        </label>
+        {deliverWhatsapp && (
+          <div className="mt-2">
+            <input
+              value={whatsappTo}
+              onChange={(e) => setWhatsappTo(e.target.value)}
+              placeholder="+233123456789"
+              className="w-full px-3 py-2 rounded-md border border-[var(--color-border)] bg-[var(--color-bg)] text-sm outline-none focus:border-[var(--color-accent)]/50"
+            />
+            <p className="text-[11px] text-[var(--color-text-muted)] mt-1">
+              Free-form WhatsApp messages only deliver within 24h of this number last messaging your business - message it
+              periodically to keep automated sends working.
+            </p>
+          </div>
+        )}
+      </div>
+
       {error && <div className="text-xs text-[var(--color-danger)]">{error}</div>}
 
       <div className="flex gap-2 pt-1">
@@ -159,6 +184,8 @@ function NewWorkflowForm({ template, onCreated, onCancel }) {
 
 function WorkflowRow({ workflow, onChanged }) {
   const [busy, setBusy] = useState(false);
+  const [editingDelivery, setEditingDelivery] = useState(false);
+  const [whatsappTo, setWhatsappTo] = useState(workflow.deliverWhatsappTo || '');
 
   async function run(action) {
     setBusy(true);
@@ -169,6 +196,23 @@ function WorkflowRow({ workflow, onChanged }) {
         if (!window.confirm(`Delete "${workflow.name}"?`)) return;
         await api.deleteWorkflow(workflow.id);
       }
+      onChanged();
+    } catch (err) {
+      alert(err.message);
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function saveDelivery(enabled) {
+    if (enabled && !whatsappTo.trim()) return alert('Enter a WhatsApp number, or turn delivery off.');
+    setBusy(true);
+    try {
+      await api.updateWorkflow(workflow.id, {
+        deliverWhatsappEnabled: enabled,
+        deliverWhatsappTo: enabled ? whatsappTo.trim() : null,
+      });
+      setEditingDelivery(false);
       onChanged();
     } catch (err) {
       alert(err.message);
@@ -199,7 +243,39 @@ function WorkflowRow({ workflow, onChanged }) {
             {describeSchedule(workflow)}
           </span>
           {workflow.lastRunAt && <span>Last ran {new Date(workflow.lastRunAt).toLocaleString()}</span>}
+          {workflow.deliverWhatsappEnabled && (
+            <span className="text-[var(--color-success)]">→ WhatsApp: {workflow.deliverWhatsappTo}</span>
+          )}
         </div>
+
+        {editingDelivery ? (
+          <div className="mt-2 flex items-center gap-2">
+            <input
+              value={whatsappTo}
+              onChange={(e) => setWhatsappTo(e.target.value)}
+              placeholder="+233123456789"
+              className="flex-1 px-2 py-1 rounded-md border border-[var(--color-border)] bg-[var(--color-bg)] text-xs outline-none focus:border-[var(--color-accent)]/50"
+            />
+            <button onClick={() => saveDelivery(true)} disabled={busy} className="text-xs font-medium px-2 py-1 rounded-md bg-[var(--color-accent)] text-black">
+              Save
+            </button>
+            {workflow.deliverWhatsappEnabled && (
+              <button onClick={() => saveDelivery(false)} disabled={busy} className="text-xs px-2 py-1 rounded-md border border-[var(--color-border)] text-[var(--color-danger)]">
+                Turn off
+              </button>
+            )}
+            <button onClick={() => setEditingDelivery(false)} className="text-xs px-2 py-1 rounded-md border border-[var(--color-border)] text-[var(--color-text-muted)]">
+              Cancel
+            </button>
+          </div>
+        ) : (
+          <button
+            onClick={() => setEditingDelivery(true)}
+            className="mt-1 text-[11px] text-[var(--color-accent)] hover:underline"
+          >
+            {workflow.deliverWhatsappEnabled ? 'Edit WhatsApp delivery' : 'Send this via WhatsApp automatically'}
+          </button>
+        )}
       </div>
       <div className="flex items-center gap-1 shrink-0">
         <button disabled={busy} onClick={() => run('run-now')} title="Run now" className="p-1.5 rounded-md border border-[var(--color-border)] text-[var(--color-text-muted)] hover:text-[var(--color-accent)] disabled:opacity-40">
@@ -225,7 +301,7 @@ function WorkflowRow({ workflow, onChanged }) {
 export default function Workflows() {
   const [workflows, setWorkflows] = useState([]);
   const [graphWorkflows, setGraphWorkflows] = useState([]);
-  const [step, setStep] = useState('closed'); // 'closed' | 'templates' | 'form' | 'marketplace'
+  const [step, setStep] = useState('closed');
   const [selectedTemplate, setSelectedTemplate] = useState(null);
   const [marketplaceEntries, setMarketplaceEntries] = useState([]);
   const [installingId, setInstallingId] = useState(null);

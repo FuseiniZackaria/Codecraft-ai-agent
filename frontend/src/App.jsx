@@ -14,7 +14,9 @@ import Plugins from './pages/Plugins';
 import Workflows from './pages/Workflows';
 import Analytics from './pages/Analytics';
 import Chat from './pages/Chat';
+import JobOutreach from './pages/JobOutreach';
 import { useStore } from './store/useStore';
+import BriefingDashboard from './pages/BriefingDashboard';
 
 export default function App() {
   const refresh = useStore((s) => s.refresh);
@@ -53,6 +55,8 @@ export default function App() {
             <Route path="/analytics" element={<Analytics />} />
             <Route path="/plugins" element={<Plugins />} />
             <Route path="/chat" element={<Chat />} />
+            <Route path="/outreach" element={<JobOutreach />} />
+            <Route path="/briefing-dashboard" element={<BriefingDashboard />} />
           </Routes>
         </main>
       </div>

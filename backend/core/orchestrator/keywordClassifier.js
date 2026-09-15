@@ -49,7 +49,7 @@ function classify(goal) {
     !isCoding &&
     lower.includes('whatsapp') &&
     (lower.includes('send') || lower.includes('message') || lower.includes('text') || lower.includes('reply'));
-  const isOutreach =
+   const isOutreach =
     !isInboxTriage &&
     !isSupport &&
     !isCoding &&
@@ -62,7 +62,21 @@ function classify(goal) {
       lower.includes('scrape') ||
       lower.includes('prospect list') ||
       lower.includes('lead generation') ||
-      lower.includes('leads that'));
+      lower.includes('leads that') ||
+      // Job-opportunity lead-gen - checked here (not just in isResearch)
+      // so it correctly routes to the Sales Agent's verified job outreach
+      // pipeline. Must come before isResearch is computed below, since
+      // isResearch's own "find jobs"/"find opportunities" keywords would
+      // otherwise incorrectly win for this exact common phrasing.
+      lower.includes('job opening') ||
+      lower.includes('job opportunit') ||
+      lower.includes('job posting') ||
+      lower.includes('job listing') ||
+      lower.includes('hiring for') ||
+      lower.includes('open position') ||
+      lower.includes('open role') ||
+      lower.includes('find jobs') ||
+      lower.includes('find job'));
   const isCEO =
     !isInboxTriage &&
     !isSupport &&

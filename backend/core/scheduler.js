@@ -10,6 +10,16 @@ const TICK_INTERVAL_MS = 60 * 1000; // check every minute - fine-grained enough 
 let timer = null;
 const runningIds = new Set(); // avoid overlapping runs of the SAME workflow if one is still in progress
 
+// In-memory last-run tracking for the two outreach automation jobs below.
+// Not persisted to disk on purpose - both jobs are idempotent (dedup logic
+// already tested in Phase 3/4: re-running never double-sends or
+// double-processes), so losing precision across a server restart just
+// means "runs once immediately on startup" rather than causing any actual
+// harm. Simpler than adding new schema/storage for two timestamps.
+let lastResponseCheckAt = null;
+let lastFollowUpCheckAt = null;
+let outreachJobRunning = false; // both share one flag - they touch the same pipeline records, keep them sequential not concurrent
+
 // Video file extensions recognized by folder-watch triggers.
 const VIDEO_EXTENSIONS = ['.mp4', '.mov', '.avi', '.mkv', '.webm', '.m4v'];
 
@@ -109,6 +119,76 @@ async function runGraphWorkflow(definition, triggerOutput) {
   }
 }
 
+/**
+ * Checks the inbox for replies to sent job outreach and classifies them.
+ * Disabled by default (config.automation.responseCheckIntervalMinutes = 0) -
+ * same "off unless explicitly enabled" pattern as every other automated
+ * send/action in this codebase.
+ */
+async function runOutreachResponseCheck() {
+  try {
+    const { getAgent } = require('../agents/registry');
+    const agent = getAgent('response-detection');
+    const result = await agent.detectResponses();
+    if (result.matched > 0) {
+      console.log(`[scheduler] outreach response check: matched ${result.matched} new response(s)`);
+    }
+  } catch (err) {
+    console.warn(`[scheduler] outreach response check failed: ${err.message}`);
+  }
+}
+
+/**
+ * Queues any due follow-up emails (Day 4/10/21 sequence) for sent outreach
+ * that hasn't received a genuine response. Disabled by default
+ * (config.automation.followUpCheckIntervalMinutes = 0).
+ */
+async function runOutreachFollowUpCheck() {
+  try {
+    const outreachPipeline = require('./outreachPipeline');
+    const result = await outreachPipeline.checkFollowUps();
+    if (result.queued > 0) {
+      console.log(`[scheduler] outreach follow-up check: queued ${result.queued} follow-up(s) for approval`);
+    }
+  } catch (err) {
+    console.warn(`[scheduler] outreach follow-up check failed: ${err.message}`);
+  }
+}
+
+/**
+ * Runs the two outreach automation jobs if their configured interval has
+ * elapsed. Both share one "is anything running" guard (outreachJobRunning)
+ * since they touch the same pipeline records - sequential, not concurrent,
+ * avoids any read-modify-write race between them.
+ */
+async function tickOutreachAutomation(now = new Date()) {
+  if (outreachJobRunning) return;
+
+  const responseDue =
+    config.automation.responseCheckIntervalMinutes > 0 &&
+    (!lastResponseCheckAt || now.getTime() - lastResponseCheckAt.getTime() >= config.automation.responseCheckIntervalMinutes * 60 * 1000);
+
+  const followUpDue =
+    config.automation.followUpCheckIntervalMinutes > 0 &&
+    (!lastFollowUpCheckAt || now.getTime() - lastFollowUpCheckAt.getTime() >= config.automation.followUpCheckIntervalMinutes * 60 * 1000);
+
+  if (!responseDue && !followUpDue) return;
+
+  outreachJobRunning = true;
+  try {
+    if (responseDue) {
+      await runOutreachResponseCheck();
+      lastResponseCheckAt = now;
+    }
+    if (followUpDue) {
+      await runOutreachFollowUpCheck();
+      lastFollowUpCheckAt = now;
+    }
+  } finally {
+    outreachJobRunning = false;
+  }
+}
+
 async function tick() {
   let workflows;
   try {
@@ -142,6 +222,11 @@ async function tick() {
       if (filePath) runGraphWorkflow(definition, filePath);
     }
   }
+
+  // Job outreach automation - separate from the Workflow system above since
+  // these are structured internal maintenance jobs, not natural-language
+  // goals. Both no-op unless explicitly enabled via config.
+  tickOutreachAutomation(); // deliberately not awaited - runs independently of workflow ticks, same as runWorkflow() above
 }
 
 /**
@@ -185,4 +270,15 @@ function stop() {
   if (timer) clearInterval(timer);
 }
 
-module.exports = { start, stop, tick, isWorkflowDue, runWorkflow, checkFolderWatch, runGraphWorkflow };
+module.exports = {
+  start,
+  stop,
+  tick,
+  isWorkflowDue,
+  runWorkflow,
+  checkFolderWatch,
+  runGraphWorkflow,
+  tickOutreachAutomation,
+  runOutreachResponseCheck,
+  runOutreachFollowUpCheck,
+};

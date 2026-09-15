@@ -12,6 +12,8 @@ export const useStore = create((set, get) => ({
   redditConnected: false,
   whatsappConnected: false,
   githubConnected: false,
+  googlecalendarConnected: false,
+  telegramConnected: false,
   chatMessages: JSON.parse(localStorage.getItem('cc_chat') || '[]'),
 
   setPaletteOpen: (open) => set({ paletteOpen: open }),
@@ -65,9 +67,17 @@ export const useStore = create((set, get) => ({
         .then(({ connected }) => set({ whatsappConnected: connected }))
         .catch(() => set({ whatsappConnected: false }));
 
-      api.getGithubStatus()
+            api.getGithubStatus()
         .then(({ connected }) => set({ githubConnected: connected }))
         .catch(() => set({ githubConnected: false }));
+
+      api.getGooglecalendarStatus()
+        .then(({ connected }) => set({ googlecalendarConnected: connected }))
+        .catch(() => set({ googlecalendarConnected: false }));
+
+      api.getTelegramStatus()
+        .then(({ connected }) => set({ telegramConnected: connected }))
+        .catch(() => set({ telegramConnected: false }));
     } catch {
       // Backend not reachable - stay on demo data so the shell is still usable.
       set({ connected: false, loading: false });

@@ -1,0 +1,9 @@
+{
+  "name": "browser",
+  "version": "1.0.0",
+  "permissions": ["browser.read"],
+  "auth": { "type": "none" },
+  "authNote": "No external auth needed - controls a dedicated, isolated Chromium profile via Playwright (BROWSER_PROFILE_DIR), with no saved logins from the user's real browser. This is the read-only MVP slice: navigate, read page text, and screenshot only. Clicking, filling forms, and submitting are a planned follow-up that will require human approval before anything submits.",
+  "actions": ["navigate", "readPage", "screenshot"],
+  "events": []
+}

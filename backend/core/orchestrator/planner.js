@@ -75,6 +75,30 @@ async function routeByCategory(category, goal, explicitPayload, history) {
       // send-an-email/push-to-github sense, so no approval gate needed.
       agent = 'coding';
       break;
+    case 'computer_operation':
+      // Read-only search of the user's own local files, strictly within
+      // folders they've explicitly allowed - not irreversible, no approval
+      // gate needed. Later stages (opening files, eventually deletion) will
+      // introduce their own gating as they're built.
+      agent = 'computer-operator';
+      break;
+    case 'browse_web':
+      // Navigate/read/screenshot are all read-only against an isolated,
+      // no-saved-logins Chromium profile (see config.browserAutomation) -
+      // not irreversible, no approval gate needed. A planned follow-up
+      // (clicking/filling/submitting forms) WILL require approval before
+      // anything submits, per the same irreversible-action gating pattern
+      // used elsewhere (computer.deleteToRecycleBin, gmail.sendEmail) -
+      // that gating is not built yet, since only the read-only slice
+      // (navigate/readPage/screenshot) exists so far.
+      agent = 'browser';
+      break;
+    case 'briefing':
+      // Multiple searches/page-reads merged into one synthesized brief -
+      // all read-only against web search + the isolated browser profile,
+      // not irreversible, no approval gate needed.
+      agent = 'briefing';
+      break;
     case 'marketing':
       agent = 'marketing';
       break;
@@ -118,7 +142,7 @@ async function decompose(goal, explicitPayload = null, history = [], precomputed
   const { category } = precomputedCategory ? { category: precomputedCategory } : await classifyIntent(goal, history);
   const { agent, toolCall, extractedPayload } = await routeByCategory(category, goal, explicitPayload, history);
 
-  const task = {
+    const task = {
     id: uuid(),
     agent,
     instruction: goal,
@@ -126,6 +150,13 @@ async function decompose(goal, explicitPayload = null, history = [], precomputed
     irreversible: !!toolCall?.irreversible,
     toolCall,
     payload: explicitPayload || extractedPayload || null,
+    // Available in-memory to agent.plan(task) for the duration of this
+    // request (orchestrator.submitGoal calls agent.run() on this exact
+    // object, no DB round-trip in between) - NOT persisted to Supabase,
+    // since saveTask only writes specific known columns. This exists so an
+    // agent's own extraction step can resolve follow-up messages like "yes
+    // full list" that only make sense combined with the previous turn.
+    history,
     created_at: new Date().toISOString(),
   };
 

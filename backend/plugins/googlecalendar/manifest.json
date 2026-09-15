@@ -1,0 +1,9 @@
+{
+  "name": "googlecalendar",
+  "version": "1.0.0",
+  "permissions": ["googlecalendar.read", "googlecalendar.write"],
+  "auth": { "type": "oauth2", "provider": "google" },
+  "authNote": "Needs a Composio 'googlecalendar' OAuth connection, set up in the Composio dashboard the same way as gmail/reddit/github. Uses the same COMPOSIO_API_KEY already configured.",
+  "actions": ["listEvents", "createEvent"],
+  "events": []
+}

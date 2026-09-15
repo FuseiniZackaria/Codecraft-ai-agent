@@ -1,0 +1,9 @@
+{
+  "name": "telegram",
+  "version": "1.0.0",
+  "permissions": ["telegram.send"],
+  "auth": { "type": "bot_token" },
+  "authNote": "Get a bot token from @BotFather on Telegram (send it /newbot) - no OAuth, no business verification. Set TELEGRAM_BOT_TOKEN in .env.",
+  "actions": ["sendMessage"],
+  "events": []
+}

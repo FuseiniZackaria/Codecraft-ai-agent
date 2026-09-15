@@ -67,4 +67,36 @@ router.post('/whatsapp/twilio', express.urlencoded({ extended: false }), async (
   }
 });
 
+// Telegram's incoming updates land here as JSON, one message per POST - no
+// verification handshake needed (unlike Meta), just an optional shared
+// secret Telegram echoes back in a header, checked below if configured.
+router.post('/telegram', async (req, res) => {
+  res.sendStatus(200); // ack immediately - Telegram retries on non-2xx or timeout
+
+  try {
+    if (config.telegram.webhookSecret) {
+      const receivedSecret = req.headers['x-telegram-bot-api-secret-token'];
+      if (receivedSecret !== config.telegram.webhookSecret) {
+        console.warn('[webhook] telegram request rejected - secret token mismatch');
+        return;
+      }
+    }
+
+    const message = req.body?.message;
+    if (!message || !message.text) return; // skip non-text updates (photos, stickers, etc.) for now
+
+    const messageId = String(message.message_id);
+    const chatId = String(message.chat?.id);
+    if (!chatId) return;
+
+    const { isNew } = await memory.recordIncomingTelegramMessage(messageId, chatId, message.text);
+    if (!isNew) return; // dedupe Telegram's retries
+
+    const agent = getAgent('telegram');
+    await agent.handleIncomingMessage({ from: chatId, body: message.text });
+  } catch (err) {
+    console.error('[webhook] telegram processing failed:', err.message);
+  }
+});
+
 module.exports = router;

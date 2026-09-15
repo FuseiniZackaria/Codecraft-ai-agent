@@ -9,7 +9,7 @@ const router = express.Router();
 router.get('/recent', async (req, res) => {
   try {
     const limit = Math.min(Number(req.query.limit) || 100, 500);
-    const log = await memory.getAuditLog();
+    const log = await memory.getAuditLog(limit); // was silently capped at getAuditLog's own default of 100, regardless of what was requested
     res.json(log.slice(-limit));
   } catch (err) {
     res.status(500).json({ error: err.message });
