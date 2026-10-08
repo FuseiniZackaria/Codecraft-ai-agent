@@ -1,6 +1,7 @@
 const { v4: uuid } = require('uuid');
 const { selectProvider } = require('../router');
 const { classify } = require('./keywordClassifier');
+const { agentMeta, sections } = require('../../config/agentSections');
 const { classifyIntent } = require('../intentClassifier');
 
 /**
@@ -138,13 +139,27 @@ async function routeByCategory(category, goal, explicitPayload, history) {
  *   classified this message, pass the category through to avoid a second,
  *   redundant LLM classification call for the same message.
  */
-async function decompose(goal, explicitPayload = null, history = [], precomputedCategory = null) {
+async function decompose(goal, explicitPayload = null, history = [], precomputedCategory = null, departmentKey = null, agentKey = null) {
   const { category } = precomputedCategory ? { category: precomputedCategory } : await classifyIntent(goal, history);
   const { agent, toolCall, extractedPayload } = await routeByCategory(category, goal, explicitPayload, history);
 
+  let finalAgent = agent;
+
+  if (agentKey) {
+    finalAgent = agentKey;
+  }
+
+  if (departmentKey && !agentKey) {
+    const agentDept = agentMeta[finalAgent]?.section || 'other';
+    if (agentDept !== departmentKey) {
+      const suggestedDept = sections.find((s) => s.key === agentDept);
+      return [{ _mismatch: true, suggestedDepartment: agentDept, suggestedLabel: suggestedDept?.label || agentDept }];
+    }
+  }
+
     const task = {
     id: uuid(),
-    agent,
+    agent: finalAgent,
     instruction: goal,
     status: 'pending',
     irreversible: !!toolCall?.irreversible,

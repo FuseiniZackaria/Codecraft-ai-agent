@@ -1,8 +1,23 @@
-﻿# Secrets - NEVER commit these
-backend/.env
+# Secrets - NEVER commit these
 .env
+.env.*
 *.env
+backend/.env
+backend/.env.*
+frontend/.env
+frontend/.env.*
 !.env.example
+!**/.env.example
+
+# Credential / token files
+token.json
+credentials.json
+token.pickle
+*.pem
+*.key
+service-account*.json
+google-credentials*.json
+gmail-credentials*.json
 
 # Dependencies
 node_modules/
@@ -10,19 +25,50 @@ backend/node_modules/
 frontend/node_modules/
 
 # Build output
+dist/
+build/
 frontend/dist/
+frontend/build/
 
-# Runtime data (installed skills, temp files)
+# Test / coverage
+coverage/
+.nyc_output/
+
+# Logs
+*.log
+logs/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# Runtime data (installed skills, temp files, uploads)
 backend/skills/*/
 backend/.installer-tmp/
 backend/.skill-backups/
-
-# Editor/OS
-.DS_Store
-*.log
-
-full-fix/
-backend/workspace/
-backend/output/
-
 backend/data/
+backend/output/
+backend/workspace/
+backend/uploads/
+backend/tmp/
+backend/temp/
+uploads/
+tmp/
+temp/
+
+# Browser automation profiles / sessions
+.playwright/
+backend/.browser-profiles/
+**/user-data-dir/
+**/puppeteer-profile*/
+**/.wwebjs_auth/
+**/.wwebjs_cache/
+
+# Editor / OS
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/
+
+# One-off / local artifacts
+full-fix/
+backend/{core/

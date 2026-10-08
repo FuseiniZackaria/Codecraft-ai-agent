@@ -27,8 +27,47 @@ const TOOL_SCHEMAS = {
   'github.createRepository': ['name', 'description', 'private'],
 };
 
+function JobApplyPreview({ task }) {
+  const { approveTask, rejectTask } = useStore();
+  const fields = task.payload?.fields || [];
+  return (
+    <div className="rounded-md border border-[var(--color-warning)]/30 bg-[var(--color-warning)]/5 p-3 space-y-3">
+      <div className="text-[10px] uppercase tracking-wide text-[var(--color-warning)] font-[var(--font-mono)]">
+        Review before submitting
+      </div>
+      <div className="space-y-1">
+        {fields.map((f, i) => (
+          <div key={i} className="flex gap-2 text-xs">
+            <span className="text-[var(--color-text-muted)] font-[var(--font-mono)] shrink-0 truncate max-w-[40%]">{f.selector}</span>
+            <span className="text-[var(--color-text)] truncate">{String(f.value).length > 100 ? String(f.value).slice(0, 100) + '…' : f.value}</span>
+          </div>
+        ))}
+      </div>
+      <div className="flex items-center gap-2 pt-1">
+        <button
+          onClick={() => approveTask(task.id)}
+          className="flex items-center gap-1.5 text-xs font-medium px-3 py-1.5 rounded-md border border-[var(--color-success)]/40 text-[var(--color-success)] hover:bg-[var(--color-success)]/10"
+        >
+          <Check size={13} /> Approve & submit
+        </button>
+        <button
+          onClick={() => rejectTask(task.id)}
+          className="flex items-center gap-1.5 text-xs font-medium px-3 py-1.5 rounded-md border border-[var(--color-danger)]/40 text-[var(--color-danger)] hover:bg-[var(--color-danger)]/10"
+        >
+          <X size={13} /> Reject
+        </button>
+      </div>
+    </div>
+  );
+}
+
 export default function TaskPayloadEditor({ task }) {
   const { approveTask, rejectTask, updateTaskPayload } = useStore();
+
+  if (task.toolCall?.tool === 'browser.applyForJob') {
+    return <JobApplyPreview task={task} />;
+  }
+
   const schema = TOOL_SCHEMAS[task.toolCall?.tool] || Object.keys(task.payload || {});
   const initialValues = Object.fromEntries(schema.map((k) => [k, task.payload?.[k] || '']));
   const [values, setValues] = useState(initialValues);

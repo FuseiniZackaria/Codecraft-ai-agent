@@ -24,6 +24,7 @@ class SupabaseStore {
         status: task.status,
         irreversible: !!task.irreversible,
         result: task.result || null,
+        read: false,
         created_at: task.created_at,
       })
       .select()
@@ -44,6 +45,7 @@ class SupabaseStore {
     if (patch.status !== undefined) row.status = patch.status;
     if (patch.result !== undefined) row.result = patch.result;
     if (patch.payload !== undefined) row.payload = patch.payload;
+    if (patch.read !== undefined) row.read = patch.read;
     row.updated_at = new Date().toISOString();
 
     const { data, error } = await this.client.from('tasks').update(row).eq('id', id).select().maybeSingle();
@@ -58,8 +60,15 @@ class SupabaseStore {
   }
 
   async deleteTask(id) {
+    await this.client.from('reflections').delete().eq('task_id', id);
     const { error } = await this.client.from('tasks').delete().eq('id', id);
     if (error) throw new Error(`SupabaseStore.deleteTask: ${error.message}`);
+    return true;
+  }
+
+  async markAllTasksRead() {
+    const { error } = await this.client.from('tasks').update({ read: true, updated_at: new Date().toISOString() }).eq('read', false);
+    if (error) throw new Error(`SupabaseStore.markAllTasksRead: ${error.message}`);
     return true;
   }
 
@@ -73,6 +82,7 @@ class SupabaseStore {
       status: row.status,
       irreversible: row.irreversible,
       result: row.result,
+      read: !!row.read,
       created_at: row.created_at,
       updated_at: row.updated_at,
     };
@@ -346,6 +356,31 @@ class SupabaseStore {
       taskId: row.task_id,
       createdAt: row.created_at,
     };
+  }
+
+  // --- Assistant daily usage (soft cost cap) ---
+  async getAssistantUsage(day) {
+    const { data, error } = await this.client
+      .from('assistant_usage_daily')
+      .select('day, usd, input_tokens, output_tokens')
+      .eq('day', day)
+      .maybeSingle();
+    if (error) {
+      // table may not exist yet - treat as empty rather than throwing
+      if (/relation.*does not exist/i.test(error.message)) return null;
+      throw new Error(`SupabaseStore.getAssistantUsage: ${error.message}`);
+    }
+    return data || null;
+  }
+
+  async upsertAssistantUsage(day, row) {
+    const { error } = await this.client
+      .from('assistant_usage_daily')
+      .upsert({ day, ...row, updated_at: new Date().toISOString() }, { onConflict: 'day' });
+    if (error && !/relation.*does not exist/i.test(error.message)) {
+      throw new Error(`SupabaseStore.upsertAssistantUsage: ${error.message}`);
+    }
+    return true;
   }
 
   // --- Workflow definitions (graph-based workflow engine, Phase 1) ---

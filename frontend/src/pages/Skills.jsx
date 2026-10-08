@@ -75,16 +75,20 @@ function InstallConsole({ skillId, installPromise, onClose }) {
   }
 
   useEffect(() => {
-    const es = new EventSource(api.eventsStreamUrl());
-    es.onmessage = (msg) => {
-      try {
-        const event = JSON.parse(msg.data);
-        if (event.actor !== 'installer' || event.target !== skillId) return;
-        addLine(event);
-      } catch {
-        // ignore comment/ping lines
-      }
-    };
+    let es = null;
+    let cancelled = false;
+
+    api.getEventsStreamUrl().then((url) => {
+      if (cancelled) return;
+      es = new EventSource(url);
+      es.onmessage = (msg) => {
+        try {
+          const event = JSON.parse(msg.data);
+          if (event.actor !== 'installer' || event.target !== skillId) return;
+          addLine(event);
+        } catch {}
+      };
+    });
 
     // The install itself is the real source of truth for done/failed - SSE
     // is best-effort display only. A fast local install can fully complete
@@ -105,12 +109,12 @@ function InstallConsole({ skillId, installPromise, onClose }) {
         } catch {
           // best-effort backfill only
         }
-        es.close();
+        if (es) es.close();
         if (installFailed) setFailed(true);
         else setDone(true);
       });
 
-    return () => es.close();
+    return () => { cancelled = true; if (es) es.close(); };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [skillId]);
 

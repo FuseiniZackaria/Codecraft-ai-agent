@@ -1,6 +1,7 @@
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import { ExternalLink } from 'lucide-react';
+import LeadCard from './LeadCard';
 
 function SearchResults({ step }) {
   return (
@@ -34,6 +35,25 @@ function SearchResults({ step }) {
 
 export default function ResultStep({ step, index }) {
   if (!step) return null;
+
+  // Multi-platform lead cards
+  if (step.type === 'lead_cards') {
+    return (
+      <div className="space-y-3">
+        <p className="text-sm text-[var(--color-text)] leading-relaxed">{step.summary}</p>
+        {step.warnings?.length > 0 && (
+          <div className="rounded-md border border-[var(--color-warning)]/30 bg-[var(--color-warning)]/5 p-2.5 space-y-1">
+            {step.warnings.map((w, i) => (
+              <p key={i} className="text-xs text-[var(--color-warning)]">{w}</p>
+            ))}
+          </div>
+        )}
+        {(step.leads || []).map((lead, i) => (
+          <LeadCard key={i} lead={lead} />
+        ))}
+      </div>
+    );
+  }
 
   // Search tool result (Tavily-shaped: { answer, results: [...] })
   if (step.results && Array.isArray(step.results)) {

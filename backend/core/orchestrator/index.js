@@ -12,7 +12,10 @@ const activityLog = require('../activityLog');
  * @param {object} options - { payload, overrideProvider, history, category }
  */
 async function submitGoal(goal, options = {}) {
-  const tasks = await decompose(goal, options.payload, options.history, options.category);
+  const tasks = await decompose(goal, options.payload, options.history, options.category, options.departmentKey, options.agentKey);
+
+  if (tasks[0]?._mismatch) return tasks;
+
   const results = [];
 
   for (const task of tasks) {

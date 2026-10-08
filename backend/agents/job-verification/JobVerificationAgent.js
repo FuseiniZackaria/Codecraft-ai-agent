@@ -72,7 +72,7 @@ class JobVerificationAgent extends BaseAgent {
     let freshnessPoints;
     if (freshness.status === 'FRESH') freshnessPoints = MAX_POINTS.freshness;
     else if (freshness.status === 'ACCEPTABLE') freshnessPoints = Math.round(MAX_POINTS.freshness * 0.6);
-    else if (freshness.status === 'POSTING_DATE_UNKNOWN') freshnessPoints = Math.round(MAX_POINTS.freshness * 0.3);
+    else if (freshness.status === 'POSTING_DATE_UNKNOWN') freshnessPoints = Math.round(MAX_POINTS.freshness * 0.5);
     else freshnessPoints = 0; // STALE
 
     if (freshness.status === 'STALE') reasons.push(freshness.label);
@@ -133,9 +133,15 @@ class JobVerificationAgent extends BaseAgent {
     let jobListingPoints = 0;
     const applicationDomain = extractDomainFromUrl(opportunity.applicationUrl);
 
-    if (!opportunity.jobTitle || !opportunity.applicationUrl) {
-      reasons.push('Missing job title or application URL - cannot verify listing');
+    if (!opportunity.jobTitle) {
+      reasons.push('Missing job title - cannot verify listing');
       suspicious = true;
+    } else if (!opportunity.applicationUrl) {
+      // Missing application URL reduces score but does NOT trigger suspicious -
+      // the job title + company are enough to identify the listing; missing URL
+      // just means we can't auto-apply or verify the posting domain directly.
+      reasons.push('No application URL provided - auto-apply unavailable, listing scored conservatively');
+      jobListingPoints = Math.round(MAX_POINTS.jobListing * 0.3);
     } else if (companyDomain && domainsMatch(applicationDomain, companyDomain)) {
       // Strongest signal: application lives on the company's own domain
       // (their own careers page/portal) - matches the spec's source
@@ -154,9 +160,16 @@ class JobVerificationAgent extends BaseAgent {
     let contactStatus = 'UNKNOWN';
     let contactPoints = 0;
 
-    if (!opportunity.contactEmail) {
+    if (!opportunity.contactEmail && opportunity.applicationUrl) {
+      // Job board/portal listings: the applicationUrl IS the contact mechanism.
+      // No email is expected or needed - applying through the URL is how you
+      // reach this opportunity. Give full contact points so job board results
+      // aren't systematically penalised for something that doesn't apply to them.
+      contactStatus = 'APPLICATION_URL';
+      contactPoints = MAX_POINTS.contact;
+    } else if (!opportunity.contactEmail) {
       contactStatus = 'UNKNOWN';
-      reasons.push('No contact email provided - outreach cannot be sent to an unverified/invented contact');
+      reasons.push('No contact email or application URL provided - no way to reach this opportunity');
     } else if (!isValidEmailFormat(opportunity.contactEmail)) {
       contactStatus = 'INVALID';
       reasons.push(`Contact email "${opportunity.contactEmail}" is not a valid email format`);
@@ -178,10 +191,19 @@ class JobVerificationAgent extends BaseAgent {
     if (opportunity.jobDescription) {
       try {
         const provider = selectProvider({});
+        const p = config.applicant || {};
+        const applicantCtx = [
+          p.skills        && `Applicant skills: ${p.skills}`,
+          p.location      && `Applicant location: ${p.location}`,
+          p.yearsOfExperience && `Years of experience: ${p.yearsOfExperience}`,
+        ].filter(Boolean).join('\n');
+        const relevanceSystem = applicantCtx
+          ? `${applicantCtx}\n\nRate how well this job matches the applicant above, from 0-15. Output ONLY the integer — no words, no punctuation, no explanation.`
+          : `${businessContextLine()}Rate how relevant this job opportunity is, from 0-15. Output ONLY the integer — no words, no punctuation, no explanation.`;
         const result = await provider.complete({
-          system: `${businessContextLine()}Rate how relevant this job opportunity is, from 0-15. Respond with ONLY a number, no explanation.`,
+          system: relevanceSystem,
           prompt: `Job title: ${opportunity.jobTitle || 'unknown'}\nDescription: ${opportunity.jobDescription}`,
-          maxTokens: 10,
+          maxTokens: 100,
         });
         const parsed = parseInt(String(result.text).trim(), 10);
         if (!isNaN(parsed)) relevancePoints = Math.max(0, Math.min(MAX_POINTS.relevance, parsed));

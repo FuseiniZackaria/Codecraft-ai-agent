@@ -14,6 +14,7 @@ const TelegramAgent = require('./telegram/TelegramAgent');
 const ComputerOperatorAgent = require('./computer-operator/ComputerOperatorAgent');
 const BrowserAgent = require('./browser/BrowserAgent');
 const BriefingAgent = require('./briefing/BriefingAgent');
+const JobApplicationAgent = require('./job-application/JobApplicationAgent');
 
 const agents = {
   research: new ResearchAgent(),
@@ -32,6 +33,7 @@ const agents = {
   'computer-operator': new ComputerOperatorAgent(),
   browser: new BrowserAgent(),
   briefing: new BriefingAgent(),
+  'job-application': new JobApplicationAgent(),
 };
 
 function getAgent(name) {

@@ -54,7 +54,7 @@ export default function Dashboard() {
 
           {outreachPipelines.length > 0 && (
             <Link
-              to="/outreach"
+              to="/departments/sales/outreach"
               className="group flex items-center justify-between rounded-lg border border-[var(--color-border)] bg-[var(--color-surface)] p-4 hover:border-[var(--color-accent)]/40 transition-colors mt-3"
             >
               <div className="flex items-center gap-3">
@@ -84,7 +84,7 @@ export default function Dashboard() {
             ))}
           </div>
 
-          <h2 className="text-sm font-medium text-[var(--color-text-muted)] mb-3 mt-5">Model providers</h2>
+          <h2 className="text-sm font-medium text-[var(--color-text-muted)] mb-3 mt-5">Providers</h2>
           <div className="rounded-lg border border-[var(--color-border)] bg-[var(--color-surface)] p-4 flex flex-wrap gap-2">
             {summary.availableProviders.map((p) => (
               <StatusPill key={p} status={p === 'mock' ? 'pending' : 'done'} />

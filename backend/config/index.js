@@ -19,6 +19,18 @@ module.exports = {
     openaiKey: process.env.OPENAI_API_KEY || null,
     aiApiKey: process.env.AI_API_KEY || null,
   },
+  assistant: {
+    // Anthropic SDK key - fall back to AI_API_KEY so existing deployments
+    // keep working with no .env change.
+    apiKey: process.env.ANTHROPIC_API_KEY || process.env.AI_API_KEY || null,
+    model: process.env.ASSISTANT_MODEL || 'claude-sonnet-5-5',
+    maxTokens: Number(process.env.ASSISTANT_MAX_TOKENS) || 1024,
+    dailyUsdCap: Number(process.env.ASSISTANT_DAILY_USD_CAP ?? 5),
+    historyLimit: Number(process.env.ASSISTANT_HISTORY_LIMIT) || 30,
+    name: process.env.ASSISTANT_NAME || 'Ian',
+    nameVariations: (process.env.ASSISTANT_NAME_VARIATIONS || 'Ian,Ean,Ion,Eon,Ayan,Iain,Jan')
+      .split(',').map((s) => s.trim()).filter(Boolean),
+  },
   supabase: {
     url: process.env.SUPABASE_URL || null,
     serviceKey: process.env.SUPABASE_SERVICE_KEY || null,
@@ -197,4 +209,30 @@ module.exports = {
     // Set to 'false' in .env if you want to watch it work in real time.
     headless: process.env.BROWSER_HEADLESS !== 'false',
   },
+  // Applicant profile used when auto-applying for jobs via the browser.
+  // Set these in .env - none are required but the more you fill in the
+  // better the auto-apply field mapping will be.
+  applicant: {
+    fullName:           process.env.APPLICANT_FULL_NAME           || '',
+    email:              process.env.APPLICANT_EMAIL               || '',
+    phone:              process.env.APPLICANT_PHONE               || '',
+    linkedinUrl:        process.env.APPLICANT_LINKEDIN_URL        || '',
+    portfolioUrl:       process.env.APPLICANT_PORTFOLIO_URL       || '',
+    location:           process.env.APPLICANT_LOCATION            || '',
+    yearsOfExperience:  process.env.APPLICANT_YEARS_EXPERIENCE    || '',
+    skills:             process.env.APPLICANT_SKILLS              || '',
+    // A short paragraph used as the cover letter when a form asks for one.
+    coverLetter:        process.env.APPLICANT_COVER_LETTER        || '',
+  },
+    cors: {
+    // Comma-separated list of exact origins allowed to call this API from
+    // a browser. Update this env var (no code change needed) once you know
+    // your real Vercel URL, and again later when you attach a custom
+    // domain - just add it to the list, don't replace what's already there.
+    allowedOrigins: process.env.CORS_ALLOWED_ORIGINS
+      ? process.env.CORS_ALLOWED_ORIGINS.split(',').map((s) => s.trim()).filter(Boolean)
+      : ['http://localhost:5173'],
+  },
+
+
 };

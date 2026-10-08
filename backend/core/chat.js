@@ -13,6 +13,13 @@ function isRememberIntent(message) {
   return REMEMBER_TRIGGERS.some((t) => lower.includes(t));
 }
 
+const RERUN_TRIGGERS = ['rerun', 'run again', 'do it again', 'try again', 'redo', 'repeat that', 'run it again', 'do that again', 'retry'];
+
+function isRerunIntent(message) {
+  const lower = message.toLowerCase().trim();
+  return RERUN_TRIGGERS.some((t) => lower === t || lower.startsWith(t + ' ') || lower.startsWith(t + ','));
+}
+
 async function factsLine() {
   const facts = await store.getFacts();
   if (!facts.length) return '';
@@ -116,6 +123,27 @@ async function handleMessage(message, history = [], attachments = []) {
   if (isRememberIntent(message)) {
     await store.addFact(message);
     return { reply: `Got it — I'll remember that.`, actionable: false, task: null, remembered: true };
+  }
+
+  if (isRerunIntent(message)) {
+    // Find the last user message in history that wasn't itself a rerun command
+    const lastGoal = [...history].reverse().find(
+      (h) => h.role === 'user' && !isRerunIntent(h.content)
+    )?.content;
+
+    if (lastGoal) {
+      const { category: lastCategory, isActionable: lastActionable } = await classifyIntent(lastGoal, []);
+      if (lastActionable) {
+        console.log(`[chat] rerun detected — repeating: "${lastGoal.slice(0, 60)}"`);
+        const [task] = await orchestrator.submitGoal(lastGoal, { history, category: lastCategory });
+        return { reply: describeTaskOutcome(task), actionable: true, task };
+      }
+    }
+    return {
+      reply: `I'm not sure what to rerun — try repeating your original request directly.`,
+      actionable: false,
+      task: null,
+    };
   }
 
   const { category, isActionable } = await classifyIntent(message, history);

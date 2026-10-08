@@ -47,6 +47,12 @@ const STAGES = {
   CALL_SCHEDULED: 'call_scheduled',
   REJECTED_VERIFICATION: 'rejected_verification',
   REJECTED_CONTACT: 'rejected_contact',
+  // Auto-apply stages (run in parallel with / instead of email outreach
+  // when the opportunity has a direct applicationUrl)
+  APPLICATION_ANALYZING: 'application_analyzing',
+  APPLICATION_AWAITING_APPROVAL: 'application_awaiting_approval',
+  APPLICATION_SUBMITTED: 'application_submitted',
+  APPLICATION_SKIPPED: 'application_skipped',
 };
 
 const MODES = {
@@ -163,10 +169,19 @@ async function processOpportunity(opportunity, options = {}) {
   const verification = await jobVerificationAgent.verify({ ...opportunity, id: pipelineId });
 
   const meetsThreshold = verification.score >= config.outreach.verificationThreshold;
+  // VERIFIED (75+): can proceed to both email outreach AND auto-apply.
+  // NEEDS_REVIEW with applicationUrl: allow apply-only path at a lower bar -
+  // applying through a job board URL is much lower risk than cold emailing,
+  // and the approval gate on applyForJob protects the user regardless.
+  const isApplyOnly = opportunity.applicationUrl &&
+    verification.status === 'NEEDS_REVIEW' &&
+    verification.score >= Math.max(50, config.outreach.verificationThreshold - 20);
   const statusAllowed =
-    verification.status === 'VERIFIED' || (verification.status === 'LIKELY_CURRENT' && config.outreach.allowLikelyCurrent);
+    verification.status === 'VERIFIED' ||
+    (verification.status === 'LIKELY_CURRENT' && config.outreach.allowLikelyCurrent) ||
+    isApplyOnly;
 
-  if (!statusAllowed || !meetsThreshold) {
+  if (!statusAllowed || !meetsThreshold && !isApplyOnly) {
     state = { ...state, stage: STAGES.REJECTED_VERIFICATION, verification };
     record = await persist(pipelineId, state);
     return record;
@@ -175,8 +190,45 @@ async function processOpportunity(opportunity, options = {}) {
   state = { ...state, stage: STAGES.VERIFIED, verification };
   record = await persist(pipelineId, state);
 
-  // Manual mode stops here - verification only, nothing drafted or sent
-  // until the person manually triggers the next step themselves.
+  // --- Auto-apply (runs for all modes when applicationUrl is present) ---
+  // Independent of the email-outreach path below: if there's a direct
+  // application URL we attempt to pre-fill and queue an approval task for it
+  // right now, regardless of whether we also do email outreach. The two
+  // paths are complementary - apply directly AND/OR reach out by email.
+  if (opportunity.applicationUrl) {
+    try {
+      state = { ...state, stage: STAGES.APPLICATION_ANALYZING };
+      record = await persist(pipelineId, state);
+
+      const { getAgent } = require('../agents/registry');
+      const jobApplicationAgent = getAgent('job-application');
+      const applyResult = await jobApplicationAgent.applyForOpportunity(opportunity);
+
+      if (applyResult.status === 'awaiting_approval') {
+        state = {
+          ...state,
+          stage: STAGES.APPLICATION_AWAITING_APPROVAL,
+          applyApprovalTaskId: applyResult.approvalTaskId,
+          applyFieldsCount: applyResult.fieldsCount,
+        };
+      } else {
+        // skipped or error - record why but don't fail the whole pipeline
+        state = {
+          ...state,
+          stage: STAGES.APPLICATION_SKIPPED,
+          applySkipReason: applyResult.reason,
+        };
+      }
+      record = await persist(pipelineId, state);
+    } catch (err) {
+      console.warn(`[outreachPipeline] auto-apply failed for "${opportunity.company}": ${err.message}`);
+      state = { ...state, stage: STAGES.APPLICATION_SKIPPED, applySkipReason: err.message };
+      record = await persist(pipelineId, state);
+    }
+  }
+
+  // Manual mode stops here - verification (+ any auto-apply queued above)
+  // done; nothing drafted or sent until the person manually triggers next step.
   if (mode === MODES.MANUAL) {
     return record;
   }

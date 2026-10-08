@@ -57,7 +57,7 @@ function DailyCostChart({ series }) {
 function CostByAgentBars({ costByAgent }) {
   const entries = Object.entries(costByAgent).sort(([, a], [, b]) => b - a);
   if (!entries.length) {
-    return <div className="text-sm text-[var(--color-text-muted)] py-4 text-center">No LLM activity in this range yet.</div>;
+    return <div className="text-sm text-[var(--color-text-muted)] py-4 text-center">No activity in this range yet.</div>;
   }
   const max = Math.max(...entries.map(([, v]) => v), 0.0001);
   return (
@@ -156,7 +156,7 @@ export default function Analytics() {
         <>
           <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-6">
             <StatCard label="Total cost" value={formatCurrency(summary.totalCost)} accent />
-            <StatCard label="LLM calls" value={summary.totalLlmCalls} />
+            <StatCard label="Requests" value={summary.totalLlmCalls} />
             <StatCard label="Task success rate" value={formatPercent(summary.successRate)} />
             <StatCard label="Avg. task duration" value={formatDuration(summary.avgDurationMs)} />
           </div>

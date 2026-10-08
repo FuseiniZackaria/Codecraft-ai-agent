@@ -1,9 +1,15 @@
+import { supabase } from './supabaseClient';
+
 const BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:4000/api';
 const BROWSER_TOKEN = import.meta.env.VITE_BROWSER_EXTENSION_TOKEN || null;
 
 async function request(path, options = {}) {
+  const { data: { session } } = await supabase.auth.getSession();
+  const headers = { 'Content-Type': 'application/json' };
+  if (session?.access_token) headers['Authorization'] = `Bearer ${session.access_token}`;
+
   const res = await fetch(`${BASE_URL}${path}`, {
-    headers: { 'Content-Type': 'application/json' },
+    headers,
     ...options,
   });
   if (!res.ok) {
@@ -45,6 +51,7 @@ async function browserPost(path, body) {
 
 export const api = {
   getDashboardSummary: () => request('/dashboard/summary'),
+  getMe: () => request('/me'),
   getAgents: () => request('/agents'),
   getTasks: () => request('/tasks'),
   getTask: (id) => request(`/tasks/${id}`),
@@ -53,13 +60,62 @@ export const api = {
       method: 'POST',
       body: JSON.stringify({ goal, payload, overrideProvider }),
     }),
+  submitDepartmentGoal: (goal, departmentKey, agentKey) =>
+    request('/orchestrator/goal', {
+      method: 'POST',
+      body: JSON.stringify({ goal, departmentKey, agentKey }),
+    }),
   approveTask: (id) => request(`/tasks/${id}/approve`, { method: 'POST' }),
   rejectTask: (id) => request(`/tasks/${id}/reject`, { method: 'POST' }),
   updateTaskPayload: (id, payload) =>
     request(`/tasks/${id}/payload`, { method: 'PATCH', body: JSON.stringify({ payload }) }),
   deleteTask: (id) => request(`/tasks/${id}`, { method: 'DELETE' }),
+  bulkDeleteTasks: (ids) => request('/tasks/bulk-delete', { method: 'POST', body: JSON.stringify({ ids }) }),
+  markAllTasksRead: () => request('/tasks/mark-all-read', { method: 'POST' }),
   chat: (message, history, attachments) =>
     request('/chat', { method: 'POST', body: JSON.stringify({ message, history, attachments }) }),
+  chatStream: async (message, { scope = null, attachments = [], voice = false, onEvent, signal }) => {
+    const { data: { session } } = await supabase.auth.getSession();
+    const headers = { 'Content-Type': 'application/json', Accept: 'text/event-stream' };
+    if (session?.access_token) headers['Authorization'] = `Bearer ${session.access_token}`;
+
+    const res = await fetch(`${BASE_URL}/chat/stream`, {
+      method: 'POST',
+      headers,
+      body: JSON.stringify({ message, scope, attachments, voice }),
+      signal,
+    });
+    if (!res.ok) {
+      const body = await res.json().catch(() => ({}));
+      throw new Error(body.error || `Stream failed: ${res.status}`);
+    }
+    const reader = res.body.getReader();
+    const decoder = new TextDecoder();
+    let buffer = '';
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      buffer += decoder.decode(value, { stream: true });
+      const parts = buffer.split('\n\n');
+      buffer = parts.pop();
+      for (const part of parts) {
+        const line = part.split('\n').find((l) => l.startsWith('data: '));
+        if (!line) continue;
+        try {
+          const event = JSON.parse(line.slice(6));
+          onEvent?.(event);
+          if (event.type === 'done' || event.type === 'error') return event;
+        } catch {}
+      }
+    }
+    return { type: 'done', task_ids: [] };
+  },
+  getAssistantUsage: () => request('/assistant/usage'),
+  getPublicConfig: async () => {
+    const res = await fetch(`${BASE_URL}/public-config`);
+    if (!res.ok) throw new Error(`Public config failed: ${res.status}`);
+    return res.json();
+  },
   getGmailStatus: () => request('/composio/gmail/status'),
   getRedditStatus: () => request('/composio/reddit/status'),
   getWhatsappStatus: () => request('/composio/whatsapp/status'),
@@ -68,6 +124,11 @@ export const api = {
    getGooglecalendarStatus: () => request('/composio/googlecalendar/status'),
   getRecentEvents: (limit = 200) => request(`/events/recent?limit=${limit}`),
   eventsStreamUrl: () => `${BASE_URL}/events/stream`,
+  getEventsStreamUrl: async () => {
+    const { data: { session } } = await supabase.auth.getSession();
+    const token = session?.access_token || '';
+    return `${BASE_URL}/events/stream${token ? `?token=${encodeURIComponent(token)}` : ''}`;
+  },
 
   // --- Universal Skill Installer ---
   listSkills: () => request('/skills'),
@@ -130,16 +191,24 @@ export const DEMO = {
       { actor: 'orchestrator', action: 'approval_required', target: 'gmail.sendEmail', at: new Date(Date.now() - 1000 * 60 * 5).toISOString() },
     ],
   },
+  agentSections: [
+    { key: 'sales',       label: 'Sales Manager',                      icon: 'TrendingUp'    },
+    { key: 'marketing',   label: 'Marketing & Content',                 icon: 'Megaphone'     },
+    { key: 'support',     label: 'Customer Support & Communication',    icon: 'Headphones'    },
+    { key: 'strategy',    label: 'Strategy & Research',                 icon: 'Compass'       },
+    { key: 'development', label: 'Development & Operations',            icon: 'Code2'         },
+    { key: 'other',       label: 'Other',                               icon: 'MoreHorizontal'},
+  ],
   agents: [
-    { key: 'research', role: 'Research Agent', goals: ['Gather accurate, relevant information for other agents and the user'], tools: ['gmail.readInbox', 'websearch.search'] },
-    { key: 'personal-assistant', role: 'Personal Assistant Agent', goals: ['Keep the inbox triaged - draft replies to what genuinely needs one, leave the rest'], tools: ['gmail.readInbox', 'gmail.replyToThread'] },
-    { key: 'sales', role: 'Sales Agent', goals: ['Move qualified leads toward a close with relevant, personalized outreach'], tools: ['websearch.search', 'gmail.sendEmail', 'reddit.postComment'] },
-    { key: 'whatsapp', role: 'WhatsApp Agent', goals: ['Draft timely, on-brand replies to incoming customer messages for human approval'], tools: ['whatsapp.sendMessage'] },
-    { key: 'support', role: 'Customer Support Agent', goals: ['Resolve customer questions and issues clearly and quickly'], tools: ['gmail.sendEmail'] },
-    { key: 'marketing', role: 'Marketing Agent', goals: ['Draft compelling, on-brand marketing content - social posts, ad copy, campaigns'], tools: ['websearch.search'] },
-    { key: 'ceo', role: 'CEO Agent', goals: ['Think through strategy, priorities, and tradeoffs like a co-founder would'], tools: ['websearch.search'] },
-    { key: 'coding', role: 'Coding Agent', goals: ['Build real, working websites and small systems from a plain-language request'], tools: ['filesystem.writeFile', 'filesystem.listFiles', 'filesystem.zipProject'] },
-    { key: 'content-studio', role: 'Content Studio Agent', goals: ['Turn one idea into a complete, ready-to-use content package: research, strategy, scripts, captions, hashtags'], tools: ['websearch.search'] },
+    { key: 'research',          section: 'strategy',    description: 'Looks up information and answers questions through a focused web search.',               role: 'Research Agent',           goals: ['Gather accurate, relevant information for other agents and the user'],                    tools: ['websearch.search'],                                        backgroundJobs: [] },
+    { key: 'personal-assistant',section: 'support',     description: 'Triages the Gmail inbox and drafts replies to messages that need a response.',           role: 'Personal Assistant Agent', goals: ['Keep the inbox triaged - draft replies to what genuinely needs one, leave the rest'],   tools: ['gmail.readInbox', 'gmail.replyToThread'],                  backgroundJobs: [] },
+    { key: 'sales',             section: 'sales',       description: 'Finds job leads, drafts personalised outreach emails, and manages the pipeline.',        role: 'Sales Agent',              goals: ['Move qualified leads toward a close with relevant, personalised outreach'],              tools: ['websearch.search', 'gmail.sendEmail', 'reddit.postComment'],backgroundJobs: [{ name: 'Queues follow-up emails (Day 4, 10 and 21)', intervalMinutes: 0, enabled: false }] },
+    { key: 'whatsapp',          section: 'support',     description: 'Sends WhatsApp messages to contacts on your behalf.',                                    role: 'WhatsApp Agent',           goals: ['Draft timely, on-brand replies to incoming customer messages for human approval'],       tools: ['whatsapp.sendMessage'],                                    backgroundJobs: [] },
+    { key: 'support',           section: 'support',     description: 'Drafts replies to individual customer questions, complaints, and issues.',               role: 'Customer Support Agent',   goals: ['Resolve customer questions and issues clearly and quickly'],                            tools: ['gmail.sendEmail'],                                         backgroundJobs: [] },
+    { key: 'marketing',         section: 'marketing',   description: 'Drafts individual pieces of marketing content — emails, social posts, and ads.',         role: 'Marketing Agent',          goals: ['Draft compelling, on-brand marketing content - social posts, ad copy, campaigns'],      tools: ['websearch.search'],                                        backgroundJobs: [] },
+    { key: 'ceo',               section: 'strategy',    description: 'Gives real recommendations on business strategy, priorities, and tradeoffs.',            role: 'CEO Agent',                goals: ['Think through strategy, priorities, and tradeoffs like a co-founder would'],             tools: ['websearch.search'],                                        backgroundJobs: [] },
+    { key: 'coding',            section: 'development', description: 'Builds websites, apps, and systems by writing real files into a workspace.',             role: 'Coding Agent',             goals: ['Build real, working websites and small systems from a plain-language request'],          tools: ['filesystem.writeFile', 'filesystem.listFiles', 'filesystem.zipProject'], backgroundJobs: [] },
+    { key: 'content-studio',    section: 'marketing',   description: 'Turns one idea into a full content package: research, campaign strategy, scripts, captions, hashtags.', role: 'Content Studio Agent', goals: ['Turn one idea into a complete, ready-to-use content package: research, strategy, scripts, captions, hashtags'], tools: ['websearch.search'], backgroundJobs: [] },
   ],
   tasks: [
     {

@@ -40,6 +40,11 @@ class MemoryStore {
     return this.tasks.delete(id);
   }
 
+  async markAllTasksRead() {
+    for (const task of this.tasks.values()) task.read = true;
+    return true;
+  }
+
   // --- Agent memory (per-agent scratchpad) ---
   async remember(agentName, entry) {
     if (!this.agentMemory.has(agentName)) this.agentMemory.set(agentName, []);
@@ -154,6 +159,18 @@ class MemoryStore {
 
   async listChatMessages(limit = 200) {
     return this.chatMessages ? this.chatMessages.slice(-limit) : [];
+  }
+
+  // --- Assistant daily usage (soft cost cap) ---
+  async getAssistantUsage(day) {
+    if (!this.assistantUsage) this.assistantUsage = new Map();
+    return this.assistantUsage.get(day) || null;
+  }
+
+  async upsertAssistantUsage(day, row) {
+    if (!this.assistantUsage) this.assistantUsage = new Map();
+    this.assistantUsage.set(day, { day, ...row });
+    return true;
   }
 
   // --- Workflow definitions (graph-based workflow engine, Phase 1) ---

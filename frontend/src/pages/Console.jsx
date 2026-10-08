@@ -4,6 +4,7 @@ import {
   ThumbsUp, ThumbsDown, ListTree, Puzzle, Clock, Trash2, Pause,
 } from 'lucide-react';
 import { api } from '../services/api';
+import { createResilientEventSource } from '../services/resilientEventSource';
 
 const ACTION_META = {
   task_queued: { icon: Clock, color: 'text-[var(--color-text-muted)]', label: 'queued' },
@@ -120,22 +121,18 @@ export default function Console() {
       if (!cancelled) addEvents(recent);
     }).catch(() => {});
 
-    const es = new EventSource(api.eventsStreamUrl());
-    esRef.current = es;
-    es.onopen = () => setStatus('live');
-    es.onerror = () => setStatus('error');
-    es.onmessage = (msg) => {
-      if (!liveRef.current) return; // paused - drop new events until resumed
-      try {
-        addEvents([JSON.parse(msg.data)]);
-      } catch {
-        // ignore malformed/comment lines
-      }
-    };
+    const conn = createResilientEventSource(
+      api.getEventsStreamUrl,
+      (msg) => {
+        if (!liveRef.current) return;
+        try { addEvents([JSON.parse(msg.data)]); } catch {}
+      },
+      (s) => setStatus(s === 'live' ? 'live' : 'error'),
+    );
 
     return () => {
       cancelled = true;
-      es.close();
+      conn.close();
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);

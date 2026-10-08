@@ -12,7 +12,7 @@ async function main() {
   };
 
   const twilio = require('../core/whatsappTwilio');
-  await twilio.sendMessage('+233549440550', 'Hello from the test');
+  await twilio.sendMessage('+233000000000', 'Hello from the test');
 
   assert.strictEqual(capturedRequest.url, 'https://api.twilio.com/2010-04-01/Accounts/ACtest123/Messages.json');
   assert.strictEqual(capturedRequest.options.method, 'POST');
@@ -23,7 +23,7 @@ async function main() {
   const decoded = decodeURIComponent(capturedRequest.options.body.toString().replace(/\+/g, ' '));
   assert(decoded.includes('Body=Hello from the test'), 'body should include the message text');
   assert(decoded.includes('From=whatsapp:+14155238886'), 'From should default to the sandbox number with whatsapp: prefix');
-  assert(decoded.includes('To=whatsapp:+233549440550'), 'To should be normalized with whatsapp: prefix');
+  assert(decoded.includes('To=whatsapp:+233000000000'), 'To should be normalized with whatsapp: prefix');
   assert(!decoded.trim().startsWith('{'), 'body must be form-encoded, not JSON - this is what Twilio actually requires');
   console.log('✓ Twilio client produces the exact real API request shape (URL, auth, form-encoded body)');
 

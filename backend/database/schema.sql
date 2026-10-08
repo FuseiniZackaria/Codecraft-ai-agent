@@ -239,3 +239,13 @@ create unique index briefing_articles_dedup_idx on briefing_articles (workflow_g
 
 alter table scheduled_workflows add column deliver_whatsapp_enabled boolean not null default false;
 alter table scheduled_workflows add column deliver_whatsapp_to text;
+
+alter table tasks add column if not exists read boolean not null default false;
+
+create table if not exists assistant_usage_daily (
+  day text primary key,                -- YYYY-MM-DD (server-local)
+  usd numeric not null default 0,
+  input_tokens integer not null default 0,
+  output_tokens integer not null default 0,
+  updated_at timestamptz not null default now()
+);

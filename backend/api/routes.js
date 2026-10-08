@@ -4,12 +4,21 @@ const memory = require('../memory');
 const toolRegistry = require('../tools/ToolRegistry');
 const composio = require('../core/composio');
 const chat = require('../core/chat');
+const { runAssistant } = require('../core/assistant');
+const assistantUsage = require('../core/assistant/usage');
 const whatsappProvider = require('../core/whatsappProvider');
 const telegramProvider = require('../core/telegramProvider');
 const { agents } = require('../agents/registry');
 const { availableProviders } = require('../core/router');
-const { computeDashboardStats } = require('../core/briefing/dashboardStats');
+const { goalSubmissionLimiter } = require('../core/rateLimits');
+const config = require('../config');
+const { sections: agentSectionList, agentMeta, backgroundJobs: agentBgJobs } = require('../config/agentSections');
 const router = express.Router();
+
+function resolveConfigPath(dotPath) {
+  return dotPath.split('.').reduce((obj, key) => obj?.[key], config) ?? 0;
+}
+
 
 // Lightweight connectivity check - actually calls a cheap Gmail action rather
 // than guessing at Composio's connection-listing API shape, so "connected"
@@ -63,6 +72,102 @@ router.get('/chat/history', async (req, res) => {
   try {
     const limit = Math.min(Number(req.query.limit) || 200, 500);
     res.json(await memory.listChatMessages(limit));
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// Streaming conversational endpoint - one SSE connection per message, closed
+// on done. Falls back to the keyword-classifier chat.handleMessage() if the
+// Assistant can't run (daily cap hit, no API key, SDK error).
+router.post('/chat/stream', async (req, res) => {
+  const { message, scope, attachments, voice } = req.body || {};
+  if (!message && !(attachments || []).length) {
+    return res.status(400).json({ error: '"message" or an attachment is required' });
+  }
+
+  res.setHeader('Content-Type', 'text/event-stream');
+  res.setHeader('Cache-Control', 'no-cache');
+  res.setHeader('Connection', 'keep-alive');
+  res.setHeader('X-Accel-Buffering', 'no');
+  res.flushHeaders?.();
+
+  const send = (event) => {
+    try { res.write(`data: ${JSON.stringify(event)}\n\n`); } catch {}
+  };
+
+  // Attachments still go through the legacy multimodal path - the Assistant
+  // module doesn't accept files yet. Short-circuit here, return as one chunk.
+  if ((attachments || []).length) {
+    try {
+      const result = await chat.handleMessage(message || '', [], attachments);
+      send({ type: 'text_delta', text: result.reply });
+      await persistTurn(message || '', attachments, result.reply, result.task?.id || null);
+      send({ type: 'done', task_ids: result.task ? [result.task.id] : [], fallback: 'attachments' });
+    } catch (err) {
+      send({ type: 'error', error: err.message });
+    }
+    return res.end();
+  }
+
+  let accumulated = '';
+  const tasksForTurn = [];
+
+  try {
+    const result = await runAssistant({
+      message,
+      scope: scope || null,
+      voice: !!voice,
+      onEvent: (event) => {
+        if (event.type === 'text_delta') accumulated += event.text;
+        if (event.type === 'tool_end' && event.result?.task_id) tasksForTurn.push(event.result.task_id);
+        send(event);
+      },
+    });
+    accumulated = accumulated || result.reply;
+    for (const id of result.taskIds) if (!tasksForTurn.includes(id)) tasksForTurn.push(id);
+    await persistTurn(message, [], accumulated, tasksForTurn[0] || null);
+    send({ type: 'done', task_ids: tasksForTurn, usage: result.usage });
+  } catch (err) {
+    const isCap = err.code === 'DAILY_CAP_REACHED';
+    if (isCap) {
+      send({ type: 'notice', text: 'Daily spend cap reached - using fallback routing until midnight.' });
+    } else {
+      console.warn(`[chat/stream] assistant failed, falling back: ${err.message}`);
+      send({ type: 'notice', text: 'Smart mode unavailable - using fallback routing.' });
+    }
+    try {
+      const history = await memory.listChatMessages(30);
+      const historyForFallback = history
+        .filter((m) => m.content && m.content.trim().length > 0)
+        .map((m) => ({ role: m.role, content: m.content }));
+      const result = await chat.handleMessage(message, historyForFallback, []);
+      send({ type: 'text_delta', text: result.reply });
+      await persistTurn(message, [], result.reply, result.task?.id || null);
+      send({ type: 'done', task_ids: result.task ? [result.task.id] : [], fallback: isCap ? 'daily_cap' : 'assistant_error' });
+    } catch (fallbackErr) {
+      send({ type: 'error', error: fallbackErr.message });
+    }
+  }
+
+  res.end();
+});
+
+async function persistTurn(userMessage, attachments, assistantReply, taskId) {
+  const attachmentNames = (attachments || []).map((a) => a.name).filter(Boolean);
+  const userContent =
+    userMessage || (attachmentNames.length ? `Sent ${attachmentNames.length === 1 ? attachmentNames[0] : `${attachmentNames.length} files`}` : '');
+  try {
+    await memory.addChatMessage({ role: 'user', content: userContent, attachmentNames });
+    await memory.addChatMessage({ role: 'assistant', content: assistantReply, taskId });
+  } catch (err) {
+    console.warn(`[chat/stream] persist failed: ${err.message}`);
+  }
+}
+
+router.get('/assistant/usage', async (req, res) => {
+  try {
+    res.json(await assistantUsage.getDaily(memory));
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
@@ -130,12 +235,13 @@ router.get('/composio/telegram/status', async (req, res) => {
 });
 
 // Submit a new high-level goal
-router.post('/orchestrator/goal', async (req, res) => {
-  const { goal, payload, overrideProvider } = req.body;
+router.post('/orchestrator/goal', goalSubmissionLimiter, async (req, res) => {
+  const { goal, payload, overrideProvider, departmentKey, agentKey } = req.body;
   if (!goal) return res.status(400).json({ error: '"goal" is required' });
 
   try {
-    const results = await orchestrator.submitGoal(goal, { payload, overrideProvider });
+    const results = await orchestrator.submitGoal(goal, { payload, overrideProvider, departmentKey, agentKey });
+    if (results[0]?._mismatch) return res.json(results[0]);
     res.json({ tasks: results });
   } catch (err) {
     res.status(500).json({ error: err.message });
@@ -165,6 +271,35 @@ router.delete('/tasks/:id', async (req, res) => {
   try {
     await memory.deleteTask(req.params.id);
     res.json({ deleted: true });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+router.post('/tasks/bulk-delete', async (req, res) => {
+  const { ids } = req.body;
+  if (!Array.isArray(ids) || ids.length === 0) {
+    return res.status(400).json({ error: 'ids must be a non-empty array' });
+  }
+  console.log(`[bulk-delete] Deleting ${ids.length} tasks`);
+  let deleted = 0;
+  const errors = [];
+  for (const id of ids) {
+    try {
+      await memory.deleteTask(id);
+      deleted++;
+    } catch (err) {
+      errors.push({ id, error: err.message });
+    }
+  }
+  console.log(`[bulk-delete] Done: ${deleted} deleted, ${errors.length} failed${errors.length ? ` — first error: ${errors[0].error}` : ''}`);
+  res.json({ deleted, failed: errors.length, errors });
+});
+
+router.post('/tasks/mark-all-read', async (req, res) => {
+  try {
+    await memory.markAllTasksRead();
+    res.json({ ok: true });
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
@@ -207,14 +342,28 @@ router.post('/tasks/:id/reject', async (req, res) => {
   }
 });
 
-// Agents
+// Agents — returns sections metadata alongside the agent list so the
+// frontend can render grouped sections without its own copy of the config.
 router.get('/agents', (req, res) => {
-  res.json(Object.entries(agents).map(([key, agent]) => ({
-    key,
-    role: agent.role,
-    goals: agent.goals,
-    tools: agent.tools,
-  })));
+  const agentList = Object.entries(agents).map(([key, agent]) => {
+    const meta = agentMeta[key] || { section: 'other', description: '' };
+    const jobs = agentBgJobs
+      .filter((j) => j.agentKey === key)
+      .map((j) => {
+        const intervalMinutes = resolveConfigPath(j.configKey);
+        return { name: j.name, intervalMinutes, enabled: intervalMinutes > 0 };
+      });
+    return {
+      key,
+      role: agent.role,
+      goals: agent.goals,
+      tools: agent.tools,
+      section: meta.section,
+      description: meta.description,
+      backgroundJobs: jobs,
+    };
+  });
+  res.json({ sections: agentSectionList, agents: agentList });
 });
 
 // Dashboard summary
@@ -239,19 +388,7 @@ router.get('/dashboard/summary', async (req, res) => {
   }
 });
 
-// Political intelligence dashboard - aggregated stats for one specific
-// recurring briefing, identified by its exact goal text (same key
-// briefing_runs/briefing_articles already use).
-router.get('/dashboard/briefing', async (req, res) => {
-  try {
-    const goal = req.query.goal;
-    if (!goal) return res.status(400).json({ error: '"goal" query parameter is required' });
-    const articles = await memory.getBriefingArticles(goal, { sinceDays: 14 });
-    res.json(computeDashboardStats(articles));
-  } catch (err) {
-    res.status(500).json({ error: err.message });
-  }
-});
+
 
 module.exports = router;
 

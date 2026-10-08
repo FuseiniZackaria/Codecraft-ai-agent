@@ -2,7 +2,7 @@ import { useEffect, useState, useRef } from 'react';
 import { Zap, X, ChevronDown, ChevronUp, Terminal, BookOpen } from 'lucide-react';
 import { api } from '../services/api';
 
-const POLL_INTERVAL_MS = 5000;
+const POLL_INTERVAL_MS = 30000;
 
 export default function ConnectorPrompt() {
   const [prompt, setPrompt] = useState(null);
@@ -38,10 +38,22 @@ export default function ConnectorPrompt() {
     }
 
     poll();
-    const interval = setInterval(poll, POLL_INTERVAL_MS);
+    let interval = setInterval(poll, POLL_INTERVAL_MS);
+
+    function onVisibility() {
+      if (document.visibilityState === 'hidden') {
+        clearInterval(interval);
+        interval = null;
+      } else {
+        poll();
+        if (!interval) interval = setInterval(poll, POLL_INTERVAL_MS);
+      }
+    }
+    document.addEventListener('visibilitychange', onVisibility);
     return () => {
       cancelled = true;
       clearInterval(interval);
+      document.removeEventListener('visibilitychange', onVisibility);
     };
   }, []);
 

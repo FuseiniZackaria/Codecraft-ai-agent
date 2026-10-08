@@ -68,19 +68,14 @@ function ResearchCard({ task }) {
   );
 }
 
-export default function Research() {
+export default function Research({ embedded } = {}) {
   const { tasks } = useStore();
   const researchTasks = tasks
     .filter((t) => t.agent === 'research' && t.status === 'done')
     .sort((a, b) => new Date(b.created_at) - new Date(a.created_at));
 
-  return (
-    <div className="p-6 max-w-4xl">
-      <h1 className="font-[var(--font-display)] text-xl font-semibold mb-1">Research</h1>
-      <p className="text-sm text-[var(--color-text-muted)] mb-6">
-        Findings, leads, and competitor research the Research Agent has produced.
-      </p>
-
+  const content = (
+    <>
       {researchTasks.length === 0 ? (
         <div className="rounded-lg border border-dashed border-[var(--color-border)] bg-[var(--color-surface)] p-12 flex flex-col items-center text-center gap-3">
           <div className="w-11 h-11 rounded-md bg-[var(--color-accent-dim)] flex items-center justify-center">
@@ -98,6 +93,18 @@ export default function Research() {
           ))}
         </div>
       )}
+    </>
+  );
+
+  if (embedded) return content;
+
+  return (
+    <div className="p-6 max-w-4xl">
+      <h1 className="font-[var(--font-display)] text-xl font-semibold mb-1">Research</h1>
+      <p className="text-sm text-[var(--color-text-muted)] mb-6">
+        Findings, leads, and competitor research the Research Agent has produced.
+      </p>
+      {content}
     </div>
   );
 }

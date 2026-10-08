@@ -7,7 +7,7 @@ const REJECTED_STAGES = ['rejected_verification', 'rejected_contact'];
 const IN_PROGRESS_STAGES = ['discovered', 'verification', 'verified', 'contact_found', 'outreach_drafted', 'awaiting_approval'];
 const RESPONDED_STAGES = ['response_received', 'call_requested'];
 
-export default function JobOutreach() {
+export default function JobOutreach({ embedded } = {}) {
   const tasks = useStore((s) => s.tasks);
 
   const pipelines = useMemo(
@@ -41,12 +41,8 @@ export default function JobOutreach() {
     [pipelines]
   );
 
-  return (
-    <div className="p-6 max-w-5xl">
-      <h1 className="font-[var(--font-display)] text-xl font-semibold mb-1">Job Outreach</h1>
-      <p className="text-sm text-[var(--color-text-muted)] mb-6">
-        Every opportunity that's gone through verification, outreach, and scheduling.
-      </p>
+  const content = (
+    <>
 
       <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-8">
         <StatCard label="Total processed" value={counts.total} />
@@ -129,6 +125,18 @@ export default function JobOutreach() {
           </div>
         )}
       </div>
+    </>
+  );
+
+  if (embedded) return content;
+
+  return (
+    <div className="p-6 max-w-5xl">
+      <h1 className="font-[var(--font-display)] text-xl font-semibold mb-1">Job Outreach</h1>
+      <p className="text-sm text-[var(--color-text-muted)] mb-6">
+        Every opportunity that's gone through verification, outreach, and scheduling.
+      </p>
+      {content}
     </div>
   );
 }

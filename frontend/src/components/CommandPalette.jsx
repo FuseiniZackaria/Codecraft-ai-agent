@@ -1,15 +1,15 @@
 import { useEffect, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { LayoutDashboard, Bot, ListChecks, Puzzle, MessageSquare, Workflow, Send, Search, Terminal, Package } from 'lucide-react';
+import { LayoutDashboard, Building2, ListChecks, Puzzle, MessageSquare, Workflow, Send, Search, Terminal, Package } from 'lucide-react';
 import { useStore } from '../store/useStore';
 
 const actions = [
   { label: 'Go to Overview', path: '/', icon: LayoutDashboard },
-  { label: 'Go to Agents', path: '/agents', icon: Bot },
+  { label: 'Go to Departments', path: '/departments', icon: Building2 },
   { label: 'Go to Console', path: '/console', icon: Terminal },
   { label: 'Go to Skills', path: '/skills', icon: Package },
   { label: 'Go to Tasks', path: '/tasks', icon: ListChecks },
-  { label: 'Go to Research', path: '/research', icon: Search },
+  { label: 'Go to Research', path: '/departments/strategy/research', icon: Search },
   { label: 'Go to Workflows', path: '/workflows', icon: Workflow },
   { label: 'Go to Plugins', path: '/plugins', icon: Puzzle },
   { label: 'Go to Chat', path: '/chat', icon: MessageSquare },
@@ -74,7 +74,7 @@ export default function CommandPalette() {
             onKeyDown={(e) => {
               if (e.key === 'Enter' && isGoal) handleGoalSubmit();
             }}
-            placeholder="Give the AI a goal, or search actions…"
+            placeholder="Give an instruction, or search actions…"
             className="w-full bg-transparent py-3 text-sm outline-none placeholder:text-[var(--color-text-muted)]"
           />
         </div>

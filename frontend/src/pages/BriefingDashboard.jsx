@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { ArrowUp, ArrowDown, ArrowRight, ExternalLink } from 'lucide-react';
 import { api } from '../services/api';
+import { useStore } from '../store/useStore';
 
 function StatColumn({ label, value, urgent }) {
   return (
@@ -53,14 +54,24 @@ function DailyBarChart({ dailyMentions }) {
   );
 }
 
-export default function BriefingDashboard() {
+export default function BriefingDashboard({ embedded } = {}) {
+  const user = useStore((s) => s.user);
+  const isClient = user?.role === 'client';
   const [workflows, setWorkflows] = useState([]);
-  const [selectedGoal, setSelectedGoal] = useState('');
+  const [selectedGoal, setSelectedGoal] = useState(isClient ? user.dashboardGoal || '' : '');
   const [stats, setStats] = useState(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
 
   useEffect(() => {
+    // A client only ever sees the one brief assigned to their account
+    // (client_dashboard_access) - never a list of every workflow, which
+    // would leak the existence of other automations/clients. Admins keep
+    // the dropdown of everything.
+    if (isClient) {
+      if (!user.dashboardGoal) setError('No dashboard has been assigned to this account yet.');
+      return;
+    }
     api
       .listWorkflows()
       .then((list) => {
@@ -68,7 +79,7 @@ export default function BriefingDashboard() {
         if (list.length > 0) setSelectedGoal(list[0].goal);
       })
       .catch((err) => setError(err.message));
-  }, []);
+  }, [isClient, user]);
 
   useEffect(() => {
     if (!selectedGoal) return;
@@ -84,17 +95,19 @@ export default function BriefingDashboard() {
   const gaining = stats?.trendingTopics.filter((t) => t.direction === 'up') || [];
   const others = stats?.trendingTopics.filter((t) => t.direction !== 'up') || [];
 
-  return (
-    <div className="p-8 max-w-3xl">
+  const content = (
+    <>
       <div className="flex items-start justify-between gap-4 mb-8">
-        <div>
-          <h1 className="font-[var(--font-display)] text-2xl font-semibold text-[var(--color-text)]">Intelligence</h1>
-          <p className="text-sm text-[var(--color-text-muted)] mt-1">
-            What's collected, at a glance — no need to read every report by hand.
-          </p>
-        </div>
-        {workflows.length > 0 && (
-          <select
+        {!embedded && (
+          <div>
+            <h1 className="font-[var(--font-display)] text-2xl font-semibold text-[var(--color-text)]">Intelligence</h1>
+            <p className="text-sm text-[var(--color-text-muted)] mt-1">
+              What's collected, at a glance — no need to read every report by hand.
+            </p>
+          </div>
+        )}
+             {!isClient && workflows.length > 0 && (
+        <select
             value={selectedGoal}
             onChange={(e) => setSelectedGoal(e.target.value)}
             className="px-3 py-2 rounded-md border border-[var(--color-border)] bg-[var(--color-surface)] text-sm shrink-0"
@@ -187,6 +200,14 @@ export default function BriefingDashboard() {
           <DailyBarChart dailyMentions={stats.dailyMentions} />
         </>
       )}
+    </>
+  );
+
+  if (embedded) return content;
+
+  return (
+    <div className="p-8 max-w-3xl">
+      {content}
     </div>
   );
 }

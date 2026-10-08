@@ -4,14 +4,15 @@ import ResultStep from './ResultStep';
 import TaskPayloadEditor from './TaskPayloadEditor';
 import { useStore } from '../store/useStore';
 
-export default function TaskRow({ task, expanded, onToggle, liveNarration }) {
+export default function TaskRow({ task, expanded, onToggle, liveNarration, renderFooter, selectable, isSelected, onSelect }) {
   const { approveTask, rejectTask, deleteTask, resumeWorkflowRun, cancelWorkflowRun } = useStore();
   const needsApproval = task.status === 'pending_approval';
   const isWorkflowTask = !!task.workflowRunId;
   const hasEditablePayload = needsApproval && !isWorkflowTask && task.payload && Object.keys(task.payload).length > 0;
   const hasWorkflowPreview = isWorkflowTask && task.payload?.preview;
   const hasResult = ['done', 'failed'].includes(task.status) && task.result;
-  const isExpandable = hasResult || hasEditablePayload || hasWorkflowPreview;
+  const isPipelineTask = task.agent === 'outreach-pipeline' && task.payload?.stage;
+  const isExpandable = hasResult || hasEditablePayload || hasWorkflowPreview || isPipelineTask;
 
   function handleDelete(e) {
     e.stopPropagation();
@@ -45,6 +46,18 @@ export default function TaskRow({ task, expanded, onToggle, liveNarration }) {
         className={`w-full flex items-center justify-between gap-4 px-4 py-3 text-left ${isExpandable ? 'cursor-pointer hover:bg-[var(--color-surface-2)]/40' : 'cursor-default'} transition-colors`}
       >
         <div className="min-w-0 flex-1 flex items-center gap-2">
+          {!task.read && (
+            <span className="w-2 h-2 rounded-full bg-[var(--color-accent)] shrink-0" title="Unread" />
+          )}
+          {selectable && (
+            <input
+              type="checkbox"
+              checked={!!isSelected}
+              onChange={(e) => { e.stopPropagation(); onSelect?.(); }}
+              onClick={(e) => e.stopPropagation()}
+              className="accent-[var(--color-accent)] shrink-0 cursor-pointer"
+            />
+          )}
           {isExpandable && (
             <ChevronDown
               size={14}
@@ -125,6 +138,49 @@ export default function TaskRow({ task, expanded, onToggle, liveNarration }) {
         </div>
       )}
 
+      {expanded && isPipelineTask && (
+        <div className="px-4 pb-4 pl-9 space-y-2">
+          {(() => {
+            const p = task.payload;
+            const v = p.verification;
+            const opp = p.opportunity || {};
+            return (
+              <div className="rounded-md border border-[var(--color-border)] bg-[var(--color-surface-2)] p-3 space-y-2 text-xs">
+                <div className="flex items-center gap-2">
+                  <span className="text-[10px] uppercase tracking-wide text-[var(--color-text-muted)] font-[var(--font-mono)]">Stage</span>
+                  <span className="font-medium">{p.stage?.replace(/_/g, ' ')}</span>
+                </div>
+                {opp.applicationUrl && (
+                  <div className="flex gap-2 min-w-0">
+                    <span className="text-[var(--color-text-muted)] shrink-0">URL</span>
+                    <a href={opp.applicationUrl} target="_blank" rel="noreferrer" className="text-[var(--color-accent)] truncate hover:underline">{opp.applicationUrl}</a>
+                  </div>
+                )}
+                {v && (
+                  <div className="flex items-center gap-3 flex-wrap">
+                    <span className="text-[var(--color-text-muted)]">Score</span>
+                    <span className={`font-[var(--font-mono)] font-semibold ${v.score >= 75 ? 'text-[var(--color-success)]' : v.score >= 50 ? 'text-[var(--color-warning)]' : 'text-[var(--color-danger)]'}`}>{v.score}/100</span>
+                    <span className="text-[var(--color-text-muted)]">{v.tier}</span>
+                    {v.companyVerified && <span className="text-[var(--color-success)]">✓ company</span>}
+                    {v.applicationUrlVerified && <span className="text-[var(--color-success)]">✓ listing</span>}
+                  </div>
+                )}
+                {p.applySkipReason && (
+                  <div className="rounded border border-[var(--color-warning)]/30 bg-[var(--color-warning)]/5 px-2 py-1.5 text-[var(--color-warning)]">
+                    <span className="font-medium">Skip reason: </span>{p.applySkipReason}
+                  </div>
+                )}
+                {v?.reasons?.length > 0 && (
+                  <ul className="space-y-0.5 text-[var(--color-text-muted)]">
+                    {v.reasons.map((r, i) => <li key={i}>· {r}</li>)}
+                  </ul>
+                )}
+              </div>
+            );
+          })()}
+        </div>
+      )}
+
       {expanded && hasResult && (
         <div className="px-4 pb-4 pl-9 space-y-4">
           {task.status === 'failed' ? (
@@ -146,6 +202,12 @@ export default function TaskRow({ task, expanded, onToggle, liveNarration }) {
               </div>
             ))
           )}
+        </div>
+      )}
+
+      {expanded && renderFooter && (
+        <div className="px-4 pb-3 pl-9">
+          {renderFooter(task)}
         </div>
       )}
     </div>
