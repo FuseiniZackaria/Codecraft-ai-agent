@@ -212,6 +212,15 @@ module.exports = {
   // Applicant profile used when auto-applying for jobs via the browser.
   // Set these in .env - none are required but the more you fill in the
   // better the auto-apply field mapping will be.
+  // Inbox-triage skip list: email addresses the admin owns. Any inbound
+  // message with a "From" matching one of these is deterministically dropped
+  // before the triage LLM sees it, so PA can never draft a reply to the
+  // admin's own sent mail. Comma-separated. Phase 2 moves this into the
+  // workspace's business_profile.extra_email_addresses column; Phase 1 reads
+  // it from env so the fix lands immediately. The applicant.email below is
+  // always treated as "mine" even if it isn't listed here.
+  myEmailAddresses: (process.env.MY_EMAIL_ADDRESSES || '')
+    .split(',').map((s) => s.trim().toLowerCase()).filter(Boolean),
   applicant: {
     fullName:           process.env.APPLICANT_FULL_NAME           || '',
     email:              process.env.APPLICANT_EMAIL               || '',

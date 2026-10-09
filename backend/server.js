@@ -87,7 +87,30 @@ app.get('/api/public-config', (req, res) => {
 
 app.use('/api/dashboard', requireAuth, requireRole('admin', 'client'), briefingDashboardRoutes);
 app.get('/api/me', requireAuth, (req, res) => {
-  res.json({ id: req.user.id, email: req.user.email, role: req.user.role, dashboardGoal: req.user.dashboardGoal });
+  res.json({
+    id: req.user.id,
+    email: req.user.email,
+    role: req.user.role,
+    dashboardGoal: req.user.dashboardGoal,
+    // Phase 2.1: expose current workspace. Null before the migration or for
+    // users who aren't yet in a workspace - frontend treats null as legacy
+    // behavior ("one shared workspace") until Phase 2.3 lands.
+    workspaceId: req.user.workspaceId || null,
+    workspaceName: req.user.workspaceName || null,
+    workspaceRole: req.user.workspaceRole || null,
+  });
+});
+
+// Dedicated workspace lookup. Same payload as the workspace block of /api/me,
+// used by UI that specifically needs the current workspace (e.g. a top-bar
+// workspace label). Deliberately a separate route so the admin layout can
+// poll it without pulling the whole dashboard summary.
+app.get('/api/workspace/me', requireAuth, (req, res) => {
+  res.json({
+    workspaceId: req.user.workspaceId || null,
+    workspaceName: req.user.workspaceName || null,
+    workspaceRole: req.user.workspaceRole || null,
+  });
 });
 app.use('/api', requireAuth, requireRole('admin'), generalApiLimiter, routes);
 app.use('/api/events', requireAuth, requireRole('admin'), eventsRoutes);

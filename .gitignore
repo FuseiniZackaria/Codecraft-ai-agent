@@ -1,3 +1,9 @@
+# Local database snapshots from backend/scripts/backup-db.js. Always sensitive -
+# every row of chat_messages, audit_log, and tasks is here, so never push these
+# to GitHub.
+backups/
+backend/backups/
+
 # Secrets - NEVER commit these
 .env
 .env.*

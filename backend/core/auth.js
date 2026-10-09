@@ -95,6 +95,21 @@ async function requireAuth(req, res, next) {
   const userObj = { id: userData.user.id, email: userData.user.email, role, dashboardGoal };
   setCache(token, userObj);
   req.user = userObj;
+
+  // Phase 2.1: populate req.user.workspaceId from workspace_members. This
+  // is deliberately NON-fatal - if the table isn't there (pre-migration)
+  // or the user has no membership yet, workspaceId stays null and every
+  // downstream caller behaves exactly as it did before Phase 2.
+  try {
+    const { resolveWorkspaceForUser } = require('./workspaceContext');
+    const ws = await resolveWorkspaceForUser(userObj.id);
+    req.user.workspaceId = ws.workspaceId;
+    req.user.workspaceName = ws.workspaceName;
+    req.user.workspaceRole = ws.role;
+  } catch {
+    // Already logged inside workspaceContext; never block the request on it.
+  }
+
   next();
 }
 /** Restricts a route to a specific role (or roles). Use AFTER requireAuth. */

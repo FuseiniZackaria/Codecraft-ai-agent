@@ -42,6 +42,27 @@ function extractEmail(text) {
   return match ? match[0] : null;
 }
 
+/**
+ * Projects a lead into the compact, provenance-first shape every approval
+ * card and lead-card consumes. Centralized so email, WhatsApp, social DM,
+ * and the result list all read the same fields - no field ever "quietly
+ * disappears" between an agent run and the UI.
+ */
+function projectLead(l) {
+  return {
+    name: l.name || null,
+    type: l.type || null,
+    location: l.location || null,
+    sources: Array.isArray(l.sources) ? l.sources : (l.sources ? [l.sources] : []),
+    contactSource: l.emailSource || l.phoneSource || l.contactSource || null,
+    reason: l.reason || l.needsWebsiteReason || null,
+    offer: l.offer || null,
+    confidence: l.confidence || 'medium',
+    confidenceReason: l.confidenceReason || null,
+    activityLevel: l.activityLevel || null,
+  };
+}
+
 const LEAD_GEN_KEYWORDS = [
   'find leads', 'scrape', 'prospect list', 'find businesses', 'find companies',
   'leads that', 'lead generation', 'find me',
@@ -201,7 +222,7 @@ class SalesAgent extends BaseAgent {
       key: 'sales',
       role: 'Sales Agent',
       goals: ['Move qualified leads toward a close with relevant, personalized outreach'],
-      tools: ['websearch.search', 'gmail.sendEmail', 'whatsapp.sendMessage'],
+      tools: ['websearch.search', 'gmail.sendEmail', 'whatsapp.sendMessage', 'social.prepareDM'],
     });
   }
 
@@ -266,6 +287,9 @@ class SalesAgent extends BaseAgent {
         '- name: business name\n' +
         '- type: kind of business (e.g. "restaurant", "hotel")\n' +
         '- location: address or area if found, else null\n' +
+        '- sources: REQUIRED non-empty array of the exact URLs where you found this business ' +
+        '(Google Maps listing, Instagram profile, directory site, etc.). If you have no URL at all, ' +
+        'omit the business entirely.\n' +
         '- platforms: array of { "platform": "google_maps|instagram|facebook|tiktok|x|linkedin|web", ' +
         '"profileUrl": "...", "followers": "count if visible else null", "bio": "short excerpt if visible else null" }\n' +
         '- email: only if ACTUALLY found, else null\n' +
@@ -273,12 +297,14 @@ class SalesAgent extends BaseAgent {
         '- website: existing website URL if found, else null\n' +
         '- emailSource: URL where the email was found, else null\n' +
         '- phoneSource: URL where the phone was found, else null\n' +
-        '- needsWebsite: true if the business appears not to have a proper, working website ' +
-        '(no website found, or link only goes to a social page / linktree / link-in-bio). ' +
-        'Mark uncertain cases as true with medium confidence rather than excluding them\n' +
-        '- needsWebsiteReason: plain English explanation\n' +
+        '- reason: one specific sentence explaining why this business is worth contacting, grounded in ' +
+        'the evidence above (e.g. "Has 2,000 Instagram followers but no website; bio link is WhatsApp only").\n' +
+        '- offer: one short sentence on what my business can realistically do for them.\n' +
         '- confidence: "high" (2+ platforms with contact), "medium" (1 platform or limited), "low" (uncertain)\n' +
-        '- activityLevel: brief note on followers/reviews/activity if visible, else null\n\n' +
+        '- confidenceReason: one short sentence explaining the confidence score (what evidence supports it, what\'s missing).\n' +
+        '- activityLevel: brief note on followers/reviews/activity if visible, else null\n' +
+        '- needsWebsite: true if the business appears not to have a proper, working website.\n' +
+        '- needsWebsiteReason: plain English explanation.\n\n' +
         'Respond with ONLY a JSON array.';
 
       if (!config.search.tavilyKey) {
@@ -480,9 +506,19 @@ class SalesAgent extends BaseAgent {
               system:
                 `Extract up to ${remaining} distinct REAL, NAMED businesses from these search results. ` +
                 `Skip any business already found: ${[...existingNames].join(', ')}. ` +
-                'For each, extract: name, type, location, platforms (array of {platform, profileUrl}), ' +
-                'email (if found), phone (if found), website (if found), needsWebsite (boolean), ' +
-                'needsWebsiteReason, confidence (high/medium/low). ' +
+                // Same schema as the main extractor - provenance must flow
+                // through the retry path too, so no lead loses source/reason
+                // just because it was found by a broader fallback query.
+                'For each, extract: name, type, location, ' +
+                'sources (REQUIRED non-empty array of exact URLs where you found the business), ' +
+                'platforms (array of {platform, profileUrl}), ' +
+                'email (if found), phone (if found), website (if found), ' +
+                'emailSource, phoneSource, needsWebsite (boolean), needsWebsiteReason, ' +
+                'reason (one sentence why to contact them, grounded in evidence), ' +
+                'offer (one short sentence on what you can do for them), ' +
+                'confidence (high/medium/low), ' +
+                'confidenceReason (one sentence explaining the confidence score), ' +
+                'activityLevel. Omit any business with no sources URL. ' +
                 'Respond with ONLY a JSON array.',
               prompt: JSON.stringify(extraContent.map((r) => ({ title: r.title, url: r.url, content: r.content }))),
             });
@@ -528,6 +564,41 @@ class SalesAgent extends BaseAgent {
         }
       }
 
+      // Normalize "sources" (if the LLM returned a bare URL as "source",
+      // promote it to an array). Then drop every lead with no source URL
+      // and audit the drop - a lead with no provenance isn't a real lead,
+      // it's a hallucination risk.
+      let droppedNoSource = 0;
+      const kept = [];
+      for (const l of leads) {
+        if (!Array.isArray(l.sources)) {
+          const guessed = l.sources || l.source || l.sourceUrl || null;
+          l.sources = guessed ? [guessed] : [];
+        }
+        // Fall back: use the first platform profileUrl as a source if the LLM
+        // populated platforms but forgot the top-level sources array.
+        if (l.sources.length === 0) {
+          const platformUrls = (l.platforms || []).map((p) => p?.profileUrl).filter(Boolean);
+          if (platformUrls.length) l.sources = platformUrls;
+        }
+        if (l.sources.length === 0) {
+          droppedNoSource++;
+          try {
+            if (typeof memory.audit === 'function') {
+              await memory.audit('sales-agent', 'lead_dropped_no_source', l.name || '(unnamed)', {
+                taskId: task.id,
+                reason: 'no_source_url',
+                leadFields: Object.keys(l),
+              });
+            }
+          } catch { /* non-fatal */ }
+          continue;
+        }
+        kept.push(l);
+      }
+      leads = kept;
+      if (droppedNoSource > 0) warnings.push(`Dropped ${droppedNoSource} lead(s) with no source URL.`);
+
       const emailLeads = leads.filter((l) => l.email);
       const whatsappOnlyLeads = leads.filter((l) => l.phone && !l.email);
       const socialOnlyLeads = leads.filter((l) => !l.email && !l.phone && (l.platforms || []).length > 0);
@@ -553,10 +624,20 @@ class SalesAgent extends BaseAgent {
           const drafts = m ? JSON.parse(m[0]) : [];
           for (const d of drafts) {
             if (!d.email || !d.subject || !d.body) continue;
+            const leadRow = emailLeads.find((l) => (l.name || '').toLowerCase() === (d.name || '').toLowerCase());
             await this.createApprovalTask({
               instruction: `Send outreach email to ${d.name} (${d.email})`,
               tool: 'gmail.sendEmail',
-              payload: { to: d.email, subject: d.subject, body: d.body },
+              payload: {
+                to: d.email,
+                subject: d.subject,
+                body: d.body,
+                // Full lead object travels with the payload so the approval
+                // card can show source, reason, offer, and confidence next to
+                // the drafted message - the human never has to click through
+                // to another screen to see why this draft exists.
+                lead: leadRow ? projectLead(leadRow) : null,
+              },
               outreach: {
                 recipientEmail: d.email,
                 companyName: d.name || null,
@@ -590,10 +671,16 @@ class SalesAgent extends BaseAgent {
           const drafts = m ? JSON.parse(m[0]) : [];
           for (const d of drafts) {
             if (!d.phone || !d.message) continue;
+            // The whatsapp.sendMessage plugin reads `body`, not `message`.
+            // Writing `message` here previously left the approval card's
+            // "Message" field blank and crashed the plugin on approve with
+            // 'sendMessage requires "to" (phone number) and "body"'.
+            const leadRow = whatsappOnlyLeads.find((l) => (l.name || '').toLowerCase() === (d.name || '').toLowerCase());
             await this.createApprovalTask({
               instruction: `Send WhatsApp message to ${d.name} (${d.phone})`,
               tool: 'whatsapp.sendMessage',
-              payload: { to: d.phone, message: d.message },
+              payload: { to: d.phone, body: d.message, lead: leadRow ? projectLead(leadRow) : null },
+              outreach: { recipientEmail: `whatsapp:${d.phone}`, companyName: d.name || null, campaign: 'lead_gen' },
             });
             whatsappDrafted++;
           }
@@ -602,6 +689,7 @@ class SalesAgent extends BaseAgent {
         }
       }
 
+      let socialDrafted = 0;
       if (socialOnlyLeads.length) {
         try {
           const provider = selectProvider({});
@@ -621,20 +709,41 @@ class SalesAgent extends BaseAgent {
           const m = draftResult.text.match(/\[[\s\S]*\]/);
           const drafts = m ? JSON.parse(m[0]) : [];
           for (const d of drafts) {
-            const lead = socialOnlyLeads.find((l) => l.name === d.name);
-            if (lead && d.message) lead.socialDraft = d.message;
+            const lead = socialOnlyLeads.find((l) => (l.name || '').toLowerCase() === (d.name || '').toLowerCase());
+            if (!lead || !d.message) continue;
+            // Keep the string on the card too, for backwards-compat with the
+            // existing lead-card renderer.
+            lead.socialDraft = d.message;
+            // Also emit a real approval task so the admin sees the DM in the
+            // standard approval UI alongside email/WhatsApp. The tool is
+            // registered but throws on run - the approval card itself is
+            // the deliverable (copy / paste by the admin).
+            const topPlatform = (lead.platforms || [])[0]?.platform || 'social';
+            const profileUrl = (lead.platforms || [])[0]?.profileUrl || null;
+            await this.createApprovalTask({
+              instruction: `Prepare ${topPlatform} DM to ${lead.name}`,
+              tool: 'social.prepareDM',
+              payload: {
+                to: profileUrl || lead.name,
+                body: d.message,
+                platform: topPlatform,
+                lead: projectLead(lead),
+              },
+            });
+            socialDrafted++;
           }
         } catch (err) {
           warnings.push(`Social DM drafting failed: ${err.message}`);
         }
       }
 
-      const totalDrafted = emailDrafted + whatsappDrafted;
+      const totalDrafted = emailDrafted + whatsappDrafted + socialDrafted;
       let note = `Found ${leads.length} lead(s) across multiple platforms.`;
+      if (droppedNoSource > 0) note += ` Dropped ${droppedNoSource} lead(s) with no source URL.`;
       if (emailDrafted) note += ` ${emailDrafted} email draft(s)`;
       if (whatsappDrafted) note += `${emailDrafted ? ',' : ''} ${whatsappDrafted} WhatsApp draft(s)`;
+      if (socialDrafted) note += `${(emailDrafted || whatsappDrafted) ? ',' : ''} ${socialDrafted} social DM draft(s)`;
       if (totalDrafted) note += ' — awaiting your approval.';
-      if (socialOnlyLeads.length) note += ` ${socialOnlyLeads.length} social-only lead(s) with draft DMs.`;
       if (noContactLeads.length) note += ` ${noContactLeads.length} lead(s) need manual outreach (no contact info found).`;
       await memory.addReflection(this.role, task.id, note);
 
@@ -643,9 +752,7 @@ class SalesAgent extends BaseAgent {
         summary: note,
         warnings,
         leads: leads.map((l) => ({
-          name: l.name,
-          type: l.type || null,
-          location: l.location || null,
+          ...projectLead(l),
           platforms: l.platforms || [],
           email: l.email || null,
           phone: l.phone || null,
@@ -655,8 +762,6 @@ class SalesAgent extends BaseAgent {
           phoneSource: l.phoneSource || null,
           needsWebsite: !!l.needsWebsite,
           needsWebsiteReason: l.needsWebsiteReason || null,
-          confidence: l.confidence || 'medium',
-          activityLevel: l.activityLevel || null,
           socialDraft: l.socialDraft || null,
           outreachChannel: l.email ? 'email' : l.phone ? 'whatsapp' : (l.platforms || []).length ? 'social' : 'manual',
         })),
@@ -680,7 +785,18 @@ class SalesAgent extends BaseAgent {
       await this.createApprovalTask({
         instruction: `Send outreach email to ${to}`,
         tool: 'gmail.sendEmail',
-        payload: { to, subject: draft.subject, body: draft.body },
+        payload: {
+          to,
+          subject: draft.subject,
+          body: draft.body,
+          lead: projectLead({
+            name: draft.name || to,
+            sources: [`admin-provided:${to}`],
+            reason: 'Single-lead outreach initiated by the admin.',
+            confidence: 'high',
+            confidenceReason: 'Admin provided the recipient directly.',
+          }),
+        },
         outreach: {
           recipientEmail: to,
           campaign: 'single',
