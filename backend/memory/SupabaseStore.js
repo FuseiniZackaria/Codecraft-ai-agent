@@ -510,6 +510,107 @@ class SupabaseStore {
     };
   }
 
+  // --- Outreach threads (see schema.sql / outreach_threads table) ---
+  async createOutreachThread(row) {
+    const { randomUUID } = require('crypto');
+    const payload = {
+      id: row.id || randomUUID(),
+      thread_id: row.threadId || null,
+      recipient_email: (row.recipientEmail || '').toLowerCase(),
+      company_name: row.companyName || null,
+      lead_id: row.leadId || null,
+      agent_key: row.agentKey,
+      campaign: row.campaign || null,
+      outreach_status: row.outreachStatus || 'draft',
+      last_message_id: row.lastMessageId || null,
+      approved_task_id: row.approvedTaskId || null,
+      metadata: row.metadata || {},
+    };
+    const { data, error } = await this.client.from('outreach_threads').insert(payload).select().maybeSingle();
+    if (error) throw new Error(`SupabaseStore.createOutreachThread: ${error.message}`);
+    return data ? this._outreachThreadFromRow(data) : null;
+  }
+
+  async getOutreachThreadByThreadId(threadId) {
+    if (!threadId) return null;
+    const { data, error } = await this.client
+      .from('outreach_threads')
+      .select('*')
+      .eq('thread_id', threadId)
+      .maybeSingle();
+    if (error) throw new Error(`SupabaseStore.getOutreachThreadByThreadId: ${error.message}`);
+    return data ? this._outreachThreadFromRow(data) : null;
+  }
+
+  async getOutreachThreadByApprovedTask(taskId) {
+    if (!taskId) return null;
+    const { data, error } = await this.client
+      .from('outreach_threads')
+      .select('*')
+      .eq('approved_task_id', taskId)
+      .order('created_at', { ascending: false })
+      .limit(1)
+      .maybeSingle();
+    if (error) throw new Error(`SupabaseStore.getOutreachThreadByApprovedTask: ${error.message}`);
+    return data ? this._outreachThreadFromRow(data) : null;
+  }
+
+  async listOutreachThreadsByRecipient(email) {
+    if (!email) return [];
+    const { data, error } = await this.client
+      .from('outreach_threads')
+      .select('*')
+      .eq('recipient_email', email.toLowerCase());
+    if (error) throw new Error(`SupabaseStore.listOutreachThreadsByRecipient: ${error.message}`);
+    return (data || []).map((r) => this._outreachThreadFromRow(r));
+  }
+
+  async updateOutreachThread(id, patch) {
+    const row = { updated_at: new Date().toISOString() };
+    if (patch.threadId !== undefined)       row.thread_id = patch.threadId;
+    if (patch.recipientEmail !== undefined) row.recipient_email = patch.recipientEmail && patch.recipientEmail.toLowerCase();
+    if (patch.companyName !== undefined)    row.company_name = patch.companyName;
+    if (patch.leadId !== undefined)         row.lead_id = patch.leadId;
+    if (patch.agentKey !== undefined)       row.agent_key = patch.agentKey;
+    if (patch.campaign !== undefined)       row.campaign = patch.campaign;
+    if (patch.outreachStatus !== undefined) row.outreach_status = patch.outreachStatus;
+    if (patch.lastMessageId !== undefined)  row.last_message_id = patch.lastMessageId;
+    if (patch.approvedTaskId !== undefined) row.approved_task_id = patch.approvedTaskId;
+    if (patch.metadata !== undefined)       row.metadata = patch.metadata;
+    const { data, error } = await this.client
+      .from('outreach_threads')
+      .update(row)
+      .eq('id', id)
+      .select()
+      .maybeSingle();
+    if (error) throw new Error(`SupabaseStore.updateOutreachThread: ${error.message}`);
+    return data ? this._outreachThreadFromRow(data) : null;
+  }
+
+  async listOutreachThreads() {
+    const { data, error } = await this.client.from('outreach_threads').select('*');
+    if (error) throw new Error(`SupabaseStore.listOutreachThreads: ${error.message}`);
+    return (data || []).map((r) => this._outreachThreadFromRow(r));
+  }
+
+  _outreachThreadFromRow(row) {
+    return {
+      id: row.id,
+      threadId: row.thread_id,
+      recipientEmail: row.recipient_email,
+      companyName: row.company_name,
+      leadId: row.lead_id,
+      agentKey: row.agent_key,
+      campaign: row.campaign,
+      outreachStatus: row.outreach_status,
+      lastMessageId: row.last_message_id,
+      approvedTaskId: row.approved_task_id,
+      metadata: row.metadata || {},
+      createdAt: row.created_at,
+      updatedAt: row.updated_at,
+    };
+  }
+
   // --- Briefing runs (memory across BriefingAgent runs, for trend comparison) ---
   async saveBriefingRun(run) {
     const { randomUUID } = require('crypto');

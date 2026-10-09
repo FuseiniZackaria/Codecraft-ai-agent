@@ -32,8 +32,13 @@ class BaseAgent {
    * own analysis (e.g. "these 3 emails need replies") produces further
    * irreversible actions that each need their own human approval, separate
    * from the task that discovered them.
+   *
+   * `outreach` is optional: when provided, registers a draft row in
+   * outreach_threads keyed by this approval task so the Gmail guard /
+   * inbox-triage filter can recognize the thread later. Pass
+   * { recipientEmail, companyName?, campaign?, leadId? }.
    */
-  async createApprovalTask({ instruction, tool, payload }) {
+  async createApprovalTask({ instruction, tool, payload, outreach } = {}) {
     if (!this.tools.includes(tool)) {
       throw new Error(`${this.role} is not permitted to use tool "${tool}"`);
     }
@@ -49,6 +54,25 @@ class BaseAgent {
     };
     await memory.saveTask(task);
     await activityLog.record(this.role, 'approval_required', tool, { taskId: task.id });
+
+    if (outreach && outreach.recipientEmail && typeof memory.createOutreachThread === 'function') {
+      try {
+        await memory.createOutreachThread({
+          threadId: null, // filled in by guard.recordSentThread after the first successful send
+          recipientEmail: outreach.recipientEmail,
+          companyName: outreach.companyName || null,
+          leadId: outreach.leadId || null,
+          agentKey: this.key,
+          campaign: outreach.campaign || null,
+          outreachStatus: 'draft',
+          approvedTaskId: task.id,
+        });
+      } catch {
+        // Registry failure must not block the approval task itself - the
+        // guard still enforces the approval requirement, just without a
+        // registered thread until the first send.
+      }
+    }
     return task;
   }
 

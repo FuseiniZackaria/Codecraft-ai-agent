@@ -224,6 +224,65 @@ class MemoryStore {
     return Array.from(this.workflowRuns.values()).filter((r) => !workflowId || r.workflowId === workflowId);
   }
 
+  // --- Outreach threads (see schema.sql for the full rationale) ---
+  async createOutreachThread(row) {
+    if (!this.outreachThreads) this.outreachThreads = new Map();
+    const { randomUUID } = require('crypto');
+    const stored = {
+      id: row.id || randomUUID(),
+      threadId: row.threadId || null,
+      recipientEmail: (row.recipientEmail || '').toLowerCase(),
+      companyName: row.companyName || null,
+      leadId: row.leadId || null,
+      agentKey: row.agentKey,
+      campaign: row.campaign || null,
+      outreachStatus: row.outreachStatus || 'draft',
+      lastMessageId: row.lastMessageId || null,
+      approvedTaskId: row.approvedTaskId || null,
+      metadata: row.metadata || {},
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+    };
+    this.outreachThreads.set(stored.id, stored);
+    return stored;
+  }
+
+  async getOutreachThreadByThreadId(threadId) {
+    if (!this.outreachThreads || !threadId) return null;
+    for (const row of this.outreachThreads.values()) {
+      if (row.threadId === threadId) return row;
+    }
+    return null;
+  }
+
+  async getOutreachThreadByApprovedTask(taskId) {
+    if (!this.outreachThreads || !taskId) return null;
+    for (const row of this.outreachThreads.values()) {
+      if (row.approvedTaskId === taskId) return row;
+    }
+    return null;
+  }
+
+  async listOutreachThreadsByRecipient(email) {
+    if (!this.outreachThreads || !email) return [];
+    const target = email.toLowerCase();
+    return Array.from(this.outreachThreads.values()).filter((r) => r.recipientEmail === target);
+  }
+
+  async updateOutreachThread(id, patch) {
+    if (!this.outreachThreads) return null;
+    const existing = this.outreachThreads.get(id);
+    if (!existing) return null;
+    const updated = { ...existing, ...patch, updatedAt: new Date().toISOString() };
+    if (patch.recipientEmail) updated.recipientEmail = patch.recipientEmail.toLowerCase();
+    this.outreachThreads.set(id, updated);
+    return updated;
+  }
+
+  async listOutreachThreads() {
+    return this.outreachThreads ? Array.from(this.outreachThreads.values()) : [];
+  }
+
   // --- Briefing runs (memory across BriefingAgent runs, for trend comparison) ---
   async saveBriefingRun(run) {
     if (!this.briefingRuns) this.briefingRuns = [];

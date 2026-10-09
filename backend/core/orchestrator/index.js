@@ -62,8 +62,14 @@ async function approveTask(taskId) {
   await activityLog.record('human', 'task_approved', task.toolCall.tool, { taskId });
 
   try {
+    // approvedTaskId is read by the Gmail guard (plugins/gmail/guard.js) to
+    // confirm this call is being dispatched by the approval flow rather than
+    // some agent calling the tool directly. Every irreversible tool should
+    // honor the same pattern as it adopts a guard.
     const result = await toolRegistry.call(task.toolCall.tool, task.payload || {}, {
       role: task.agent,
+      approvedTaskId: task.id,
+      approvedAt: new Date().toISOString(),
     });
     await activityLog.record('orchestrator', 'tool_call', task.toolCall.tool, { taskId, status: 'done' });
     return memory.updateTask(taskId, { status: 'done', result });

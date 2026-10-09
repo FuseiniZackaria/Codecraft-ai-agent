@@ -255,6 +255,12 @@ async function processOpportunity(opportunity, options = {}) {
     instruction: `Send verified job outreach email to ${opportunity.contactEmail} re: ${opportunity.jobTitle} at ${opportunity.company}`,
     tool: 'gmail.sendEmail',
     payload: { to: opportunity.contactEmail, subject: draft.subject, body: draft.body },
+    outreach: {
+      recipientEmail: opportunity.contactEmail,
+      companyName: opportunity.company || null,
+      leadId: pipelineId,
+      campaign: 'job_outreach',
+    },
   });
 
   state = { ...state, stage: STAGES.AWAITING_APPROVAL, approvalTaskId: approvalTask.id };
@@ -438,6 +444,12 @@ async function checkFollowUps() {
       instruction: `Follow-up #${nextIndex + 1} to ${state.opportunity.contactEmail} re: ${state.opportunity.jobTitle} at ${state.opportunity.company}`,
       tool: 'gmail.sendEmail',
       payload: { to: state.opportunity.contactEmail, subject: draft.subject, body: draft.body },
+      outreach: {
+        recipientEmail: state.opportunity.contactEmail,
+        companyName: state.opportunity.company || null,
+        leadId: task.id,
+        campaign: 'job_outreach_followup',
+      },
     });
 
     const newState = {

@@ -382,6 +382,13 @@ class SalesAgent extends BaseAgent {
 
       // Send one summary email for all login-gated jobs so the user can
       // apply to them manually without hunting through the Tasks page.
+      //
+      // This is an owner self-notification, not outreach to another person,
+      // so it goes through the Gmail guard's `systemDigest` path. The guard
+      // enforces that systemDigest sends are only ever addressed to
+      // config.applicant.email - no arbitrary recipient can slip through
+      // this call site. Subject is prefixed with [CodeCraft/System] so
+      // inbox triage filters recognize it as app-generated mail and skip it.
       if (manualApplyJobs.length > 0 && config.applicant?.email) {
         try {
           const jobLines = manualApplyJobs
@@ -391,7 +398,7 @@ class SalesAgent extends BaseAgent {
             'gmail.sendEmail',
             {
               to: config.applicant.email,
-              subject: `${manualApplyJobs.length} job(s) need your manual application`,
+              subject: `[CodeCraft/System] ${manualApplyJobs.length} job(s) need your manual application`,
               body:
                 `Hi Fuseini,\n\n` +
                 `CodeCraft found ${manualApplyJobs.length} job(s) that require manual application ` +
@@ -400,9 +407,9 @@ class SalesAgent extends BaseAgent {
                 `The rest of your jobs are in the Tasks page awaiting your approval to auto-submit.\n\n` +
                 `— CodeCraft`,
             },
-            { role: 'sales' }
+            { role: 'sales', systemDigest: true }
           );
-          console.log(`[SalesAgent] sent manual-apply digest to ${config.applicant.email} (${manualApplyJobs.length} jobs)`);
+          console.log(`[SalesAgent] sent manual-apply digest to the configured owner address (${manualApplyJobs.length} jobs)`);
         } catch (emailErr) {
           console.warn(`[SalesAgent] could not send manual-apply digest: ${emailErr.message}`);
         }
@@ -550,6 +557,11 @@ class SalesAgent extends BaseAgent {
               instruction: `Send outreach email to ${d.name} (${d.email})`,
               tool: 'gmail.sendEmail',
               payload: { to: d.email, subject: d.subject, body: d.body },
+              outreach: {
+                recipientEmail: d.email,
+                companyName: d.name || null,
+                campaign: 'lead_gen',
+              },
             });
             emailDrafted++;
           }
@@ -669,6 +681,10 @@ class SalesAgent extends BaseAgent {
         instruction: `Send outreach email to ${to}`,
         tool: 'gmail.sendEmail',
         payload: { to, subject: draft.subject, body: draft.body },
+        outreach: {
+          recipientEmail: to,
+          campaign: 'single',
+        },
       });
       note = `Drafted outreach to ${to} — awaiting your approval on the Tasks page.`;
     } else {

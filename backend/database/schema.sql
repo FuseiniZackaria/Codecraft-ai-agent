@@ -249,3 +249,44 @@ create table if not exists assistant_usage_daily (
   output_tokens integer not null default 0,
   updated_at timestamptz not null default now()
 );
+
+-- Outreach-thread registry: every email thread the system has initiated or
+-- is tracking as outreach (Sales lead gen, verified job outreach, support
+-- follow-ups). The Gmail guard reads this before letting a reply go out,
+-- and inbox triage reads this to SKIP threads that belong to another
+-- agent/pipeline (prevents the Personal Assistant from accidentally
+-- replying to a sales lead's response). Deliberately holds metadata only -
+-- never OAuth tokens, API keys, or body content beyond the headers needed
+-- to match a thread.
+create table if not exists outreach_threads (
+  id uuid primary key default gen_random_uuid(),
+  thread_id text,                       -- Gmail threadId; nullable until the first send returns one
+  recipient_email text not null,        -- lowercased canonical address
+  company_name text,                    -- business/company label, when known
+  lead_id text,                         -- opaque id linking to a task/pipeline/opportunity record
+  agent_key text not null,              -- 'sales' | 'response-detection' | 'outreach-pipeline' | ...
+  campaign text,                        -- 'lead_gen' | 'job_outreach' | 'single' | ...
+  outreach_status text not null default 'draft',
+                                        -- draft | sent | replied | follow_up_due | completed | failed
+  last_message_id text,                 -- Gmail Message-ID of the last outbound/inbound message, when known
+  approved_task_id uuid,                -- which approval task green-lit the most recent send
+  metadata jsonb default '{}',
+  created_at timestamptz default now(),
+  updated_at timestamptz default now()
+);
+
+-- Uniqueness: at most one registry row per real Gmail thread. Nullable rows
+-- (draft state before the first send returns a thread_id) are not covered,
+-- which is intentional - a draft hasn't produced a thread yet.
+create unique index if not exists outreach_threads_thread_id_uidx
+  on outreach_threads (thread_id)
+  where thread_id is not null;
+
+create index if not exists outreach_threads_recipient_idx
+  on outreach_threads (recipient_email);
+
+create index if not exists outreach_threads_agent_idx
+  on outreach_threads (agent_key, outreach_status);
+
+create index if not exists outreach_threads_approved_task_idx
+  on outreach_threads (approved_task_id);

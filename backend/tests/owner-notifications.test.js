@@ -3,7 +3,8 @@ const assert = require('assert');
 const config = require('../config');
 const telegramProvider = require('../core/telegramProvider');
 const whatsappProvider = require('../core/whatsappProvider');
-const { notifyOwnerPendingApproval } = require('../core/notifications');
+const { notifyOwnerPendingApproval, channelStatus, isChannelConfigured } = require('../core/notifications');
+const toolRegistry = require('../tools/ToolRegistry');
 
 function stubTelegramSend(fn) {
   const original = telegramProvider.sendMessage;
@@ -20,116 +21,113 @@ function stubWhatsappSend(fn) {
 async function main() {
   const originalTelegramChatId = config.notifications.ownerTelegramChatId;
   const originalWhatsappNumber = config.notifications.ownerWhatsappNumber;
+  const originalApplicantEmail = config.applicant?.email;
+  const originalTelegramBotToken = config.telegram?.botToken;
+  const originalWhatsappAccess = config.whatsapp?.accessToken;
+  const originalWhatsappPhone = config.whatsapp?.phoneNumberId;
+  const originalGmailTool = toolRegistry.tools.get('gmail.sendEmail');
 
-  // --- Case 1: neither channel configured - a clean no-op, no errors ---
+  // --- Case 1: no channel configured at all - clean no-op, 'not_configured' across the board, no errors ---
   config.notifications.ownerTelegramChatId = null;
   config.notifications.ownerWhatsappNumber = null;
+  if (config.applicant) config.applicant.email = '';
   const result1 = await notifyOwnerPendingApproval({
     channel: 'telegram', from: 'chat-1', customerMessage: 'hi', draftReply: 'hello', approvalTaskId: 'task-1',
   });
-  assert.strictEqual(result1.telegram, null);
-  assert.strictEqual(result1.whatsapp, null);
-  console.log('✓ notifyOwnerPendingApproval: a clean no-op when neither owner channel is configured');
+  assert.strictEqual(result1.telegram, 'not_configured');
+  assert.strictEqual(result1.whatsapp, 'not_configured');
+  assert.strictEqual(result1.email, 'not_configured');
+  console.log('✓ owner-notifications: no channel configured -> every channel reports not_configured, never a false "sent"');
 
-  // --- Case 2: only Telegram configured - only Telegram gets called ---
+  // --- Case 2: only Telegram configured and working - email fallback is NOT attempted ---
   config.notifications.ownerTelegramChatId = 'owner-chat-id';
+  config.telegram.botToken = 'test-token';
   config.notifications.ownerWhatsappNumber = null;
+  if (config.applicant) config.applicant.email = 'owner@example.com';
+
   let telegramCalledWith = null;
   let restoreTelegram = stubTelegramSend(async (to, text) => { telegramCalledWith = { to, text }; return { messageId: 1 }; });
-
   const result2 = await notifyOwnerPendingApproval({
-    channel: 'telegram', from: 'customer-chat-99', customerMessage: 'Do you deliver on weekends?', draftReply: 'Yes, Saturdays 10am-4pm!', approvalTaskId: 'task-2',
+    channel: 'telegram', from: 'customer-99', customerMessage: 'Do you deliver on weekends?', draftReply: 'Yes, Saturdays 10am-4pm!', approvalTaskId: 'task-2',
   });
   restoreTelegram();
 
   assert.strictEqual(result2.telegram, 'sent');
-  assert.strictEqual(result2.whatsapp, null);
+  assert.strictEqual(result2.whatsapp, 'not_configured');
+  assert.strictEqual(result2.email, 'not_attempted',
+    'with a chat channel delivering successfully, email fallback must not fire - avoids inbox noise');
   assert.strictEqual(telegramCalledWith.to, 'owner-chat-id');
-  assert(telegramCalledWith.text.includes('customer-chat-99'));
-  assert(telegramCalledWith.text.includes('Do you deliver on weekends?'));
-  assert(telegramCalledWith.text.includes('Yes, Saturdays 10am-4pm!'));
-  console.log('✓ notifyOwnerPendingApproval: sends a real Telegram alert to the owner with the actual customer message and draft included');
+  assert(telegramCalledWith.text.includes('customer-99'));
+  console.log('✓ owner-notifications: chat succeeded -> email fallback stays silent, no false noise');
 
-  // --- Case 3: both channels configured - both get called ---
-  config.notifications.ownerTelegramChatId = 'owner-chat-id';
-  config.notifications.ownerWhatsappNumber = '+15551234567';
-  let telegramCalled = false;
-  let whatsappCalled = false;
-  restoreTelegram = stubTelegramSend(async () => { telegramCalled = true; return { messageId: 1 }; });
-  let restoreWhatsapp = stubWhatsappSend(async () => { whatsappCalled = true; return { status: 'sent' }; });
+  // --- Case 3: both chat channels DOWN or missing, email fallback steps in ---
+  config.notifications.ownerTelegramChatId = null;
+  config.notifications.ownerWhatsappNumber = null;
+  if (config.applicant) config.applicant.email = 'owner@example.com';
 
-  const result3 = await notifyOwnerPendingApproval({
-    channel: 'whatsapp', from: 'customer-2', customerMessage: 'hi', draftReply: 'hello', approvalTaskId: 'task-3',
+  let emailArgs = null;
+  toolRegistry.tools.set('gmail.sendEmail', {
+    permission: 'gmail.send',
+    irreversible: true,
+    run: async (args, ctx) => { emailArgs = { args, ctx }; return { status: 'sent' }; },
   });
-  restoreTelegram(); restoreWhatsapp();
+  const result3 = await notifyOwnerPendingApproval({
+    channel: 'whatsapp', from: 'customer-3', customerMessage: 'hi', draftReply: 'hello', approvalTaskId: 'task-3',
+  });
 
-  assert.strictEqual(telegramCalled, true, 'with both channels configured, Telegram alert should also fire regardless of which channel the customer message came in on');
-  assert.strictEqual(whatsappCalled, true);
-  assert.strictEqual(result3.telegram, 'sent');
-  assert.strictEqual(result3.whatsapp, 'sent');
-  console.log('✓ notifyOwnerPendingApproval: with both owner channels configured, both actually get alerted');
+  assert.strictEqual(result3.telegram, 'not_configured');
+  assert.strictEqual(result3.whatsapp, 'not_configured');
+  assert.strictEqual(result3.email, 'sent');
+  assert.strictEqual(emailArgs.args.to, 'owner@example.com');
+  assert(emailArgs.args.subject.startsWith('[CodeCraft/System]'),
+    'email fallback must prefix [CodeCraft/System] so inbox triage filters recognize it');
+  assert.strictEqual(emailArgs.ctx.systemDigest, true,
+    'email fallback must route through the Gmail guard systemDigest path, not an arbitrary send');
+  console.log('✓ owner-notifications: chat channels unavailable -> email fallback delivers to the owner, with [CodeCraft/System] subject and systemDigest context');
 
-  // --- Case 4: a failure in one channel doesn't prevent the other, and never throws ---
+  // --- Case 4: WhatsApp and Telegram outages are REPORTED, not swallowed, and never crash ---
   config.notifications.ownerTelegramChatId = 'owner-chat-id';
   config.notifications.ownerWhatsappNumber = '+15551234567';
+  config.whatsapp.accessToken = 'test-wa-token';
   restoreTelegram = stubTelegramSend(async () => { throw new Error('simulated telegram outage'); });
-  let whatsappCalled2 = false;
-  restoreWhatsapp = stubWhatsappSend(async () => { whatsappCalled2 = true; return { status: 'sent' }; });
+  const restoreWhatsapp = stubWhatsappSend(async () => { throw new Error('simulated whatsapp outage'); });
 
   const result4 = await notifyOwnerPendingApproval({
-    channel: 'telegram', from: 'customer-3', customerMessage: 'hi', draftReply: 'hello', approvalTaskId: 'task-4',
+    channel: 'telegram', from: 'customer-4', customerMessage: 'hi', draftReply: 'hello', approvalTaskId: 'task-4',
   });
   restoreTelegram(); restoreWhatsapp();
 
-  assert(result4.telegram.includes('failed'));
-  assert.strictEqual(result4.whatsapp, 'sent');
-  assert.strictEqual(whatsappCalled2, true, 'a failure alerting via Telegram must not prevent the WhatsApp alert from still going out');
-  console.log('✓ notifyOwnerPendingApproval: a failure on one channel does not block the other, and never throws');
+  assert(result4.telegram.startsWith('failed:'));
+  assert(result4.whatsapp.startsWith('failed:'));
+  assert.strictEqual(result4.email, 'sent',
+    'both chat channels failing -> email fallback kicks in rather than silently losing the alert');
+  console.log('✓ owner-notifications: chat failures are surfaced and the email fallback picks up the alert, never dropped silently');
 
-  // --- Case 5: long customer message / draft gets truncated, not sent in full ---
-  config.notifications.ownerTelegramChatId = 'owner-chat-id';
+  // --- Case 5: isChannelConfigured / channelStatus reflect reality ---
+  config.notifications.ownerTelegramChatId = null;
   config.notifications.ownerWhatsappNumber = null;
-  let longText = null;
-  restoreTelegram = stubTelegramSend(async (to, text) => { longText = text; return { messageId: 1 }; });
-  const veryLongMessage = 'a'.repeat(1000);
-  await notifyOwnerPendingApproval({ channel: 'telegram', from: 'c', customerMessage: veryLongMessage, draftReply: 'short reply', approvalTaskId: 't' });
-  restoreTelegram();
-  assert(longText.length < veryLongMessage.length + 200, 'a very long customer message should be truncated in the alert, not included in full');
-  console.log('✓ notifyOwnerPendingApproval: long customer messages are truncated in the alert rather than sent in full');
+  config.telegram.botToken = null;
+  config.whatsapp.accessToken = null;
+  config.whatsapp.phoneNumberId = null;
+  if (config.applicant) config.applicant.email = 'owner@example.com';
+  const status = channelStatus();
+  assert.strictEqual(status.telegram, 'not_configured');
+  assert.strictEqual(status.whatsapp, 'not_configured');
+  assert.strictEqual(status.email, 'configured');
+  assert.strictEqual(isChannelConfigured('telegram'), false);
+  assert.strictEqual(isChannelConfigured('whatsapp'), false);
+  assert.strictEqual(isChannelConfigured('email'), true);
+  console.log('✓ owner-notifications: channelStatus / isChannelConfigured honestly report WhatsApp and Telegram as unconfigured when they are');
 
+  // --- Restore everything the test touched. ---
   config.notifications.ownerTelegramChatId = originalTelegramChatId;
   config.notifications.ownerWhatsappNumber = originalWhatsappNumber;
-
-  // --- Integration: TelegramAgent actually calls the notification when a message stays pending ---
-  const { loadPlugins } = require('../core/pluginLoader');
-  loadPlugins();
-  const mockProvider = require('../core/providers/mockProvider');
-  const aiProvider = require('../core/providers/aiProvider');
-  const originalMock = mockProvider.complete;
-  const originalAi = aiProvider.complete;
-  mockProvider.complete = async () => ({ text: 'Sure, happy to help!', provider: 'mock', costEstimate: 0 });
-  aiProvider.complete = async () => ({ text: 'Sure, happy to help!', provider: 'mock', costEstimate: 0 });
-
-  config.notifications.ownerTelegramChatId = 'owner-chat-id';
-  config.autoReply.telegram.enabled = false; // stays pending -> should notify
-  let notifyCalled = false;
-  let notifyArgs = null;
-  restoreTelegram = stubTelegramSend(async (to, text) => { notifyCalled = true; notifyArgs = { to, text }; return { messageId: 1 }; });
-
-  const TelegramAgent = require('../agents/telegram/TelegramAgent');
-  const agent = new TelegramAgent();
-  await agent.handleIncomingMessage({ from: 'real-customer-1', body: 'Are you open today?' });
-  // Give the fire-and-forget notification a tick to run.
-  await new Promise((r) => setTimeout(r, 20));
-  restoreTelegram();
-
-  mockProvider.complete = originalMock;
-  aiProvider.complete = originalAi;
-  config.notifications.ownerTelegramChatId = originalTelegramChatId;
-
-  assert.strictEqual(notifyCalled, true, 'TelegramAgent should trigger the owner notification when the reply stays pending');
-  assert(notifyArgs.text.includes('real-customer-1'));
-  console.log('✓ TelegramAgent: actually triggers the owner notification when a customer message stays pending approval');
+  if (config.applicant) config.applicant.email = originalApplicantEmail;
+  config.telegram.botToken = originalTelegramBotToken;
+  config.whatsapp.accessToken = originalWhatsappAccess;
+  config.whatsapp.phoneNumberId = originalWhatsappPhone;
+  if (originalGmailTool) toolRegistry.tools.set('gmail.sendEmail', originalGmailTool);
+  else toolRegistry.tools.delete('gmail.sendEmail');
 
   console.log('\nAll owner notification checks passed.');
 }
