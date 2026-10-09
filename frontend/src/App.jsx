@@ -18,6 +18,7 @@ import BriefingDashboard from './pages/BriefingDashboard';
 import Departments from './pages/Departments';
 import DepartmentPage from './pages/DepartmentPage';
 import Team from './pages/Team';
+import NotFound from './pages/NotFound';
 import { LogOut, WifiOff } from 'lucide-react';
 import { useStore } from './store/useStore';
 import { supabase } from './services/supabaseClient';
@@ -222,6 +223,9 @@ function AdminLayout({ connectionError }) {
             <Route path="/outreach" element={<Navigate to="/departments/sales/outreach" replace />} />
             <Route path="/research" element={<Navigate to="/departments/strategy/research" replace />} />
             <Route path="/briefing-dashboard" element={<Navigate to="/departments/strategy/intelligence" replace />} />
+
+            {/* Catch-all - a real in-app "page not found" instead of a blank <main>. */}
+            <Route path="*" element={<NotFound />} />
           </Routes>
         </main>
       </div>
