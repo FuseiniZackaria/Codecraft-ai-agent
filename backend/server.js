@@ -112,6 +112,27 @@ app.get('/api/workspace/me', requireAuth, (req, res) => {
     workspaceRole: req.user.workspaceRole || null,
   });
 });
+
+// Admin-only read of the workspace shadow log - lists store calls that are
+// not yet passing a workspaceId or that attempted a cross-tenant write.
+// Phase 2.3 observation window; Phase 2.3b flips the guard from "log" to
+// "throw" once this endpoint is reporting zero or near-zero per minute.
+app.get('/api/workspace/shadow-log', requireAuth, requireRole('admin'), (req, res) => {
+  try {
+    const { readShadowLog } = require('./memory/workspaceGuard');
+    const limit = Math.min(Number(req.query.limit) || 200, 1000);
+    const entries = readShadowLog(limit);
+    // Simple aggregation so the UI can show a scoreboard, not just a feed.
+    const byMethodReason = {};
+    for (const e of entries) {
+      const key = `${e.method}:${e.reason}`;
+      byMethodReason[key] = (byMethodReason[key] || 0) + 1;
+    }
+    res.json({ total: entries.length, limit, byMethodReason, entries });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
 app.use('/api', requireAuth, requireRole('admin'), generalApiLimiter, routes);
 app.use('/api/events', requireAuth, requireRole('admin'), eventsRoutes);
 app.use('/api/skills', requireAuth, requireRole('admin'), skillsRoutes);

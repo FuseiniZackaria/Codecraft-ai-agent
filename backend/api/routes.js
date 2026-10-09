@@ -55,11 +55,12 @@ router.post('/chat', async (req, res) => {
     const attachmentNames = (attachments || []).map((a) => a.name).filter(Boolean);
     const userContent =
       message || (attachmentNames.length ? `Sent ${attachmentNames.length === 1 ? attachmentNames[0] : `${attachmentNames.length} files`}` : '');
+    const workspaceId = req.user?.workspaceId || null;
     memory
-      .addChatMessage({ role: 'user', content: userContent, attachmentNames })
+      .addChatMessage({ role: 'user', content: userContent, attachmentNames, workspace_id: workspaceId }, { workspaceId })
       .catch((err) => console.warn(`[chat] failed to persist user message: ${err.message}`));
     memory
-      .addChatMessage({ role: 'assistant', content: result.reply, taskId: result.task?.id || null })
+      .addChatMessage({ role: 'assistant', content: result.reply, taskId: result.task?.id || null, workspace_id: workspaceId }, { workspaceId })
       .catch((err) => console.warn(`[chat] failed to persist assistant reply: ${err.message}`));
 
     res.json(result);
@@ -68,10 +69,22 @@ router.post('/chat', async (req, res) => {
   }
 });
 
+// Phase 2.3: scopes a list result to the current workspace at the route
+// layer. Returns rows unfiltered if the request has no workspaceId
+// (pre-migration behavior, or legacy service-key callers), AND if a row
+// has no workspace_id (unstamped backfill rows). Phase 2.3b will remove
+// the second escape once every row is stamped.
+function scopeByWorkspace(rows, req) {
+  const ws = req.user?.workspaceId;
+  if (!ws) return rows;
+  return (rows || []).filter((r) => !r.workspace_id || r.workspace_id === ws);
+}
+
 router.get('/chat/history', async (req, res) => {
   try {
     const limit = Math.min(Number(req.query.limit) || 200, 500);
-    res.json(await memory.listChatMessages(limit));
+    const rows = await memory.listChatMessages(limit, { workspaceId: req.user?.workspaceId || null });
+    res.json(scopeByWorkspace(rows, req));
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
@@ -102,7 +115,7 @@ router.post('/chat/stream', async (req, res) => {
     try {
       const result = await chat.handleMessage(message || '', [], attachments);
       send({ type: 'text_delta', text: result.reply });
-      await persistTurn(message || '', attachments, result.reply, result.task?.id || null);
+      await persistTurn(message || '', attachments, result.reply, result.task?.id || null, req.user?.workspaceId || null);
       send({ type: 'done', task_ids: result.task ? [result.task.id] : [], fallback: 'attachments' });
     } catch (err) {
       send({ type: 'error', error: err.message });
@@ -126,7 +139,7 @@ router.post('/chat/stream', async (req, res) => {
     });
     accumulated = accumulated || result.reply;
     for (const id of result.taskIds) if (!tasksForTurn.includes(id)) tasksForTurn.push(id);
-    await persistTurn(message, [], accumulated, tasksForTurn[0] || null);
+    await persistTurn(message, [], accumulated, tasksForTurn[0] || null, req.user?.workspaceId || null);
     send({ type: 'done', task_ids: tasksForTurn, usage: result.usage });
   } catch (err) {
     const isCap = err.code === 'DAILY_CAP_REACHED';
@@ -143,7 +156,7 @@ router.post('/chat/stream', async (req, res) => {
         .map((m) => ({ role: m.role, content: m.content }));
       const result = await chat.handleMessage(message, historyForFallback, []);
       send({ type: 'text_delta', text: result.reply });
-      await persistTurn(message, [], result.reply, result.task?.id || null);
+      await persistTurn(message, [], result.reply, result.task?.id || null, req.user?.workspaceId || null);
       send({ type: 'done', task_ids: result.task ? [result.task.id] : [], fallback: isCap ? 'daily_cap' : 'assistant_error' });
     } catch (fallbackErr) {
       send({ type: 'error', error: fallbackErr.message });
@@ -153,13 +166,13 @@ router.post('/chat/stream', async (req, res) => {
   res.end();
 });
 
-async function persistTurn(userMessage, attachments, assistantReply, taskId) {
+async function persistTurn(userMessage, attachments, assistantReply, taskId, workspaceId = null) {
   const attachmentNames = (attachments || []).map((a) => a.name).filter(Boolean);
   const userContent =
     userMessage || (attachmentNames.length ? `Sent ${attachmentNames.length === 1 ? attachmentNames[0] : `${attachmentNames.length} files`}` : '');
   try {
-    await memory.addChatMessage({ role: 'user', content: userContent, attachmentNames });
-    await memory.addChatMessage({ role: 'assistant', content: assistantReply, taskId });
+    await memory.addChatMessage({ role: 'user', content: userContent, attachmentNames, workspace_id: workspaceId }, { workspaceId });
+    await memory.addChatMessage({ role: 'assistant', content: assistantReply, taskId, workspace_id: workspaceId }, { workspaceId });
   } catch (err) {
     console.warn(`[chat/stream] persist failed: ${err.message}`);
   }
@@ -240,7 +253,10 @@ router.post('/orchestrator/goal', goalSubmissionLimiter, async (req, res) => {
   if (!goal) return res.status(400).json({ error: '"goal" is required' });
 
   try {
-    const results = await orchestrator.submitGoal(goal, { payload, overrideProvider, departmentKey, agentKey });
+    const results = await orchestrator.submitGoal(goal, {
+      payload, overrideProvider, departmentKey, agentKey,
+      workspaceId: req.user?.workspaceId || null,
+    });
     if (results[0]?._mismatch) return res.json(results[0]);
     res.json({ tasks: results });
   } catch (err) {
@@ -261,7 +277,8 @@ router.get('/tasks/:id', async (req, res) => {
 
 router.get('/tasks', async (req, res) => {
   try {
-    res.json(await memory.listTasks());
+    const rows = await memory.listTasks({ workspaceId: req.user?.workspaceId || null });
+    res.json(scopeByWorkspace(rows, req));
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
@@ -326,7 +343,7 @@ router.patch('/tasks/:id/payload', async (req, res) => {
 // Approve / reject a pending_approval task
 router.post('/tasks/:id/approve', async (req, res) => {
   try {
-    const task = await orchestrator.approveTask(req.params.id);
+    const task = await orchestrator.approveTask(req.params.id, { workspaceId: req.user?.workspaceId || null });
     res.json(task);
   } catch (err) {
     res.status(400).json({ error: err.message });
@@ -335,7 +352,7 @@ router.post('/tasks/:id/approve', async (req, res) => {
 
 router.post('/tasks/:id/reject', async (req, res) => {
   try {
-    const task = await orchestrator.rejectTask(req.params.id);
+    const task = await orchestrator.rejectTask(req.params.id, { workspaceId: req.user?.workspaceId || null });
     res.json(task);
   } catch (err) {
     res.status(400).json({ error: err.message });
@@ -369,8 +386,9 @@ router.get('/agents', (req, res) => {
 // Dashboard summary
 router.get('/dashboard/summary', async (req, res) => {
   try {
-    const tasks = await memory.listTasks();
-    const auditLog = await memory.getAuditLog();
+    const allTasks = await memory.listTasks({ workspaceId: req.user?.workspaceId || null });
+    const tasks = scopeByWorkspace(allTasks, req);
+    const auditLog = await memory.getAuditLog(undefined, { workspaceId: req.user?.workspaceId || null });
     res.json({
       activeAgents: Object.keys(agents).length,
       installedTools: toolRegistry.list(),
