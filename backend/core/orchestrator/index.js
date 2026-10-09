@@ -25,13 +25,13 @@ async function submitGoal(goal, options = {}) {
     // can filter by workspace and the shadow guard sees the scope.
     if (workspaceId) task.workspace_id = workspaceId;
     await memory.saveTask(task, { workspaceId });
-    await activityLog.record('orchestrator', 'task_queued', task.agent, { taskId: task.id, instruction: task.instruction });
+    await activityLog.record('orchestrator', 'task_queued', task.agent, { taskId: task.id, instruction: task.instruction, workspaceId });
 
     if (task.irreversible) {
       // Block on human approval - do not execute yet. Preserve whatever
       // payload the planner extracted (or the caller supplied explicitly).
       await memory.updateTask(task.id, { status: 'pending_approval', payload: options.payload || task.payload }, { workspaceId });
-      await activityLog.record('orchestrator', 'approval_required', task.toolCall.tool, { taskId: task.id });
+      await activityLog.record('orchestrator', 'approval_required', task.toolCall.tool, { taskId: task.id, workspaceId });
       results.push(await memory.getTask(task.id));
       continue;
     }
@@ -66,7 +66,7 @@ async function approveTask(taskId, options = {}) {
 
   // The human's approval decision is logged regardless of what happens next -
   // execution failing (e.g. Gmail not connected) doesn't mean they didn't approve it.
-  await activityLog.record('human', 'task_approved', task.toolCall.tool, { taskId });
+  await activityLog.record('human', 'task_approved', task.toolCall.tool, { taskId, workspaceId });
 
   try {
     // approvedTaskId is read by the Gmail guard (plugins/gmail/guard.js) to
@@ -79,10 +79,10 @@ async function approveTask(taskId, options = {}) {
       approvedAt: new Date().toISOString(),
       workspaceId,
     });
-    await activityLog.record('orchestrator', 'tool_call', task.toolCall.tool, { taskId, status: 'done' });
+    await activityLog.record('orchestrator', 'tool_call', task.toolCall.tool, { taskId, status: 'done', workspaceId });
     return memory.updateTask(taskId, { status: 'done', result }, { workspaceId });
   } catch (err) {
-    await activityLog.record('orchestrator', 'task_execution_failed', task.toolCall.tool, { taskId, error: err.message });
+    await activityLog.record('orchestrator', 'task_execution_failed', task.toolCall.tool, { taskId, error: err.message, workspaceId });
     return memory.updateTask(taskId, { status: 'failed', result: { error: err.message } }, { workspaceId });
   }
 }
@@ -91,7 +91,7 @@ async function rejectTask(taskId, options = {}) {
   const task = await memory.getTask(taskId);
   if (!task) throw new Error(`Task not found: ${taskId}`);
   const workspaceId = options.workspaceId || task.workspace_id || null;
-  await activityLog.record('human', 'task_rejected', task.toolCall?.tool || task.agent, { taskId });
+  await activityLog.record('human', 'task_rejected', task.toolCall?.tool || task.agent, { taskId, workspaceId });
   return memory.updateTask(taskId, { status: 'rejected' }, { workspaceId });
 }
 

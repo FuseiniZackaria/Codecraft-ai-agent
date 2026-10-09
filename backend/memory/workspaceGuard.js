@@ -128,16 +128,36 @@ function withWorkspaceGuard(store) {
         return original;
       }
       return async function guarded(...args) {
-        let workspaceOpts = null;
-        if (args.length > 0 && typeof args[args.length - 1] === 'object' && args[args.length - 1] !== null && 'workspaceId' in args[args.length - 1]) {
-          workspaceOpts = args.pop();
+        // Peek at the last argument WITHOUT popping it - the underlying
+        // store methods receive their full argument list unchanged. The
+        // guard only needs to read workspace options to classify the call;
+        // store methods like addReflection themselves accept an options
+        // argument and stamp workspace_id from it.
+        const OPT_KEYS = new Set(['workspaceId', 'system']);
+        let callerWs = null;
+        const last = args[args.length - 1];
+        if (
+          last &&
+          typeof last === 'object' &&
+          !Array.isArray(last) &&
+          'workspaceId' in last &&
+          Object.keys(last).every((k) => OPT_KEYS.has(k))
+        ) {
+          callerWs = last.workspaceId || null;
         }
 
-        const callerWs = workspaceOpts?.workspaceId || null;
-
         if (ROW_WRITE_METHODS.has(prop)) {
-          const rowArg = args[0];
-          const rowWs = rowArg && typeof rowArg === 'object' ? rowArg.workspace_id || rowArg.workspaceId || null : null;
+          // Different store methods put the row at different arg positions
+          // (saveTask -> args[0], remember -> args[1], audit -> args[3]).
+          // Instead of per-method knowledge, scan every object argument for
+          // a workspace_id / workspaceId stamp - any match counts as scoped.
+          let rowWs = null;
+          for (const a of args) {
+            if (a && typeof a === 'object' && !Array.isArray(a)) {
+              const ws = a.workspace_id || a.workspaceId;
+              if (ws) { rowWs = ws; break; }
+            }
+          }
           if (!callerWs && !rowWs) {
             logMiss(prop, 'no_workspace_on_call_or_row');
           } else if (callerWs && rowWs && callerWs !== rowWs) {

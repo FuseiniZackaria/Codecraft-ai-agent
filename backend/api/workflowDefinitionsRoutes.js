@@ -75,7 +75,10 @@ router.post('/registry/:id/install', async (req, res) => {
 
 router.get('/', async (req, res) => {
   try {
-    res.json(await memory.listWorkflowDefinitions());
+    const ws = req.user?.workspaceId;
+    const all = await memory.listWorkflowDefinitions({ workspaceId: ws || null });
+    const scoped = ws ? (all || []).filter((w) => !w.workspace_id || w.workspace_id === ws) : all;
+    res.json(scoped);
   } catch (err) {
     res.status(500).json({ error: err.message });
   }

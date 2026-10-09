@@ -815,12 +815,18 @@ class SalesAgent extends BaseAgent {
     if (!isLeadGen) return super.run(task);
 
     const activityLog = require('../../core/activityLog');
-    await activityLog.record(this.role, 'task_started', this.key, { taskId: task.id, instruction: task.instruction });
-    await memory.remember(this.role, { type: 'task_start', taskId: task.id, instruction: task.instruction });
+    const workspaceId = task?.workspace_id || null;
+    // Phase 2.3b: this override duplicates BaseAgent.run's loop (to tolerate
+    // per-step failures). Mirror BaseAgent's _currentTask trick so every
+    // createApprovalTask inside reflect() inherits workspace_id without any
+    // per-call-site change in reflect itself.
+    this._currentTask = task;
+    await activityLog.record(this.role, 'task_started', this.key, { taskId: task.id, instruction: task.instruction, workspaceId });
+    await memory.remember(this.role, { type: 'task_start', taskId: task.id, instruction: task.instruction, workspace_id: workspaceId });
 
     try {
       const steps = await this.plan(task);
-      await activityLog.record(this.role, 'plan_created', this.key, { taskId: task.id, stepCount: steps.length });
+      await activityLog.record(this.role, 'plan_created', this.key, { taskId: task.id, stepCount: steps.length, workspaceId });
 
       const results = [];
       let context = '';
@@ -837,13 +843,15 @@ class SalesAgent extends BaseAgent {
       }
 
       await this.reflect(task, results);
-      await memory.remember(this.role, { type: 'task_end', taskId: task.id });
-      await activityLog.record(this.role, 'task_completed', this.key, { taskId: task.id, stepCount: results.length });
+      await memory.remember(this.role, { type: 'task_end', taskId: task.id, workspace_id: workspaceId });
+      await activityLog.record(this.role, 'task_completed', this.key, { taskId: task.id, stepCount: results.length, workspaceId });
 
       return results;
     } catch (err) {
-      await activityLog.record(this.role, 'task_failed', this.key, { taskId: task.id, error: err.message });
+      await activityLog.record(this.role, 'task_failed', this.key, { taskId: task.id, error: err.message, workspaceId });
       throw err;
+    } finally {
+      this._currentTask = null;
     }
   }
 }

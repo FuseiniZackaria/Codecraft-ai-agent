@@ -21,7 +21,13 @@ function validateWorkflowInput(body) {
 
 router.get('/', async (req, res) => {
   try {
-    res.json(await memory.listWorkflows());
+    // Phase 2.3b: scope to the admin's workspace. Rows without workspace_id
+    // (legacy backfill or absent column pre-migration) are still returned so
+    // nothing disappears on existing deployments; Phase 2.3c tightens.
+    const ws = req.user?.workspaceId;
+    const all = await memory.listWorkflows({ workspaceId: ws || null });
+    const scoped = ws ? (all || []).filter((w) => !w.workspace_id || w.workspace_id === ws) : all;
+    res.json(scoped);
   } catch (err) {
     res.status(500).json({ error: err.message });
   }

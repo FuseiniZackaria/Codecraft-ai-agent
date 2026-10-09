@@ -48,7 +48,10 @@ class MemoryStore {
   // --- Agent memory (per-agent scratchpad) ---
   async remember(agentName, entry) {
     if (!this.agentMemory.has(agentName)) this.agentMemory.set(agentName, []);
-    this.agentMemory.get(agentName).push({ ...entry, at: new Date().toISOString() });
+    // Entry may carry workspace_id / workspaceId; both are stamped so the
+    // in-memory shape matches what SupabaseStore writes to the row.
+    const workspace_id = entry?.workspace_id || entry?.workspaceId || null;
+    this.agentMemory.get(agentName).push({ ...entry, workspace_id, at: new Date().toISOString() });
   }
 
   async recall(agentName, limit = 20) {
@@ -56,14 +59,31 @@ class MemoryStore {
   }
 
   // --- Reflection memory ---
-  async addReflection(agentName, taskId, note) {
-    this.reflections.push({ agentName, taskId, note, at: new Date().toISOString() });
+  async addReflection(agentName, taskId, note, options = {}) {
+    this.reflections.push({
+      agentName,
+      taskId,
+      note,
+      workspace_id: options.workspaceId || null,
+      at: new Date().toISOString(),
+    });
   }
 
   // --- Audit log ---
   async audit(actor, action, target, metadata = {}) {
     const { randomUUID } = require('crypto');
-    this.auditLog.push({ id: randomUUID(), actor, action, target, metadata, at: new Date().toISOString() });
+    // workspace_id is a first-class column, peeled off from metadata so the
+    // audit row carries it even if the metadata JSON is renamed later.
+    const workspace_id = metadata?.workspaceId || metadata?.workspace_id || null;
+    this.auditLog.push({
+      id: randomUUID(),
+      actor,
+      action,
+      target,
+      workspace_id,
+      metadata,
+      at: new Date().toISOString(),
+    });
   }
 
   async getAuditLog(limit) {
@@ -239,6 +259,7 @@ class MemoryStore {
       outreachStatus: row.outreachStatus || 'draft',
       lastMessageId: row.lastMessageId || null,
       approvedTaskId: row.approvedTaskId || null,
+      workspace_id: row.workspace_id || row.workspaceId || null,
       metadata: row.metadata || {},
       createdAt: new Date().toISOString(),
       updatedAt: new Date().toISOString(),

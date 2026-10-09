@@ -90,7 +90,8 @@ class SupabaseStore {
 
   // --- Agent memory ---
   async remember(agentName, entry) {
-    const { error } = await this.client.from('agent_memory').insert({ agent_name: agentName, entry });
+    const workspace_id = entry?.workspace_id || entry?.workspaceId || null;
+    const { error } = await this.client.from('agent_memory').insert({ agent_name: agentName, entry, workspace_id });
     if (error) throw new Error(`SupabaseStore.remember: ${error.message}`);
   }
 
@@ -106,14 +107,24 @@ class SupabaseStore {
   }
 
   // --- Reflection memory ---
-  async addReflection(agentName, taskId, note) {
-    const { error } = await this.client.from('reflections').insert({ agent_name: agentName, task_id: taskId, note });
+  async addReflection(agentName, taskId, note, options = {}) {
+    const workspace_id = options.workspaceId || null;
+    const { error } = await this.client.from('reflections').insert({
+      agent_name: agentName,
+      task_id: taskId,
+      note,
+      workspace_id,
+    });
     if (error) throw new Error(`SupabaseStore.addReflection: ${error.message}`);
   }
 
   // --- Audit log ---
   async audit(actor, action, target, metadata = {}) {
-    const { error } = await this.client.from('audit_log').insert({ actor, action, target, metadata });
+    // workspace_id is a first-class column on audit_log, peeled off metadata
+    // so Phase 2.3b stamping flows through to the row without renaming the
+    // metadata JSON structure every call site depends on.
+    const workspace_id = metadata?.workspaceId || metadata?.workspace_id || null;
+    const { error } = await this.client.from('audit_log').insert({ actor, action, target, metadata, workspace_id });
     if (error) throw new Error(`SupabaseStore.audit: ${error.message}`);
   }
 
@@ -524,6 +535,7 @@ class SupabaseStore {
       outreach_status: row.outreachStatus || 'draft',
       last_message_id: row.lastMessageId || null,
       approved_task_id: row.approvedTaskId || null,
+      workspace_id: row.workspace_id || row.workspaceId || null,
       metadata: row.metadata || {},
     };
     const { data, error } = await this.client.from('outreach_threads').insert(payload).select().maybeSingle();
@@ -605,6 +617,7 @@ class SupabaseStore {
       outreachStatus: row.outreach_status,
       lastMessageId: row.last_message_id,
       approvedTaskId: row.approved_task_id,
+      workspace_id: row.workspace_id || null,
       metadata: row.metadata || {},
       createdAt: row.created_at,
       updatedAt: row.updated_at,
