@@ -456,8 +456,8 @@ export default function Chat({ scope = null }) {
   }
 
   return (
-    <div className="flex flex-col h-full max-h-[calc(100vh-3.5rem)]">
-      <div className="p-6 pb-3">
+    <div className="flex flex-col h-full max-h-[calc(100dvh-3.5rem)] min-w-0">
+      <div className="p-4 md:p-6 pb-2 md:pb-3">
         <h1 className="font-[var(--font-display)] text-xl font-semibold mb-1">
           {scope ? `${DEPARTMENT_LABELS[scope] || scope} Assistant` : 'Assistant'}
         </h1>
@@ -469,12 +469,12 @@ export default function Chat({ scope = null }) {
       </div>
 
       {!connected && (
-        <div className="mx-6 mb-3 rounded-lg border border-[var(--color-warning)]/30 bg-[var(--color-warning)]/5 p-3 text-xs text-[var(--color-warning)]">
+        <div className="mx-4 md:mx-6 mb-3 rounded-lg border border-[var(--color-warning)]/30 bg-[var(--color-warning)]/5 p-3 text-xs text-[var(--color-warning)]">
           Backend not reachable — start it at localhost:4000 to chat for real.
         </div>
       )}
 
-      <div className="flex-1 overflow-y-auto px-6 space-y-3">
+      <div className="flex-1 overflow-y-auto px-4 md:px-6 space-y-3">
         {chatMessages.length === 0 && (
           <div className="text-sm text-[var(--color-text-muted)] py-8 text-center">
             Say hello, ask a question, attach a file, or give it something to do.
@@ -514,7 +514,7 @@ export default function Chat({ scope = null }) {
         <div ref={bottomRef} />
       </div>
 
-      <div className="px-6 pt-3">
+      <div className="px-4 md:px-6 pt-3">
         {files.length > 0 && (
           <div className="flex flex-wrap gap-1.5 mb-2">
             {files.map((file, i) => (
@@ -523,7 +523,7 @@ export default function Chat({ scope = null }) {
           </div>
         )}
 
-        <form onSubmit={handleSubmit} className="flex gap-2 items-end pb-6">
+        <form onSubmit={handleSubmit} className="flex gap-2 items-end pb-4 md:pb-6">
           <input
             ref={fileInputRef}
             type="file"

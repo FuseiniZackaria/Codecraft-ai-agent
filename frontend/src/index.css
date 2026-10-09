@@ -39,6 +39,17 @@ body {
   -webkit-font-smoothing: antialiased;
 }
 
+/* Below iPhone's zoom-on-focus threshold the OS zooms the viewport in on any
+   input focus. Force at least 16px on mobile for form controls so that
+   doesn't happen. On md and up, Tailwind text-sm (14px) wins again. */
+@media (max-width: 767px) {
+  input,
+  select,
+  textarea {
+    font-size: 16px;
+  }
+}
+
 ::selection {
   background: var(--color-accent);
   color: #0a0a0b;

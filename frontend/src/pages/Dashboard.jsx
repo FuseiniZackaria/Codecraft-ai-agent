@@ -11,7 +11,7 @@ export default function Dashboard() {
   const scheduledCalls = outreachPipelines.filter((t) => t.payload.stage === 'call_scheduled').length;
 
   return (
-    <div className="p-6 max-w-5xl">
+    <div className="p-4 md:p-6 max-w-5xl">
       <h1 className="font-[var(--font-display)] text-xl font-semibold mb-1">Overview</h1>
       <p className="text-sm text-[var(--color-text-muted)] mb-6">Your autonomous workforce, at a glance.</p>
 

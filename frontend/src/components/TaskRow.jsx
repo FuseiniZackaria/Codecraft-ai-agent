@@ -43,7 +43,7 @@ export default function TaskRow({ task, expanded, onToggle, liveNarration, rende
             onToggle(task.id);
           }
         }}
-        className={`w-full flex items-center justify-between gap-4 px-4 py-3 text-left ${isExpandable ? 'cursor-pointer hover:bg-[var(--color-surface-2)]/40' : 'cursor-default'} transition-colors`}
+        className={`w-full flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 sm:gap-4 px-4 py-3 text-left ${isExpandable ? 'cursor-pointer hover:bg-[var(--color-surface-2)]/40' : 'cursor-default'} transition-colors`}
       >
         <div className="min-w-0 flex-1 flex items-center gap-2">
           {!task.read && (
@@ -64,8 +64,8 @@ export default function TaskRow({ task, expanded, onToggle, liveNarration, rende
               className={`text-[var(--color-text-muted)] shrink-0 transition-transform ${expanded ? 'rotate-180' : ''}`}
             />
           )}
-          <div className="min-w-0">
-            <div className="text-sm truncate">{task.instruction}</div>
+          <div className="min-w-0 flex-1">
+            <div className="text-sm break-words">{task.instruction}</div>
             {liveNarration ? (
               <div className="flex items-center gap-1.5 mt-0.5">
                 <span className="relative flex h-1.5 w-1.5 shrink-0">
@@ -75,14 +75,14 @@ export default function TaskRow({ task, expanded, onToggle, liveNarration, rende
                 <div className="text-[11px] text-[var(--color-text)] italic truncate">{liveNarration}</div>
               </div>
             ) : (
-              <div className="text-[11px] text-[var(--color-text-muted)] font-[var(--font-mono)] mt-0.5">
+              <div className="text-[11px] text-[var(--color-text-muted)] font-[var(--font-mono)] mt-0.5 break-words">
                 {task.agent} · {new Date(task.created_at).toLocaleString()}
               </div>
             )}
           </div>
         </div>
 
-        <div className="flex items-center gap-3 shrink-0">
+        <div className="flex items-center gap-2 sm:gap-3 shrink-0 self-end sm:self-auto">
           <StatusPill status={task.status} />
           {needsApproval && !hasEditablePayload && (
             <div className="flex items-center gap-1.5" onClick={(e) => e.stopPropagation()}>

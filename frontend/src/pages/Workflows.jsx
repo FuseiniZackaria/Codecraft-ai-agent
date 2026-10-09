@@ -108,7 +108,7 @@ function NewWorkflowForm({ template, onCreated, onCancel }) {
             min="1"
             value={intervalMinutes}
             onChange={(e) => setIntervalMinutes(e.target.value)}
-            className="w-32 px-3 py-2 rounded-md border border-[var(--color-border)] bg-[var(--color-bg)] text-sm outline-none focus:border-[var(--color-accent)]/50"
+            className="w-full sm:w-32 px-3 py-2 rounded-md border border-[var(--color-border)] bg-[var(--color-bg)] text-sm outline-none focus:border-[var(--color-accent)]/50"
           />
         </div>
       ) : (
@@ -119,17 +119,17 @@ function NewWorkflowForm({ template, onCreated, onCancel }) {
               type="time"
               value={dailyTime}
               onChange={(e) => setDailyTime(e.target.value)}
-              className="w-32 px-3 py-2 rounded-md border border-[var(--color-border)] bg-[var(--color-bg)] text-sm outline-none focus:border-[var(--color-accent)]/50"
+              className="w-full sm:w-32 px-3 py-2 rounded-md border border-[var(--color-border)] bg-[var(--color-bg)] text-sm outline-none focus:border-[var(--color-accent)]/50"
             />
           </div>
           <div>
             <label className="text-xs text-[var(--color-text-muted)] mb-1 block">Days</label>
-            <div className="flex gap-1">
+            <div className="flex flex-wrap gap-1">
               {DAY_LABELS.map((label, i) => (
                 <button
                   key={i}
                   onClick={() => toggleDay(i)}
-                  className={`w-9 h-9 rounded-md text-[11px] font-medium border ${
+                  className={`w-10 h-10 sm:w-9 sm:h-9 rounded-md text-[11px] font-medium border ${
                     daysOfWeek.includes(i)
                       ? 'border-[var(--color-accent)] text-[var(--color-accent)] bg-[var(--color-accent)]/10'
                       : 'border-[var(--color-border)] text-[var(--color-text-muted)]'
@@ -222,12 +222,12 @@ function WorkflowRow({ workflow, onChanged }) {
   }
 
   return (
-    <div className="flex items-center justify-between gap-3 px-4 py-3 border-b border-[var(--color-border)] last:border-0">
+    <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 px-4 py-3 border-b border-[var(--color-border)] last:border-0">
       <div className="min-w-0 flex-1">
-        <div className="flex items-center gap-2">
-          <span className="text-sm font-medium truncate">{workflow.name}</span>
+        <div className="flex items-center gap-2 flex-wrap">
+          <span className="text-sm font-medium break-words min-w-0">{workflow.name}</span>
           <span
-            className={`text-[10px] px-1.5 py-0.5 rounded-full border ${
+            className={`text-[10px] px-1.5 py-0.5 rounded-full border shrink-0 ${
               workflow.enabled
                 ? 'text-[var(--color-success)] border-[var(--color-success)]/30 bg-[var(--color-success)]/10'
                 : 'text-[var(--color-text-muted)] border-[var(--color-border)]'
@@ -236,25 +236,25 @@ function WorkflowRow({ workflow, onChanged }) {
             {workflow.enabled ? 'enabled' : 'disabled'}
           </span>
         </div>
-        <div className="text-[11px] text-[var(--color-text-muted)] truncate">{workflow.goal}</div>
-        <div className="flex items-center gap-3 mt-1 text-[11px] text-[var(--color-text-muted)]">
+        <div className="text-[11px] text-[var(--color-text-muted)] break-words">{workflow.goal}</div>
+        <div className="flex items-center gap-x-3 gap-y-1 flex-wrap mt-1 text-[11px] text-[var(--color-text-muted)]">
           <span className="flex items-center gap-1">
             {workflow.scheduleType === 'interval' ? <Clock size={11} /> : <Calendar size={11} />}
             {describeSchedule(workflow)}
           </span>
           {workflow.lastRunAt && <span>Last ran {new Date(workflow.lastRunAt).toLocaleString()}</span>}
           {workflow.deliverWhatsappEnabled && (
-            <span className="text-[var(--color-success)]">→ WhatsApp: {workflow.deliverWhatsappTo}</span>
+            <span className="text-[var(--color-success)] break-all">→ WhatsApp: {workflow.deliverWhatsappTo}</span>
           )}
         </div>
 
         {editingDelivery ? (
-          <div className="mt-2 flex items-center gap-2">
+          <div className="mt-2 flex flex-wrap items-center gap-2">
             <input
               value={whatsappTo}
               onChange={(e) => setWhatsappTo(e.target.value)}
               placeholder="+233123456789"
-              className="flex-1 px-2 py-1 rounded-md border border-[var(--color-border)] bg-[var(--color-bg)] text-xs outline-none focus:border-[var(--color-accent)]/50"
+              className="w-full sm:flex-1 sm:w-auto min-w-0 px-2 py-1 rounded-md border border-[var(--color-border)] bg-[var(--color-bg)] text-xs outline-none focus:border-[var(--color-accent)]/50"
             />
             <button onClick={() => saveDelivery(true)} disabled={busy} className="text-xs font-medium px-2 py-1 rounded-md bg-[var(--color-accent)] text-black">
               Save
@@ -277,7 +277,7 @@ function WorkflowRow({ workflow, onChanged }) {
           </button>
         )}
       </div>
-      <div className="flex items-center gap-1 shrink-0">
+      <div className="flex items-center gap-1 shrink-0 self-end sm:self-auto">
         <button disabled={busy} onClick={() => run('run-now')} title="Run now" className="p-1.5 rounded-md border border-[var(--color-border)] text-[var(--color-text-muted)] hover:text-[var(--color-accent)] disabled:opacity-40">
           <Play size={14} />
         </button>
@@ -354,23 +354,23 @@ export default function Workflows() {
   }, []);
 
   return (
-    <div className="p-6 max-w-3xl">
-      <div className="flex items-center justify-between mb-1">
-        <div className="flex items-center gap-2">
+    <div className="p-4 md:p-6 max-w-3xl">
+      <div className="flex items-center justify-between gap-2 mb-1">
+        <div className="flex items-center gap-2 min-w-0">
           {step !== 'closed' && (
-            <button onClick={() => setStep('closed')} className="p-1 -ml-1 text-[var(--color-text-muted)] hover:text-[var(--color-text)]">
+            <button onClick={() => setStep('closed')} className="p-1 -ml-1 text-[var(--color-text-muted)] hover:text-[var(--color-text)] shrink-0">
               <ArrowLeft size={16} />
             </button>
           )}
-          <Workflow size={20} className="text-[var(--color-accent)]" />
-          <h1 className="font-[var(--font-display)] text-xl font-semibold">Workflows</h1>
+          <Workflow size={20} className="text-[var(--color-accent)] shrink-0" />
+          <h1 className="font-[var(--font-display)] text-xl font-semibold truncate">Workflows</h1>
         </div>
         {step === 'closed' && (
           <button
             onClick={() => setStep('templates')}
-            className="flex items-center gap-1.5 text-sm font-medium px-3 py-1.5 rounded-md bg-[var(--color-accent)] text-black hover:brightness-110"
+            className="flex items-center gap-1.5 text-sm font-medium px-3 py-1.5 rounded-md bg-[var(--color-accent)] text-black hover:brightness-110 shrink-0"
           >
-            <Plus size={14} /> New workflow
+            <Plus size={14} /> <span className="hidden sm:inline">New workflow</span><span className="sm:hidden">New</span>
           </button>
         )}
       </div>

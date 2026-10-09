@@ -99,7 +99,7 @@ export default function Research({ embedded } = {}) {
   if (embedded) return content;
 
   return (
-    <div className="p-6 max-w-4xl">
+    <div className="p-4 md:p-6 max-w-4xl">
       <h1 className="font-[var(--font-display)] text-xl font-semibold mb-1">Research</h1>
       <p className="text-sm text-[var(--color-text-muted)] mb-6">
         Findings, leads, and competitor research the Research Agent has produced.

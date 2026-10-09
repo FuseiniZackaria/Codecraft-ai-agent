@@ -108,7 +108,7 @@ export default function ConnectorPrompt() {
   const manifestName = detection?.manifest?.name || 'an MCP server';
 
   return (
-    <div className="fixed bottom-4 right-4 z-50 flex w-96 flex-col gap-2">
+    <div className="fixed bottom-4 right-4 left-4 sm:left-auto z-50 flex w-auto sm:w-96 flex-col gap-2">
       {prompt && (
         <div className="rounded-lg border border-[var(--color-accent)]/40 bg-[var(--color-surface)] shadow-lg">
           <div className="flex items-start gap-3 p-4">

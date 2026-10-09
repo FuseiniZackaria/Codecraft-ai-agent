@@ -158,8 +158,8 @@ export default function Console() {
   }, [events]);
 
   return (
-    <div className="p-6 max-w-4xl flex flex-col h-full">
-      <div className="flex items-center justify-between mb-1">
+    <div className="p-4 md:p-6 max-w-4xl flex flex-col h-full min-w-0">
+      <div className="flex items-center justify-between gap-2 mb-1">
         <h1 className="font-[var(--font-display)] text-xl font-semibold">Agent Console</h1>
         <div className="flex items-center gap-2">
           <button

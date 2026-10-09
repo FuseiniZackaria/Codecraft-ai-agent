@@ -170,6 +170,11 @@ export const api = {
   // show" rather than an error state.
   getBrowserPrompt: () => browserRequest('/browser/prompt'),
 
+  // --- Team (admin management) ---
+  listTeam: () => request('/team'),
+  addAdmin: (email, password) => request('/team', { method: 'POST', body: JSON.stringify({ email, password }) }),
+  removeAdmin: (userId) => request(`/team/${userId}`, { method: 'DELETE' }),
+
   connectMCP: (url) => browserPost('/mcp/connect', { url }),
 
   // Turns a page's own text into a reference skill for agents to consult -

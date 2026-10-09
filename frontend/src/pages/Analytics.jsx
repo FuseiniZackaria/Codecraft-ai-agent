@@ -120,11 +120,11 @@ export default function Analytics() {
   }, [sinceDays]);
 
   return (
-    <div className="p-6 max-w-5xl">
-      <div className="flex items-center justify-between mb-1">
-        <div className="flex items-center gap-2">
-          <BarChart3 size={20} className="text-[var(--color-accent)]" />
-          <h1 className="font-[var(--font-display)] text-xl font-semibold">Analytics</h1>
+    <div className="p-4 md:p-6 max-w-5xl">
+      <div className="flex items-center justify-between gap-2 mb-1 flex-wrap">
+        <div className="flex items-center gap-2 min-w-0">
+          <BarChart3 size={20} className="text-[var(--color-accent)] shrink-0" />
+          <h1 className="font-[var(--font-display)] text-xl font-semibold truncate">Analytics</h1>
         </div>
         <div className="flex gap-1">
           {RANGES.map((r) => (

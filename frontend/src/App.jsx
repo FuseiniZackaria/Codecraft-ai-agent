@@ -1,5 +1,5 @@
-import { useEffect, useRef, useState } from 'react';
-import { Routes, Route, Navigate } from 'react-router-dom';
+import { useCallback, useEffect, useRef, useState } from 'react';
+import { Routes, Route, Navigate, useLocation } from 'react-router-dom';
 import Sidebar from './components/Sidebar';
 import TopBar from './components/TopBar';
 import CommandPalette from './components/CommandPalette';
@@ -17,6 +17,7 @@ import Chat from './pages/Chat';
 import BriefingDashboard from './pages/BriefingDashboard';
 import Departments from './pages/Departments';
 import DepartmentPage from './pages/DepartmentPage';
+import Team from './pages/Team';
 import { LogOut, WifiOff } from 'lucide-react';
 import { useStore } from './store/useStore';
 import { supabase } from './services/supabaseClient';
@@ -116,7 +117,7 @@ export default function App() {
 
   if (session === undefined || (session && authLoading)) {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-[var(--color-bg)] text-[var(--color-text-muted)] text-sm">
+      <div className="min-h-dvh flex items-center justify-center bg-[var(--color-bg)] text-[var(--color-text-muted)] text-sm">
         Loading…
       </div>
     );
@@ -137,14 +138,14 @@ export default function App() {
   // Every other route redirects there rather than rendering admin-only content.
    if (user.role === 'client') {
     return (
-      <div className="flex h-screen bg-[var(--color-bg)] text-[var(--color-text)] font-[var(--font-body)]">
-        <div className="flex-1 flex flex-col overflow-hidden">
+      <div className="flex h-dvh bg-[var(--color-bg)] text-[var(--color-text)] font-[var(--font-body)]">
+        <div className="flex-1 flex flex-col overflow-hidden min-w-0">
           <div className="flex items-center justify-end gap-2 px-4 py-2 border-b border-[var(--color-border)]">
-            <span className="text-[11px] text-[var(--color-text-muted)]">{user.email}</span>
+            <span className="text-[11px] text-[var(--color-text-muted)] truncate min-w-0">{user.email}</span>
             <button
               onClick={() => supabase.auth.signOut()}
               title="Sign out"
-              className="p-1.5 rounded-md text-[var(--color-text-muted)] hover:text-[var(--color-danger)]"
+              className="p-1.5 rounded-md text-[var(--color-text-muted)] hover:text-[var(--color-danger)] shrink-0"
             >
               <LogOut size={14} />
             </button>
@@ -167,11 +168,34 @@ export default function App() {
     );
   }
 
+  return <AdminLayout connectionError={connectionError} />;
+}
+
+function AdminLayout({ connectionError }) {
+  const [sidebarOpen, setSidebarOpen] = useState(false);
+  const location = useLocation();
+
+  // Close the mobile drawer whenever the route changes (link tapped inside it,
+  // or a programmatic navigation elsewhere).
+  useEffect(() => {
+    setSidebarOpen(false);
+  }, [location.pathname]);
+
+  // Esc closes it.
+  useEffect(() => {
+    if (!sidebarOpen) return;
+    const onKey = (e) => { if (e.key === 'Escape') setSidebarOpen(false); };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [sidebarOpen]);
+
+  const closeSidebar = useCallback(() => setSidebarOpen(false), []);
+
   return (
-    <div className="flex h-screen bg-[var(--color-bg)] text-[var(--color-text)] font-[var(--font-body)]">
-      <Sidebar />
-      <div className="flex-1 flex flex-col overflow-hidden">
-        <TopBar />
+    <div className="flex h-dvh bg-[var(--color-bg)] text-[var(--color-text)] font-[var(--font-body)]">
+      <Sidebar isOpen={sidebarOpen} onClose={closeSidebar} />
+      <div className="flex-1 flex flex-col overflow-hidden min-w-0">
+        <TopBar onOpenSidebar={() => setSidebarOpen(true)} />
         {connectionError && (
           <div className="flex items-center justify-center gap-2 bg-[var(--color-warning)]/10 border-b border-[var(--color-warning)]/30 px-4 py-1.5 text-xs text-[var(--color-warning)]">
             <WifiOff size={13} /> {connectionError}
@@ -187,6 +211,7 @@ export default function App() {
             <Route path="/analytics" element={<Analytics />} />
             <Route path="/plugins" element={<Plugins />} />
             <Route path="/chat" element={<Chat />} />
+            <Route path="/team" element={<Team />} />
 
             {/* Department routes */}
             <Route path="/departments" element={<Departments />} />

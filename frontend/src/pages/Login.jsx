@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { LogIn, Mail } from 'lucide-react';
 import Logo from '../components/Logo';
+import PasswordInput from '../components/PasswordInput';
 import { supabase } from '../services/supabaseClient';
 
 export default function Login() {
@@ -50,7 +51,7 @@ export default function Login() {
 
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-[var(--color-bg)] text-[var(--color-text)] font-[var(--font-body)] px-4">
+    <div className="min-h-dvh flex items-center justify-center bg-[var(--color-bg)] text-[var(--color-text)] font-[var(--font-body)] px-4 py-6">
       <div className="w-full max-w-sm">
         <div className="flex items-center justify-center gap-2 mb-8">
           <Logo />
@@ -133,12 +134,11 @@ export default function Login() {
             </div>
             <div>
               <label className="text-xs text-[var(--color-text-muted)] mb-1 block">Password</label>
-              <input
-                type="password"
+              <PasswordInput
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
                 placeholder="••••••••"
-                className="w-full px-3 py-2 rounded-md border border-[var(--color-border)] bg-[var(--color-bg)] text-sm outline-none focus:border-[var(--color-accent)]/50"
+                autoComplete="current-password"
               />
             </div>
 

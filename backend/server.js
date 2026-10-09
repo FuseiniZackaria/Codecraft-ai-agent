@@ -12,6 +12,7 @@ const workflowDefinitionsRoutes = require('./api/workflowDefinitionsRoutes');
 const analyticsRoutes = require('./api/analyticsRoutes');
 const browserRoutes = require('./api/browserRoutes');
 const mcpRoutes = require('./api/mcpRoutes');
+const teamRoutes = require('./api/teamRoutes');
 const scheduler = require('./core/scheduler');
 const briefingDashboardRoutes = require('./api/briefingDashboardRoutes');
 const { requireAuth, requireRole } = require('./core/auth');
@@ -101,6 +102,7 @@ app.use('/api/analytics', requireAuth, requireRole('admin'), analyticsRoutes);
 // the companion extension which can't produce a Supabase login session.
 app.use('/api/browser', browserRoutes);
 app.use('/api/mcp', requireAuth, requireRole('admin'), mcpRoutes);
+app.use('/api/team', requireAuth, requireRole('admin'), teamRoutes);
 app.get('/health', (req, res) => res.json({ status: 'ok', plugins: loadedPlugins }));
 
 app.listen(config.port, () => {

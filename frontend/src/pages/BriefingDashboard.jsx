@@ -5,12 +5,12 @@ import { useStore } from '../store/useStore';
 
 function StatColumn({ label, value, urgent }) {
   return (
-    <div className="flex-1 min-w-[110px] px-5 first:pl-0 border-l border-[var(--color-border)] first:border-l-0">
+    <div className="min-w-0 px-3 sm:px-5 py-3 sm:py-0 border-t sm:border-t-0 sm:border-l border-[var(--color-border)] [&:nth-child(-n+2)]:border-t-0 sm:[&:nth-child(-n+2)]:border-t-0 sm:first:border-l-0 sm:first:pl-0">
       <div className="flex items-baseline gap-2">
-        <span className="font-[var(--font-display)] text-4xl font-semibold text-[var(--color-text)]">{value}</span>
+        <span className="font-[var(--font-display)] text-3xl sm:text-4xl font-semibold text-[var(--color-text)]">{value}</span>
         {urgent && value > 0 && <span className="w-2 h-2 rounded-full bg-[var(--color-danger)]" />}
       </div>
-      <div className="text-sm text-[var(--color-text-muted)] mt-1">{label}</div>
+      <div className="text-sm text-[var(--color-text-muted)] mt-1 truncate">{label}</div>
     </div>
   );
 }
@@ -21,11 +21,14 @@ const DIRECTION_COLOR = { up: 'text-[var(--color-accent)]', down: 'text-[var(--c
 function TopicRow({ rank, topic, direction, context }) {
   const Icon = DIRECTION_ICON[direction];
   return (
-    <div className="flex items-center gap-4 py-3 border-b border-[var(--color-border)] last:border-0">
-      <span className="font-[var(--font-mono)] text-sm text-[var(--color-text-muted)] w-5">{rank}</span>
-      <span className="flex-1 font-medium">{topic}</span>
-      <span className="text-xs text-[var(--color-text-muted)]">{context}</span>
-      <Icon size={16} className={DIRECTION_COLOR[direction]} />
+    <div className="flex items-center gap-3 sm:gap-4 py-3 border-b border-[var(--color-border)] last:border-0">
+      <span className="font-[var(--font-mono)] text-sm text-[var(--color-text-muted)] w-5 shrink-0">{rank}</span>
+      <div className="flex-1 min-w-0">
+        <div className="font-medium break-words">{topic}</div>
+        <div className="text-xs text-[var(--color-text-muted)] sm:hidden">{context}</div>
+      </div>
+      <span className="hidden sm:inline text-xs text-[var(--color-text-muted)] shrink-0">{context}</span>
+      <Icon size={16} className={`${DIRECTION_COLOR[direction]} shrink-0`} />
     </div>
   );
 }
@@ -37,16 +40,16 @@ function DailyBarChart({ dailyMentions }) {
     return <div className="text-sm text-[var(--color-text-muted)]">Not enough data yet to show a trend.</div>;
   }
   return (
-    <div className="flex items-end gap-3 h-32">
+    <div className="flex items-end gap-1.5 sm:gap-3 h-32 w-full">
       {days.map((day) => {
         const value = dailyMentions[day];
         const heightPct = Math.max(4, (value / max) * 100);
         const label = new Date(day).toLocaleDateString(undefined, { weekday: 'short' });
         return (
-          <div key={day} className="flex-1 flex flex-col items-center gap-1.5">
+          <div key={day} className="flex-1 min-w-0 flex flex-col items-center gap-1.5">
             <div className="text-xs font-medium text-[var(--color-text)]">{value}</div>
             <div className="w-full rounded-sm bg-[var(--color-accent)]" style={{ height: `${heightPct}%` }} title={`${day}: ${value} mentions`} />
-            <div className="text-xs text-[var(--color-text-muted)]">{label}</div>
+            <div className="text-[10px] sm:text-xs text-[var(--color-text-muted)] truncate w-full text-center">{label}</div>
           </div>
         );
       })}
@@ -97,20 +100,20 @@ export default function BriefingDashboard({ embedded } = {}) {
 
   const content = (
     <>
-      <div className="flex items-start justify-between gap-4 mb-8">
+      <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-3 mb-8">
         {!embedded && (
-          <div>
+          <div className="min-w-0">
             <h1 className="font-[var(--font-display)] text-2xl font-semibold text-[var(--color-text)]">Intelligence</h1>
             <p className="text-sm text-[var(--color-text-muted)] mt-1">
               What's collected, at a glance — no need to read every report by hand.
             </p>
           </div>
         )}
-             {!isClient && workflows.length > 0 && (
-        <select
+        {!isClient && workflows.length > 0 && (
+          <select
             value={selectedGoal}
             onChange={(e) => setSelectedGoal(e.target.value)}
-            className="px-3 py-2 rounded-md border border-[var(--color-border)] bg-[var(--color-surface)] text-sm shrink-0"
+            className="w-full sm:w-auto px-3 py-2 rounded-md border border-[var(--color-border)] bg-[var(--color-surface)] text-sm shrink-0"
           >
             {workflows.map((w) => (
               <option key={w.id} value={w.goal}>{w.name}</option>
@@ -128,7 +131,7 @@ export default function BriefingDashboard({ embedded } = {}) {
 
       {stats && !loading && (
         <>
-          <div className="flex mb-10">
+          <div className="grid grid-cols-2 sm:flex sm:flex-row rounded-lg border sm:border-0 border-[var(--color-border)] mb-10 overflow-hidden">
             <StatColumn label="Breaking" value={stats.breakingNewsCount} urgent />
             <StatColumn label="Trending issues" value={stats.trendingIssuesCount} />
             <StatColumn label="Articles collected" value={stats.articlesCollectedCount} />
@@ -178,12 +181,12 @@ export default function BriefingDashboard({ embedded } = {}) {
               {stats.latestNews.map((n) => (
                 <div key={n.url} className="py-4 border-b border-[var(--color-border)] last:border-0">
                   <div className="flex items-start justify-between gap-3 mb-1">
-                    <div className="font-medium">{n.title}</div>
+                    <div className="font-medium break-words min-w-0">{n.title}</div>
                     <div className="text-xs text-[var(--color-text-muted)] whitespace-nowrap shrink-0">
                       {new Date(n.collectedAt).toLocaleDateString(undefined, { month: 'short', day: 'numeric' })}
                     </div>
                   </div>
-                  <div className="text-xs text-[var(--color-text-muted)] mb-1.5">
+                  <div className="text-xs text-[var(--color-text-muted)] mb-1.5 break-words">
                     {n.sourceDomain || 'unknown source'}{n.topic ? ` · ${n.topic}` : ''}
                   </div>
                   {n.summary && <p className="text-sm text-[var(--color-text-muted)] mb-1.5 line-clamp-2">{n.summary}</p>}
@@ -206,7 +209,7 @@ export default function BriefingDashboard({ embedded } = {}) {
   if (embedded) return content;
 
   return (
-    <div className="p-8 max-w-3xl">
+    <div className="p-4 md:p-8 max-w-3xl">
       {content}
     </div>
   );

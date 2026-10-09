@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import { KeyRound, AlertTriangle } from 'lucide-react';
 import Logo from '../components/Logo';
+import PasswordInput from '../components/PasswordInput';
 import { supabase } from '../services/supabaseClient';
 
 /**
@@ -54,7 +55,7 @@ export default function ResetPassword() {
   }
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-[var(--color-bg)] text-[var(--color-text)] font-[var(--font-body)] px-4">
+    <div className="min-h-dvh flex items-center justify-center bg-[var(--color-bg)] text-[var(--color-text)] font-[var(--font-body)] px-4 py-6">
       <div className="w-full max-w-sm">
         <div className="flex items-center justify-center gap-2 mb-8">
           <Logo />
@@ -96,23 +97,21 @@ export default function ResetPassword() {
               <form onSubmit={handleSubmit} className="space-y-3">
                 <div>
                   <label className="text-xs text-[var(--color-text-muted)] mb-1 block">New password</label>
-                  <input
-                    type="password"
+                  <PasswordInput
                     value={password}
                     onChange={(e) => setPassword(e.target.value)}
                     placeholder="••••••••"
                     autoFocus
-                    className="w-full px-3 py-2 rounded-md border border-[var(--color-border)] bg-[var(--color-bg)] text-sm outline-none focus:border-[var(--color-accent)]/50"
+                    autoComplete="new-password"
                   />
                 </div>
                 <div>
                   <label className="text-xs text-[var(--color-text-muted)] mb-1 block">Confirm new password</label>
-                  <input
-                    type="password"
+                  <PasswordInput
                     value={confirm}
                     onChange={(e) => setConfirm(e.target.value)}
                     placeholder="••••••••"
-                    className="w-full px-3 py-2 rounded-md border border-[var(--color-border)] bg-[var(--color-bg)] text-sm outline-none focus:border-[var(--color-accent)]/50"
+                    autoComplete="new-password"
                   />
                 </div>
 

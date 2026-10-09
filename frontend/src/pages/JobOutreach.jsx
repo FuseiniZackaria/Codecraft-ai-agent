@@ -131,7 +131,7 @@ export default function JobOutreach({ embedded } = {}) {
   if (embedded) return content;
 
   return (
-    <div className="p-6 max-w-5xl">
+    <div className="p-4 md:p-6 max-w-5xl">
       <h1 className="font-[var(--font-display)] text-xl font-semibold mb-1">Job Outreach</h1>
       <p className="text-sm text-[var(--color-text-muted)] mb-6">
         Every opportunity that's gone through verification, outreach, and scheduling.

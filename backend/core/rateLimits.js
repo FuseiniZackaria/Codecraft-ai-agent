@@ -41,4 +41,18 @@ const webhookLimiter = rateLimit({
   message: { error: 'Too many webhook calls - rate limited.' },
 });
 
-module.exports = { generalApiLimiter, goalSubmissionLimiter, webhookLimiter };
+/**
+ * Admin-management mutations (grant/revoke admin role). Low cap because
+ * these are rare, consequential actions - no legitimate workflow needs
+ * dozens per hour, and a tight ceiling limits damage if an admin session
+ * is compromised.
+ */
+const teamMutationLimiter = rateLimit({
+  windowMs: 60 * 60 * 1000,
+  max: 20,
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: { error: 'Too many admin changes this hour - please wait before trying again.' },
+});
+
+module.exports = { generalApiLimiter, goalSubmissionLimiter, webhookLimiter, teamMutationLimiter };

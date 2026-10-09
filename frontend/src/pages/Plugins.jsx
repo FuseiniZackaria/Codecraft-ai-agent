@@ -52,7 +52,7 @@ export default function Plugins() {
   const installed = new Set(summary.installedTools.map((t) => t.split('.')[0]));
 
   return (
-    <div className="p-6 max-w-5xl">
+    <div className="p-4 md:p-6 max-w-5xl">
       <h1 className="font-[var(--font-display)] text-xl font-semibold mb-1">Plugins</h1>
       <p className="text-sm text-[var(--color-text-muted)] mb-6">
         Install integrations to give agents new tools — no core changes required. Connections for

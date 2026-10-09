@@ -58,7 +58,7 @@ export default function CommandPalette() {
 
   return (
     <div
-      className="fixed inset-0 z-50 flex items-start justify-center pt-[15vh] bg-black/60 backdrop-blur-sm"
+      className="fixed inset-0 z-50 flex items-start justify-center px-4 pt-[10vh] sm:pt-[15vh] bg-black/60 backdrop-blur-sm overflow-y-auto"
       onClick={() => setPaletteOpen(false)}
     >
       <div
@@ -66,7 +66,7 @@ export default function CommandPalette() {
         onClick={(e) => e.stopPropagation()}
       >
         <div className="flex items-center gap-2 px-4 border-b border-[var(--color-border)]">
-          <Send size={14} className="text-[var(--color-text-muted)]" />
+          <Send size={14} className="text-[var(--color-text-muted)] shrink-0" />
           <input
             ref={inputRef}
             value={query}
@@ -75,11 +75,11 @@ export default function CommandPalette() {
               if (e.key === 'Enter' && isGoal) handleGoalSubmit();
             }}
             placeholder="Give an instruction, or search actions…"
-            className="w-full bg-transparent py-3 text-sm outline-none placeholder:text-[var(--color-text-muted)]"
+            className="w-full min-w-0 bg-transparent py-3 text-sm outline-none placeholder:text-[var(--color-text-muted)]"
           />
         </div>
 
-        <div className="max-h-72 overflow-y-auto py-2">
+        <div className="max-h-[60vh] sm:max-h-72 overflow-y-auto py-2">
           {isGoal && (
             <button
               onClick={handleGoalSubmit}
