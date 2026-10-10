@@ -91,13 +91,19 @@ class MemoryStore {
   }
 
   // --- Long-term memory (durable facts the user explicitly asks to remember) ---
-  async addFact(fact) {
+  async addFact(fact, options = {}) {
     if (!this.facts) this.facts = [];
-    this.facts.push({ fact, at: new Date().toISOString() });
+    const workspace_id = options.workspaceId || options.workspace_id || null;
+    this.facts.push({ fact, workspace_id, at: new Date().toISOString() });
   }
 
-  async getFacts(limit = 50) {
-    return (this.facts || []).slice(-limit);
+  // Legacy (workspace_id = null) facts stay visible to every workspace,
+  // matching the SupabaseStore behavior.
+  async getFacts(limit = 50, options = {}) {
+    const ws = options.workspaceId || options.workspace_id || null;
+    const all = this.facts || [];
+    const scoped = ws ? all.filter((f) => !f.workspace_id || f.workspace_id === ws) : all;
+    return scoped.slice(-limit);
   }
 
   // --- Incoming WhatsApp messages (webhook dedup + record) ---
@@ -118,7 +124,8 @@ class MemoryStore {
   // --- Installed skills (Universal Skill Installer) ---
   async saveSkill(skill) {
     if (!this.skills) this.skills = new Map();
-    this.skills.set(skill.id, { ...skill, updatedAt: new Date().toISOString() });
+    const workspace_id = skill.workspace_id || skill.workspaceId || null;
+    this.skills.set(skill.id, { ...skill, workspace_id, updatedAt: new Date().toISOString() });
     return skill;
   }
 
@@ -126,8 +133,11 @@ class MemoryStore {
     return (this.skills && this.skills.get(id)) || null;
   }
 
-  async listSkills() {
-    return this.skills ? Array.from(this.skills.values()) : [];
+  async listSkills(options = {}) {
+    if (!this.skills) return [];
+    const ws = options.workspaceId || options.workspace_id || null;
+    const all = Array.from(this.skills.values());
+    return ws ? all.filter((s) => !s.workspace_id || s.workspace_id === ws) : all;
   }
 
   async updateSkill(id, patch) {
@@ -145,7 +155,8 @@ class MemoryStore {
   // --- Workflows (scheduled recurring goals) ---
   async saveWorkflow(workflow) {
     if (!this.workflows) this.workflows = new Map();
-    this.workflows.set(workflow.id, { ...workflow, updatedAt: new Date().toISOString() });
+    const workspace_id = workflow.workspace_id || workflow.workspaceId || null;
+    this.workflows.set(workflow.id, { ...workflow, workspace_id, updatedAt: new Date().toISOString() });
     return workflow;
   }
 
@@ -153,8 +164,11 @@ class MemoryStore {
     return (this.workflows && this.workflows.get(id)) || null;
   }
 
-  async listWorkflows() {
-    return this.workflows ? Array.from(this.workflows.values()) : [];
+  async listWorkflows(options = {}) {
+    if (!this.workflows) return [];
+    const ws = options.workspaceId || options.workspace_id || null;
+    const all = Array.from(this.workflows.values());
+    return ws ? all.filter((w) => !w.workspace_id || w.workspace_id === ws) : all;
   }
 
   async updateWorkflow(id, patch) {
@@ -172,13 +186,17 @@ class MemoryStore {
   // --- Chat history (server-side persistence, survives refresh/device change) ---
   async addChatMessage(msg) {
     if (!this.chatMessages) this.chatMessages = [];
-    const stored = { id: require('crypto').randomUUID(), ...msg, createdAt: new Date().toISOString() };
+    const workspace_id = msg.workspace_id || msg.workspaceId || null;
+    const stored = { id: require('crypto').randomUUID(), ...msg, workspace_id, createdAt: new Date().toISOString() };
     this.chatMessages.push(stored);
     return stored;
   }
 
-  async listChatMessages(limit = 200) {
-    return this.chatMessages ? this.chatMessages.slice(-limit) : [];
+  async listChatMessages(limit = 200, options = {}) {
+    if (!this.chatMessages) return [];
+    const ws = options.workspaceId || options.workspace_id || null;
+    const scoped = ws ? this.chatMessages.filter((m) => !m.workspace_id || m.workspace_id === ws) : this.chatMessages;
+    return scoped.slice(-limit);
   }
 
   // --- Assistant daily usage (soft cost cap) ---
@@ -196,7 +214,8 @@ class MemoryStore {
   // --- Workflow definitions (graph-based workflow engine, Phase 1) ---
   async saveWorkflowDefinition(def) {
     if (!this.workflowDefinitions) this.workflowDefinitions = new Map();
-    this.workflowDefinitions.set(def.id, { ...def, updatedAt: new Date().toISOString() });
+    const workspace_id = def.workspace_id || def.workspaceId || null;
+    this.workflowDefinitions.set(def.id, { ...def, workspace_id, updatedAt: new Date().toISOString() });
     return def;
   }
 
@@ -204,8 +223,11 @@ class MemoryStore {
     return (this.workflowDefinitions && this.workflowDefinitions.get(id)) || null;
   }
 
-  async listWorkflowDefinitions() {
-    return this.workflowDefinitions ? Array.from(this.workflowDefinitions.values()) : [];
+  async listWorkflowDefinitions(options = {}) {
+    if (!this.workflowDefinitions) return [];
+    const ws = options.workspaceId || options.workspace_id || null;
+    const all = Array.from(this.workflowDefinitions.values());
+    return ws ? all.filter((d) => !d.workspace_id || d.workspace_id === ws) : all;
   }
 
   async updateWorkflowDefinition(id, patch) {
@@ -223,7 +245,8 @@ class MemoryStore {
   // --- Workflow runs (execution state, including paused-for-approval) ---
   async saveWorkflowRun(run) {
     if (!this.workflowRuns) this.workflowRuns = new Map();
-    this.workflowRuns.set(run.id, { ...run });
+    const workspace_id = run.workspace_id || run.workspaceId || null;
+    this.workflowRuns.set(run.id, { ...run, workspace_id });
     return run;
   }
 
@@ -308,17 +331,44 @@ class MemoryStore {
   async saveBriefingRun(run) {
     if (!this.briefingRuns) this.briefingRuns = [];
     const { randomUUID } = require('crypto');
-    const stored = { id: randomUUID(), workflowId: null, ...run, createdAt: new Date().toISOString() };
+    const workspace_id = run.workspace_id || run.workspaceId || null;
+    const stored = { id: randomUUID(), workflowId: null, ...run, workspace_id, createdAt: new Date().toISOString() };
     this.briefingRuns.push(stored);
     return stored;
   }
 
-  async getLatestBriefingRun(goal) {
+  async getLatestBriefingRun(goal, options = {}) {
     if (!this.briefingRuns) return null;
+    const ws = options.workspaceId || options.workspace_id || null;
     const matches = this.briefingRuns
-      .filter((r) => r.goal === goal)
+      .filter((r) => r.goal === goal && (!ws || !r.workspace_id || r.workspace_id === ws))
       .sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
     return matches[0] || null;
+  }
+
+  // --- Briefing articles (dashboard-facing) ---
+  async saveBriefingArticles(articles, options = {}) {
+    if (!this.briefingArticles) this.briefingArticles = [];
+    const fallbackWs = options.workspaceId || options.workspace_id || null;
+    const stored = (articles || []).map((a) => ({
+      ...a,
+      workspace_id: a.workspace_id || a.workspaceId || fallbackWs || null,
+      collectedAt: new Date().toISOString(),
+    }));
+    this.briefingArticles.push(...stored);
+    return stored;
+  }
+
+  async getBriefingArticles(workflowGoal, { sinceDays, workspaceId, workspace_id } = {}) {
+    if (!this.briefingArticles) return [];
+    const ws = workspaceId || workspace_id || null;
+    const sinceMs = sinceDays ? Date.now() - sinceDays * 24 * 60 * 60 * 1000 : 0;
+    return this.briefingArticles.filter((a) => {
+      if (a.workflowGoal !== workflowGoal) return false;
+      if (sinceMs && new Date(a.collectedAt).getTime() < sinceMs) return false;
+      if (ws && a.workspace_id && a.workspace_id !== ws) return false;
+      return true;
+    });
   }
 }
 

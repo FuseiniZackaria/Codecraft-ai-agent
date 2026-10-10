@@ -20,8 +20,8 @@ function isRerunIntent(message) {
   return RERUN_TRIGGERS.some((t) => lower === t || lower.startsWith(t + ' ') || lower.startsWith(t + ','));
 }
 
-async function factsLine() {
-  const facts = await store.getFacts();
+async function factsLine(options = {}) {
+  const facts = await store.getFacts(50, options);
   if (!facts.length) return '';
   return `Things you've been explicitly told to remember:\n${facts.map((f) => `- ${f.fact}`).join('\n')}\n\n`;
 }
@@ -77,7 +77,8 @@ function buildMultimodalContent(message, attachments) {
  * @param {Array<{role: 'user'|'assistant', content: string}>} history
  * @param {Array<{mediaType: string, data: string, filename: string}>} attachments - base64-encoded
  */
-async function handleMessage(message, history = [], attachments = []) {
+async function handleMessage(message, history = [], attachments = [], options = {}) {
+  const workspaceId = options.workspaceId || null;
   if (attachments.length) {
     const unsupported = attachments.filter((a) => !ALLOWED_ATTACHMENT_TYPES.includes(a.mediaType) && !isExtractable(a.mediaType));
     if (unsupported.length) {
@@ -105,7 +106,7 @@ async function handleMessage(message, history = [], attachments = []) {
     }
 
     const provider = selectProvider({});
-    const facts = await factsLine();
+    const facts = await factsLine({ workspaceId });
     const combinedMessage = (message || 'What is this?') + extractedText;
 
     const result = nativeAttachments.length
@@ -121,7 +122,7 @@ async function handleMessage(message, history = [], attachments = []) {
   }
 
   if (isRememberIntent(message)) {
-    await store.addFact(message);
+    await store.addFact(message, { workspaceId });
     return { reply: `Got it — I'll remember that.`, actionable: false, task: null, remembered: true };
   }
 
@@ -135,7 +136,7 @@ async function handleMessage(message, history = [], attachments = []) {
       const { category: lastCategory, isActionable: lastActionable } = await classifyIntent(lastGoal, []);
       if (lastActionable) {
         console.log(`[chat] rerun detected — repeating: "${lastGoal.slice(0, 60)}"`);
-        const [task] = await orchestrator.submitGoal(lastGoal, { history, category: lastCategory });
+        const [task] = await orchestrator.submitGoal(lastGoal, { history, category: lastCategory, workspaceId });
         return { reply: describeTaskOutcome(task), actionable: true, task };
       }
     }
@@ -161,12 +162,12 @@ async function handleMessage(message, history = [], attachments = []) {
   }
 
   if (isActionable) {
-    const [task] = await orchestrator.submitGoal(message, { history, category });
+    const [task] = await orchestrator.submitGoal(message, { history, category, workspaceId });
     return { reply: describeTaskOutcome(task), actionable: true, task };
   }
 
   const provider = selectProvider({});
-  const facts = await factsLine();
+  const facts = await factsLine({ workspaceId });
   const result = await provider.complete({
     prompt: message,
     system: buildSystemPrompt(facts),

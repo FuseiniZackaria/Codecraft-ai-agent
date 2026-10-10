@@ -153,20 +153,28 @@ class SupabaseStore {
   }
 
   // --- Long-term memory (durable facts the user explicitly asks to remember) ---
-  async addFact(fact) {
+  async addFact(fact, options = {}) {
     const { randomUUID } = require('crypto');
-    const { error } = await this.client.from('long_term_memory').insert({ id: randomUUID(), fact });
+    const workspace_id = options.workspaceId || options.workspace_id || null;
+    const { error } = await this.client.from('long_term_memory').insert({ id: randomUUID(), fact, workspace_id });
     if (error) throw new Error(`SupabaseStore.addFact: ${error.message}`);
   }
 
-  async getFacts(limit = 50) {
-    const { data, error } = await this.client
+  // Phase 2.3c: pushes the workspace filter to Postgres so we don't drag the
+  // whole fact set across the wire and then throw rows away client-side.
+  // Legacy rows (workspace_id IS NULL) stay visible to every workspace so
+  // nothing from before the migration disappears.
+  async getFacts(limit = 50, options = {}) {
+    const ws = options.workspaceId || options.workspace_id || null;
+    let query = this.client
       .from('long_term_memory')
-      .select('*')
+      .select('fact, created_at, workspace_id')
       .order('created_at', { ascending: false })
       .limit(limit);
+    if (ws) query = query.or(`workspace_id.is.null,workspace_id.eq.${ws}`);
+    const { data, error } = await query;
     if (error) throw new Error(`SupabaseStore.getFacts: ${error.message}`);
-    return (data || []).reverse().map((r) => ({ fact: r.fact, at: r.created_at }));
+    return (data || []).reverse().map((r) => ({ fact: r.fact, at: r.created_at, workspace_id: r.workspace_id }));
   }
 
   // --- Incoming WhatsApp messages (webhook dedup + record) ---
@@ -188,6 +196,7 @@ class SupabaseStore {
 
   // --- Installed skills (Universal Skill Installer) ---
   async saveSkill(skill) {
+    const workspace_id = skill.workspace_id || skill.workspaceId || null;
     const { error } = await this.client.from('skills').upsert({
       id: skill.id,
       name: skill.name,
@@ -202,6 +211,7 @@ class SupabaseStore {
       source_path: skill.sourcePath,
       checksum: skill.checksum,
       installed_at: skill.installedAt,
+      workspace_id,
       updated_at: new Date().toISOString(),
     });
     if (error) throw new Error(`SupabaseStore.saveSkill: ${error.message}`);
@@ -214,8 +224,18 @@ class SupabaseStore {
     return data ? this._skillFromRow(data) : null;
   }
 
-  async listSkills() {
-    const { data, error } = await this.client.from('skills').select('*').order('installed_at', { ascending: false });
+  // Phase 2.3c: pushes workspace scope to the DB. Legacy rows (null) stay
+  // visible so nothing disappears. Columns listed explicitly to keep
+  // Supabase traffic light; the Skills page doesn't need manifests or
+  // permissions on the list view.
+  async listSkills(options = {}) {
+    const ws = options.workspaceId || options.workspace_id || null;
+    let query = this.client
+      .from('skills')
+      .select('id,name,version,author,description,status,source_type,source_input,checksum,installed_at,updated_at,workspace_id')
+      .order('installed_at', { ascending: false });
+    if (ws) query = query.or(`workspace_id.is.null,workspace_id.eq.${ws}`);
+    const { data, error } = await query;
     if (error) throw new Error(`SupabaseStore.listSkills: ${error.message}`);
     return (data || []).map((r) => this._skillFromRow(r));
   }
@@ -255,11 +275,13 @@ class SupabaseStore {
       checksum: row.checksum,
       installedAt: row.installed_at,
       updatedAt: row.updated_at,
+      workspace_id: row.workspace_id || null,
     };
   }
 
   // --- Workflows (scheduled recurring goals) ---
       async saveWorkflow(workflow) {
+    const workspace_id = workflow.workspace_id || workflow.workspaceId || null;
     const { error } = await this.client.from('scheduled_workflows').upsert({
       id: workflow.id,
       name: workflow.name,
@@ -272,6 +294,7 @@ class SupabaseStore {
       last_run_at: workflow.lastRunAt ?? null,
       deliver_whatsapp_enabled: workflow.deliverWhatsappEnabled ?? false,
       deliver_whatsapp_to: workflow.deliverWhatsappTo ?? null,
+      workspace_id,
       updated_at: new Date().toISOString(),
     });
     if (error) throw new Error(`SupabaseStore.saveWorkflow: ${error.message}`);
@@ -284,8 +307,18 @@ class SupabaseStore {
     return data ? this._workflowFromRow(data) : null;
   }
 
-  async listWorkflows() {
-    const { data, error } = await this.client.from('scheduled_workflows').select('*').order('created_at', { ascending: false });
+  // Phase 2.3c: push workspace filter to DB. Scheduler passes no scope so it
+  // can tick every workspace's workflows in one query (and iterate per
+  // workspace in code); routes pass req.user.workspaceId so admins only see
+  // their own + legacy (null workspace_id) rows.
+  async listWorkflows(options = {}) {
+    const ws = options.workspaceId || options.workspace_id || null;
+    let query = this.client
+      .from('scheduled_workflows')
+      .select('id,name,goal,schedule_type,interval_minutes,daily_time,days_of_week,enabled,last_run_at,deliver_whatsapp_enabled,deliver_whatsapp_to,workspace_id,created_at,updated_at')
+      .order('created_at', { ascending: false });
+    if (ws) query = query.or(`workspace_id.is.null,workspace_id.eq.${ws}`);
+    const { data, error } = await query;
     if (error) throw new Error(`SupabaseStore.listWorkflows: ${error.message}`);
     return (data || []).map((r) => this._workflowFromRow(r));
   }
@@ -329,6 +362,7 @@ class SupabaseStore {
       deliverWhatsappTo: row.deliver_whatsapp_to,
       createdAt: row.created_at,
       updatedAt: row.updated_at,
+      workspace_id: row.workspace_id || null,
     };
   }
 
@@ -348,12 +382,15 @@ class SupabaseStore {
     return this._chatMessageFromRow(data);
   }
 
-  async listChatMessages(limit = 200) {
-    const { data, error } = await this.client
+  async listChatMessages(limit = 200, options = {}) {
+    const ws = options.workspaceId || options.workspace_id || null;
+    let query = this.client
       .from('chat_messages')
-      .select('*')
+      .select('id,role,content,attachment_names,task_id,workspace_id,created_at')
       .order('created_at', { ascending: false })
       .limit(limit);
+    if (ws) query = query.or(`workspace_id.is.null,workspace_id.eq.${ws}`);
+    const { data, error } = await query;
     if (error) throw new Error(`SupabaseStore.listChatMessages: ${error.message}`);
     return (data || []).reverse().map((r) => this._chatMessageFromRow(r));
   }
@@ -396,6 +433,7 @@ class SupabaseStore {
 
   // --- Workflow definitions (graph-based workflow engine, Phase 1) ---
   async saveWorkflowDefinition(def) {
+    const workspace_id = def.workspace_id || def.workspaceId || null;
     const { error } = await this.client.from('workflow_definitions').upsert({
       id: def.id,
       name: def.name,
@@ -407,6 +445,7 @@ class SupabaseStore {
       days_of_week: def.daysOfWeek ?? null,
       watch_folder: def.watchFolder ?? null,
       last_run_at: def.lastRunAt ?? null,
+      workspace_id,
       updated_at: new Date().toISOString(),
     });
     if (error) throw new Error(`SupabaseStore.saveWorkflowDefinition: ${error.message}`);
@@ -419,8 +458,14 @@ class SupabaseStore {
     return data ? this._workflowDefFromRow(data) : null;
   }
 
-  async listWorkflowDefinitions() {
-    const { data, error } = await this.client.from('workflow_definitions').select('*').order('created_at', { ascending: false });
+  async listWorkflowDefinitions(options = {}) {
+    const ws = options.workspaceId || options.workspace_id || null;
+    let query = this.client
+      .from('workflow_definitions')
+      .select('id,name,enabled,schedule_type,interval_minutes,daily_time,days_of_week,watch_folder,last_run_at,workspace_id,created_at,updated_at,graph')
+      .order('created_at', { ascending: false });
+    if (ws) query = query.or(`workspace_id.is.null,workspace_id.eq.${ws}`);
+    const { data, error } = await query;
     if (error) throw new Error(`SupabaseStore.listWorkflowDefinitions: ${error.message}`);
     return (data || []).map((r) => this._workflowDefFromRow(r));
   }
@@ -462,11 +507,13 @@ class SupabaseStore {
       lastRunAt: row.last_run_at,
       createdAt: row.created_at,
       updatedAt: row.updated_at,
+      workspace_id: row.workspace_id || null,
     };
   }
 
   // --- Workflow runs (execution state, including paused-for-approval) ---
   async saveWorkflowRun(run) {
+    const workspace_id = run.workspace_id || run.workspaceId || null;
     const { error } = await this.client.from('workflow_runs').insert({
       id: run.id,
       workflow_id: run.workflowId,
@@ -475,6 +522,7 @@ class SupabaseStore {
       current_node_id: run.currentNodeId || null,
       paused_task_id: run.pausedTaskId || null,
       error: run.error || null,
+      workspace_id,
     });
     if (error) throw new Error(`SupabaseStore.saveWorkflowRun: ${error.message}`);
     return run;
@@ -518,6 +566,7 @@ class SupabaseStore {
       error: row.error,
       startedAt: row.started_at,
       completedAt: row.completed_at,
+      workspace_id: row.workspace_id || null,
     };
   }
 
@@ -627,6 +676,7 @@ class SupabaseStore {
   // --- Briefing runs (memory across BriefingAgent runs, for trend comparison) ---
   async saveBriefingRun(run) {
     const { randomUUID } = require('crypto');
+    const workspace_id = run.workspace_id || run.workspaceId || null;
     const { data, error } = await this.client
       .from('briefing_runs')
       .insert({
@@ -634,6 +684,7 @@ class SupabaseStore {
         goal: run.goal,
         workflow_id: run.workflowId || null,
         output: run.output,
+        workspace_id,
       })
       .select()
       .maybeSingle();
@@ -641,14 +692,19 @@ class SupabaseStore {
     return this._briefingRunFromRow(data);
   }
 
-  async getLatestBriefingRun(goal) {
-    const { data, error } = await this.client
+  // Scoping: when a workspaceId is supplied, prefer runs stamped to that
+  // workspace; fall back to a legacy (null) match on the same goal so the
+  // first briefing after upgrading still finds its predecessor.
+  async getLatestBriefingRun(goal, options = {}) {
+    const ws = options.workspaceId || options.workspace_id || null;
+    let query = this.client
       .from('briefing_runs')
-      .select('*')
+      .select('id,goal,workflow_id,output,workspace_id,created_at')
       .eq('goal', goal)
       .order('created_at', { ascending: false })
-      .limit(1)
-      .maybeSingle();
+      .limit(1);
+    if (ws) query = query.or(`workspace_id.is.null,workspace_id.eq.${ws}`);
+    const { data, error } = await query.maybeSingle();
     if (error) throw new Error(`SupabaseStore.getLatestBriefingRun: ${error.message}`);
     return data ? this._briefingRunFromRow(data) : null;
   }
@@ -660,12 +716,14 @@ class SupabaseStore {
       workflowId: row.workflow_id,
       output: row.output,
       createdAt: row.created_at,
+      workspace_id: row.workspace_id || null,
     };
   }
 
   // --- Briefing articles (individual sources collected per run, powers the political intelligence dashboard) ---
-  async saveBriefingArticles(articles) {
+  async saveBriefingArticles(articles, options = {}) {
     if (!articles || articles.length === 0) return [];
+    const fallbackWs = options.workspaceId || options.workspace_id || null;
     const rows = articles.map((a) => ({
       workflow_goal: a.workflowGoal,
       topic: a.topic || null,
@@ -673,6 +731,7 @@ class SupabaseStore {
       url: a.url,
       source_domain: a.sourceDomain || null,
       summary: a.summary || null,
+      workspace_id: a.workspace_id || a.workspaceId || fallbackWs || null,
     }));
     // ignoreDuplicates skips rows that collide with the dedup unique index
     // (same goal+url+day) rather than failing the whole batch - the same
@@ -686,12 +745,18 @@ class SupabaseStore {
     return (data || []).map((r) => this._briefingArticleFromRow(r));
   }
 
-  async getBriefingArticles(workflowGoal, { sinceDays } = {}) {
-    let query = this.client.from('briefing_articles').select('*').eq('workflow_goal', workflowGoal).order('collected_at', { ascending: false });
+  async getBriefingArticles(workflowGoal, { sinceDays, workspaceId, workspace_id } = {}) {
+    const ws = workspaceId || workspace_id || null;
+    let query = this.client
+      .from('briefing_articles')
+      .select('id,workflow_goal,topic,title,url,source_domain,summary,collected_at,workspace_id')
+      .eq('workflow_goal', workflowGoal)
+      .order('collected_at', { ascending: false });
     if (sinceDays) {
       const since = new Date(Date.now() - sinceDays * 24 * 60 * 60 * 1000).toISOString();
       query = query.gte('collected_at', since);
     }
+    if (ws) query = query.or(`workspace_id.is.null,workspace_id.eq.${ws}`);
     const { data, error } = await query;
     if (error) throw new Error(`SupabaseStore.getBriefingArticles: ${error.message}`);
     return (data || []).map((r) => this._briefingArticleFromRow(r));
@@ -707,6 +772,7 @@ class SupabaseStore {
       sourceDomain: row.source_domain,
       summary: row.summary,
       collectedAt: row.collected_at,
+      workspace_id: row.workspace_id || null,
     };
   }
 }

@@ -47,7 +47,8 @@ router.post('/chat', async (req, res) => {
     if (!message && !(attachments || []).length) {
       return res.status(400).json({ error: '"message" or an attachment is required' });
     }
-    const result = await chat.handleMessage(message || '', history || [], attachments || []);
+    const workspaceId = req.user?.workspaceId || null;
+    const result = await chat.handleMessage(message || '', history || [], attachments || [], { workspaceId });
 
     // Persist both sides server-side, so chat history survives a refresh or
     // a different device/browser. Fire-and-forget - a persistence hiccup
@@ -55,7 +56,6 @@ router.post('/chat', async (req, res) => {
     const attachmentNames = (attachments || []).map((a) => a.name).filter(Boolean);
     const userContent =
       message || (attachmentNames.length ? `Sent ${attachmentNames.length === 1 ? attachmentNames[0] : `${attachmentNames.length} files`}` : '');
-    const workspaceId = req.user?.workspaceId || null;
     memory
       .addChatMessage({ role: 'user', content: userContent, attachmentNames, workspace_id: workspaceId }, { workspaceId })
       .catch((err) => console.warn(`[chat] failed to persist user message: ${err.message}`));
@@ -113,9 +113,10 @@ router.post('/chat/stream', async (req, res) => {
   // module doesn't accept files yet. Short-circuit here, return as one chunk.
   if ((attachments || []).length) {
     try {
-      const result = await chat.handleMessage(message || '', [], attachments);
+      const workspaceId = req.user?.workspaceId || null;
+      const result = await chat.handleMessage(message || '', [], attachments, { workspaceId });
       send({ type: 'text_delta', text: result.reply });
-      await persistTurn(message || '', attachments, result.reply, result.task?.id || null, req.user?.workspaceId || null);
+      await persistTurn(message || '', attachments, result.reply, result.task?.id || null, workspaceId);
       send({ type: 'done', task_ids: result.task ? [result.task.id] : [], fallback: 'attachments' });
     } catch (err) {
       send({ type: 'error', error: err.message });
@@ -150,13 +151,14 @@ router.post('/chat/stream', async (req, res) => {
       send({ type: 'notice', text: 'Smart mode unavailable - using fallback routing.' });
     }
     try {
-      const history = await memory.listChatMessages(30);
+      const workspaceId = req.user?.workspaceId || null;
+      const history = await memory.listChatMessages(30, { workspaceId });
       const historyForFallback = history
         .filter((m) => m.content && m.content.trim().length > 0)
         .map((m) => ({ role: m.role, content: m.content }));
-      const result = await chat.handleMessage(message, historyForFallback, []);
+      const result = await chat.handleMessage(message, historyForFallback, [], { workspaceId });
       send({ type: 'text_delta', text: result.reply });
-      await persistTurn(message, [], result.reply, result.task?.id || null, req.user?.workspaceId || null);
+      await persistTurn(message, [], result.reply, result.task?.id || null, workspaceId);
       send({ type: 'done', task_ids: result.task ? [result.task.id] : [], fallback: isCap ? 'daily_cap' : 'assistant_error' });
     } catch (fallbackErr) {
       send({ type: 'error', error: fallbackErr.message });

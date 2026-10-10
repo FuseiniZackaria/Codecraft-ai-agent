@@ -38,7 +38,8 @@ router.post('/', async (req, res) => {
   if (validationError) return res.status(400).json({ error: validationError });
 
   try {
-       const workflow = {
+    const workspaceId = req.user?.workspaceId || null;
+    const workflow = {
       id: uuid(),
       name: req.body.name,
       goal: req.body.goal,
@@ -50,9 +51,10 @@ router.post('/', async (req, res) => {
       deliverWhatsappEnabled: req.body.deliverWhatsappEnabled === true,
       deliverWhatsappTo: req.body.deliverWhatsappEnabled ? req.body.deliverWhatsappTo || null : null,
       lastRunAt: null,
+      workspace_id: workspaceId,
       createdAt: new Date().toISOString(),
     };
-    await memory.saveWorkflow(workflow);
+    await memory.saveWorkflow(workflow, { workspaceId });
     res.status(201).json(workflow);
   } catch (err) {
     res.status(500).json({ error: err.message });

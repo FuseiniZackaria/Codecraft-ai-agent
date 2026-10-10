@@ -71,7 +71,11 @@ router.post('/install', async (req, res) => {
   try {
     const { source, approvedPermissions } = req.body;
     if (!source) return res.status(400).json({ error: '"source" is required' });
-    const result = await installer.install(source, { approvedPermissions: approvedPermissions || [] });
+    const workspaceId = req.user?.workspaceId || null;
+    const result = await installer.install(source, {
+      approvedPermissions: approvedPermissions || [],
+      workspaceId,
+    });
     res.json(result);
   } catch (err) {
     handleError(res, err);
@@ -80,9 +84,19 @@ router.post('/install', async (req, res) => {
 
 // --- Installed skills list/search/info ---
 
+// scopeSkill: null if caller's workspace can't see this row, else row.
+// Legacy rows (workspace_id = null) stay visible to every workspace.
+function scopeSkill(skill, req) {
+  if (!skill) return null;
+  const ws = req.user?.workspaceId;
+  if (!ws) return skill;
+  if (!skill.workspace_id || skill.workspace_id === ws) return skill;
+  return null;
+}
+
 router.get('/', async (req, res) => {
   try {
-    res.json(await skillManager.list());
+    res.json(await skillManager.list({ workspaceId: req.user?.workspaceId || null }));
   } catch (err) {
     handleError(res, err);
   }
@@ -90,7 +104,7 @@ router.get('/', async (req, res) => {
 
 router.get('/search', async (req, res) => {
   try {
-    res.json(await skillManager.search(req.query.q || ''));
+    res.json(await skillManager.search(req.query.q || '', { workspaceId: req.user?.workspaceId || null }));
   } catch (err) {
     handleError(res, err);
   }
@@ -98,7 +112,9 @@ router.get('/search', async (req, res) => {
 
 router.get('/:id', async (req, res) => {
   try {
-    res.json(await skillManager.info(req.params.id));
+    const skill = scopeSkill(await skillManager.info(req.params.id), req);
+    if (!skill) return res.status(404).json({ error: `Skill "${req.params.id}" is not installed` });
+    res.json(skill);
   } catch (err) {
     handleError(res, err);
   }

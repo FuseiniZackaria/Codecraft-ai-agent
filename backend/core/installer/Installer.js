@@ -36,32 +36,33 @@ class Installer {
 
   /**
    * @param {string} sourceInput - anything SourceDetector understands
-   * @param {object} options - { approvedPermissions: string[], chain: string[] (internal), isUpdate: boolean }
+   * @param {object} options - { approvedPermissions: string[], chain: string[] (internal), isUpdate: boolean, workspaceId: string }
    */
   async install(sourceInput, options = {}) {
     const approvedPermissions = options.approvedPermissions || [];
     const chain = options.chain || [];
+    const workspaceId = options.workspaceId || null;
     let installedDir = null;
     let registeredSkillId = null;
 
-    await activityLog.record('installer', 'install.started', sourceInput, {});
+    await activityLog.record('installer', 'install.started', sourceInput, { workspaceId });
 
     try {
       const source = detectSource(sourceInput);
 
-      await activityLog.record('installer', 'download.started', sourceInput, { sourceType: source.type });
+      await activityLog.record('installer', 'download.started', sourceInput, { sourceType: source.type, workspaceId });
       const packageDir =
         source.type === 'registry'
           ? await this.downloader.fetch(this.registry.resolveSource(source.id))
           : await this.downloader.fetch(source);
-      await activityLog.record('installer', 'download.completed', sourceInput, { sourceType: source.type });
+      await activityLog.record('installer', 'download.completed', sourceInput, { sourceType: source.type, workspaceId });
 
       const checksum = this.verifier.computeChecksum(packageDir);
       const signature = this.verifier.verifySignature();
-      await activityLog.record('installer', 'verification.completed', sourceInput, { checksum, signed: signature.signed });
+      await activityLog.record('installer', 'verification.completed', sourceInput, { checksum, signed: signature.signed, workspaceId });
 
       const manifest = Manifest.load(packageDir);
-      await activityLog.record('installer', 'manifest.loaded', manifest.id, { version: manifest.version });
+      await activityLog.record('installer', 'manifest.loaded', manifest.id, { version: manifest.version, workspaceId });
 
       if (chain.includes(manifest.id)) {
         throw new CircularDependencyError(`Circular dependency detected: ${[...chain, manifest.id].join(' -> ')}`);
@@ -88,15 +89,15 @@ class Installer {
         this.depResolver.checkCircular(dep, [...chain, manifest.id]);
         try {
           this.registry.getDetails(dep);
-          await this.install(`registry:${dep}`, { approvedPermissions, chain: [...chain, manifest.id] });
-          await activityLog.record('installer', 'dependency.installed', dep, { for: manifest.id });
+          await this.install(`registry:${dep}`, { approvedPermissions, chain: [...chain, manifest.id], workspaceId });
+          await activityLog.record('installer', 'dependency.installed', dep, { for: manifest.id, workspaceId });
         } catch (err) {
           throw new InstallError(`Missing dependency "${dep}" for ${manifest.id}, and it's not available: ${err.message}`);
         }
       }
 
       this.permissionManager.validate(manifest.permissions, approvedPermissions);
-      await activityLog.record('installer', 'permissions.approved', manifest.id, { permissions: manifest.permissions });
+      await activityLog.record('installer', 'permissions.approved', manifest.id, { permissions: manifest.permissions, workspaceId });
 
       installedDir = path.join(SKILLS_DIR, manifest.id);
       this._copyDir(packageDir, installedDir);
@@ -115,21 +116,24 @@ class Installer {
         sourcePath: installedDir,
         checksum,
         installedAt: new Date().toISOString(),
+        workspace_id: workspaceId,
       };
       await memory.saveSkill(skillRecord);
       registeredSkillId = manifest.id;
-      await activityLog.record('installer', 'skill.registered', manifest.id, { version: manifest.version });
+      await activityLog.record('installer', 'skill.registered', manifest.id, { version: manifest.version, workspaceId });
 
       const activated = this.activator.activate(manifest.id, installedDir, manifest);
       await activityLog.record('installer', 'skill.activated', manifest.id, {
         toolsRegistered: activated.tools.length,
         agentRegistered: !!activated.agent,
         guidanceRegistered: !!activated.guidance,
+        workspaceId,
       });
 
       await activityLog.record('installer', 'install.completed', manifest.id, {
         version: manifest.version,
         dependenciesSatisfied: satisfied.length,
+        workspaceId,
       });
 
       return { skill: skillRecord, activated };
@@ -140,7 +144,7 @@ class Installer {
       if (registeredSkillId) {
         await memory.deleteSkill(registeredSkillId);
       }
-      await activityLog.record('installer', 'install.failed', sourceInput, { error: err.message });
+      await activityLog.record('installer', 'install.failed', sourceInput, { error: err.message, workspaceId });
       throw err;
     }
   }

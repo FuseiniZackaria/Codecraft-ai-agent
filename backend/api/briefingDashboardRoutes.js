@@ -14,7 +14,10 @@ router.get('/briefing', async (req, res) => {
   try {
     const goal = req.query.goal;
     if (!goal) return res.status(400).json({ error: '"goal" query parameter is required' });
-    const articles = await memory.getBriefingArticles(goal, { sinceDays: 14 });
+    const articles = await memory.getBriefingArticles(goal, {
+      sinceDays: 14,
+      workspaceId: req.user?.workspaceId || null,
+    });
     res.json(computeDashboardStats(articles));
   } catch (err) {
     res.status(500).json({ error: err.message });

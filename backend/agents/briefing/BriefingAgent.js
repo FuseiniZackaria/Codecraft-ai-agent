@@ -36,7 +36,9 @@ class BriefingAgent extends BaseAgent {
   async plan(task) {
     let priorRun = null;
     try {
-      priorRun = await memory.getLatestBriefingRun(task.instruction);
+      priorRun = await memory.getLatestBriefingRun(task.instruction, {
+        workspaceId: task?.workspace_id || this._currentTask?.workspace_id || null,
+      });
     } catch (err) {
       console.warn(`[BriefingAgent] failed to look up prior run: ${err.message}`);
     }
@@ -222,11 +224,12 @@ class BriefingAgent extends BaseAgent {
   async reflect(task, results) {
     const note = await super.reflect(task, results);
 
+    const workspaceId = task?.workspace_id || this._currentTask?.workspace_id || null;
     const finalResult = results[results.length - 1];
     const outputText = finalResult?.text;
     if (outputText) {
       try {
-        await memory.saveBriefingRun({ goal: task.instruction, output: outputText });
+        await memory.saveBriefingRun({ goal: task.instruction, output: outputText, workspace_id: workspaceId }, { workspaceId });
       } catch (err) {
         console.warn(`[BriefingAgent] failed to save run for future comparison: ${err.message}`);
       }
@@ -252,7 +255,9 @@ class BriefingAgent extends BaseAgent {
            try {
         const articles = this.extractArticles(task, results);
         if (articles.length > 0) {
-          await memory.saveBriefingArticles(articles);
+          // Stamp each row's workspace_id via the fallback option on the
+          // store call, so legacy articles don't need a per-row rewrite.
+          await memory.saveBriefingArticles(articles, { workspaceId });
         }
       } catch (err) {
         console.warn(`[BriefingAgent] failed to save articles for dashboard: ${err.message}`);

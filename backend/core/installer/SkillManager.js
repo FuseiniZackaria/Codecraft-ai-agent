@@ -24,12 +24,12 @@ class SkillManager {
     this.registry = new Registry();
   }
 
-  async list() {
-    return memory.listSkills();
+  async list(options = {}) {
+    return memory.listSkills(options);
   }
 
-  async search(query) {
-    const all = await memory.listSkills();
+  async search(query, options = {}) {
+    const all = await memory.listSkills(options);
     const q = query.toLowerCase();
     return all.filter((s) => s.name.toLowerCase().includes(q) || (s.description || '').toLowerCase().includes(q));
   }

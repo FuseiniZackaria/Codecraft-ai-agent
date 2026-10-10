@@ -54,6 +54,7 @@ router.post('/registry/:id/install', async (req, res) => {
     const graphError = validateGraph(entry.graph);
     if (graphError) return res.status(500).json({ error: `Registry entry has an invalid graph: ${graphError}` });
 
+    const workspaceId = req.user?.workspaceId || null;
     const definition = {
       id: uuid(),
       name: entry.name,
@@ -64,9 +65,10 @@ router.post('/registry/:id/install', async (req, res) => {
       dailyTime: null,
       daysOfWeek: null,
       lastRunAt: null,
+      workspace_id: workspaceId,
       createdAt: new Date().toISOString(),
     };
-    await memory.saveWorkflowDefinition(definition);
+    await memory.saveWorkflowDefinition(definition, { workspaceId });
     res.status(201).json(definition);
   } catch (err) {
     res.status(404).json({ error: err.message });
@@ -93,6 +95,7 @@ router.post('/', async (req, res) => {
   }
 
   try {
+    const workspaceId = req.user?.workspaceId || null;
     const definition = {
       id: uuid(),
       name: req.body.name,
@@ -104,18 +107,30 @@ router.post('/', async (req, res) => {
       daysOfWeek: req.body.daysOfWeek || null,
       watchFolder: req.body.watchFolder || null,
       lastRunAt: null,
+      workspace_id: workspaceId,
       createdAt: new Date().toISOString(),
     };
-    await memory.saveWorkflowDefinition(definition);
+    await memory.saveWorkflowDefinition(definition, { workspaceId });
     res.status(201).json(definition);
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
 });
 
+// scopeOne returns the row if the caller's workspace can see it (same
+// workspace, or legacy null-workspace row), else null - so a direct GET
+// /:id by UUID can't peek into another workspace's data.
+function scopeOne(row, req) {
+  if (!row) return null;
+  const ws = req.user?.workspaceId;
+  if (!ws) return row;
+  if (!row.workspace_id || row.workspace_id === ws) return row;
+  return null;
+}
+
 router.get('/:id', async (req, res) => {
   try {
-    const def = await memory.getWorkflowDefinition(req.params.id);
+    const def = scopeOne(await memory.getWorkflowDefinition(req.params.id), req);
     if (!def) return res.status(404).json({ error: 'Workflow definition not found' });
     res.json(def);
   } catch (err) {
@@ -125,7 +140,7 @@ router.get('/:id', async (req, res) => {
 
 router.patch('/:id', async (req, res) => {
   try {
-    const existing = await memory.getWorkflowDefinition(req.params.id);
+    const existing = scopeOne(await memory.getWorkflowDefinition(req.params.id), req);
     if (!existing) return res.status(404).json({ error: 'Workflow definition not found' });
 
     if (req.body.graph !== undefined) {
@@ -145,6 +160,8 @@ router.patch('/:id', async (req, res) => {
 
 router.delete('/:id', async (req, res) => {
   try {
+    const existing = scopeOne(await memory.getWorkflowDefinition(req.params.id), req);
+    if (!existing) return res.status(404).json({ error: 'Workflow definition not found' });
     await memory.deleteWorkflowDefinition(req.params.id);
     res.json({ deleted: true });
   } catch (err) {
@@ -154,7 +171,14 @@ router.delete('/:id', async (req, res) => {
 
 router.get('/:id/runs', async (req, res) => {
   try {
-    res.json(await memory.listWorkflowRuns(req.params.id));
+    // Scope at the definition level: if the definition doesn't belong to
+    // this workspace, the runs under it don't either.
+    const parent = scopeOne(await memory.getWorkflowDefinition(req.params.id), req);
+    if (!parent) return res.status(404).json({ error: 'Workflow definition not found' });
+    const runs = await memory.listWorkflowRuns(req.params.id);
+    const ws = req.user?.workspaceId;
+    const scoped = ws ? (runs || []).filter((r) => !r.workspace_id || r.workspace_id === ws) : runs;
+    res.json(scoped);
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
@@ -189,6 +213,10 @@ router.get('/runs/:runId', async (req, res) => {
   try {
     const run = await memory.getWorkflowRun(req.params.runId);
     if (!run) return res.status(404).json({ error: 'Workflow run not found' });
+    const ws = req.user?.workspaceId;
+    if (ws && run.workspace_id && run.workspace_id !== ws) {
+      return res.status(404).json({ error: 'Workflow run not found' });
+    }
     res.json(run);
   } catch (err) {
     res.status(500).json({ error: err.message });

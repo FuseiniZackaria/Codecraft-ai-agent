@@ -220,7 +220,9 @@ async function executeNode(node, context, runId) {
       const subTrigger = subDefinition.graph.nodes.find((n) => n.type === 'trigger');
       if (!subTrigger) throw new Error(`Sub-workflow "${subDefinition.name}" has no trigger node`);
 
-      await activityLog.record('workflow', 'subworkflow_started', node.id, { runId, subWorkflowId: subDefinition.id });
+      await activityLog.record('workflow', 'subworkflow_started', node.id, { runId, subWorkflowId: subDefinition.id, workspaceId: run.workspace_id || null });
+      // Sub-workflow run inherits the parent run's workspace_id. If parent
+      // was legacy (null), the sub stays legacy too - matches outer loop.
       const subRun = {
         id: uuid(),
         workflowId: subDefinition.id,
@@ -229,11 +231,12 @@ async function executeNode(node, context, runId) {
         currentNodeId: null,
         pausedTaskId: null,
         error: null,
+        workspace_id: run.workspace_id || null,
       };
-      await memory.saveWorkflowRun(subRun);
+      await memory.saveWorkflowRun(subRun, { workspaceId: run.workspace_id || null });
       const subFirstEdge = pickNextEdge(subDefinition.graph, subTrigger.id, null);
       await walk(subRun, subDefinition, subFirstEdge?.target || null); // throws on failure, correctly propagating to the parent
-      await activityLog.record('workflow', 'subworkflow_completed', node.id, { runId, subRunId: subRun.id });
+      await activityLog.record('workflow', 'subworkflow_completed', node.id, { runId, subRunId: subRun.id, workspaceId: run.workspace_id || null });
 
       output = subRun.context[config.resultNodeId]?.output || '';
     } else {
@@ -318,17 +321,30 @@ async function walk(run, definition, startNodeId) {
  *   detected file path from a folder-watch trigger), seeded into the run's
  *   context as {{trigger.output}} for downstream nodes to reference.
  */
-async function runWorkflow(definitionId, triggerOutput = null) {
+async function runWorkflow(definitionId, triggerOutput = null, options = {}) {
   const definition = await memory.getWorkflowDefinition(definitionId);
   if (!definition) throw new Error(`Workflow definition "${definitionId}" not found`);
 
   const trigger = definition.graph.nodes.find((n) => n.type === 'trigger');
   if (!trigger) throw new Error('Workflow graph has no trigger node');
 
+  // Workspace resolution order: explicit option (scheduler), then the
+  // definition's own workspace_id (route-created rows), then null (legacy).
+  const workspaceId = options.workspaceId || definition.workspace_id || null;
+
   const initialContext = triggerOutput !== null ? { trigger: { output: triggerOutput } } : {};
-  const run = { id: uuid(), workflowId: definitionId, status: 'running', context: initialContext, currentNodeId: null, pausedTaskId: null, error: null };
-  await memory.saveWorkflowRun(run);
-  await activityLog.record('workflow', 'run_started', definitionId, { runId: run.id });
+  const run = {
+    id: uuid(),
+    workflowId: definitionId,
+    status: 'running',
+    context: initialContext,
+    currentNodeId: null,
+    pausedTaskId: null,
+    error: null,
+    workspace_id: workspaceId,
+  };
+  await memory.saveWorkflowRun(run, { workspaceId });
+  await activityLog.record('workflow', 'run_started', definitionId, { runId: run.id, workspaceId });
 
   const firstEdge = pickNextEdge(definition.graph, trigger.id, null);
   try {

@@ -91,15 +91,21 @@ async function runWorkflow(workflow) {
   if (runningIds.has(workflow.id)) return; // previous run still in progress
   runningIds.add(workflow.id);
   try {
-    console.log(`[scheduler] running workflow "${workflow.name}": ${workflow.goal}`);
-    await orchestrator.submitGoal(workflow.goal);
-    await memory.updateWorkflow(workflow.id, { lastRunAt: new Date().toISOString() });
+    const workspaceId = workflow.workspace_id || null;
+    console.log(`[scheduler] running workflow "${workflow.name}"${workspaceId ? ` (workspace ${workspaceId.slice(0, 8)})` : ''}: ${workflow.goal}`);
+    // Thread the workflow's own workspace_id down into submitGoal so every
+    // task row the scheduler creates carries the right scope. A legacy
+    // workflow with workspace_id = null still runs - submitGoal just gets
+    // null, matching the pre-Phase-2 behavior.
+    await orchestrator.submitGoal(workflow.goal, { workspaceId });
+    await memory.updateWorkflow(workflow.id, { lastRunAt: new Date().toISOString() }, { workspaceId });
   } catch (err) {
     console.warn(`[scheduler] workflow "${workflow.name}" failed: ${err.message}`);
     // Still record the attempt time, so a persistently-failing workflow
     // doesn't retry every single tick forever - it gets another shot on its
     // normal schedule instead.
-    await memory.updateWorkflow(workflow.id, { lastRunAt: new Date().toISOString() }).catch(() => {});
+    const workspaceId = workflow.workspace_id || null;
+    await memory.updateWorkflow(workflow.id, { lastRunAt: new Date().toISOString() }, { workspaceId }).catch(() => {});
   } finally {
     runningIds.delete(workflow.id);
   }
@@ -109,12 +115,14 @@ async function runGraphWorkflow(definition, triggerOutput) {
   if (runningIds.has(definition.id)) return;
   runningIds.add(definition.id);
   try {
-    console.log(`[scheduler] running graph workflow "${definition.name}"${triggerOutput ? ` (trigger file: ${triggerOutput})` : ''}`);
-    await workflowEngine.runWorkflow(definition.id, triggerOutput);
+    const workspaceId = definition.workspace_id || null;
+    console.log(`[scheduler] running graph workflow "${definition.name}"${workspaceId ? ` (workspace ${workspaceId.slice(0, 8)})` : ''}${triggerOutput ? ` (trigger file: ${triggerOutput})` : ''}`);
+    await workflowEngine.runWorkflow(definition.id, triggerOutput, { workspaceId });
   } catch (err) {
     console.warn(`[scheduler] graph workflow "${definition.name}" failed: ${err.message}`);
   } finally {
-    await memory.updateWorkflowDefinition(definition.id, { lastRunAt: new Date().toISOString() }).catch(() => {});
+    const workspaceId = definition.workspace_id || null;
+    await memory.updateWorkflowDefinition(definition.id, { lastRunAt: new Date().toISOString() }, { workspaceId }).catch(() => {});
     runningIds.delete(definition.id);
   }
 }
@@ -190,6 +198,13 @@ async function tickOutreachAutomation(now = new Date()) {
 }
 
 async function tick() {
+  // Phase 2.3c: per-workspace iteration via a single query, grouped in code.
+  // One listWorkflows() call fetches every workspace's workflows at once -
+  // cheaper than N listWorkflows({ workspaceId }) round-trips when there are
+  // multiple workspaces. The run itself still gets each workflow's own
+  // workflow.workspace_id passed through runWorkflow -> submitGoal, so task
+  // rows end up stamped correctly. Legacy rows (workspace_id = null) still
+  // run; they just produce null-scoped tasks.
   let workflows;
   try {
     workflows = await memory.listWorkflows();
@@ -197,9 +212,18 @@ async function tick() {
     console.warn(`[scheduler] failed to list workflows: ${err.message}`);
     return;
   }
-  const due = workflows.filter((w) => isWorkflowDue(w));
-  for (const workflow of due) {
-    runWorkflow(workflow); // deliberately not awaited - workflows run concurrently, independent of each other
+  const dueWorkflows = workflows.filter((w) => isWorkflowDue(w));
+  // Fire in order grouped by workspace_id so logs read as a per-workspace
+  // sweep; execution is still concurrent-per-workflow (runWorkflow is
+  // not awaited) within a workspace.
+  const byWorkspace = new Map();
+  for (const w of dueWorkflows) {
+    const key = w.workspace_id || '(legacy)';
+    if (!byWorkspace.has(key)) byWorkspace.set(key, []);
+    byWorkspace.get(key).push(w);
+  }
+  for (const [, group] of byWorkspace) {
+    for (const workflow of group) runWorkflow(workflow); // deliberately not awaited
   }
 
   // Graph-based workflow_definitions - previously never automatically
@@ -213,13 +237,22 @@ async function tick() {
     console.warn(`[scheduler] failed to list workflow definitions: ${err.message}`);
     return;
   }
-  for (const definition of definitions) {
-    if (!definition.enabled) continue;
-    if (definition.scheduleType === 'interval' || definition.scheduleType === 'daily') {
-      if (isWorkflowDue(definition)) runGraphWorkflow(definition, null);
-    } else if (definition.scheduleType === 'folder_watch') {
-      const filePath = checkFolderWatch(definition);
-      if (filePath) runGraphWorkflow(definition, filePath);
+  // Same per-workspace grouping for graph workflows.
+  const defsByWorkspace = new Map();
+  for (const def of definitions) {
+    if (!def.enabled) continue;
+    const key = def.workspace_id || '(legacy)';
+    if (!defsByWorkspace.has(key)) defsByWorkspace.set(key, []);
+    defsByWorkspace.get(key).push(def);
+  }
+  for (const [, defs] of defsByWorkspace) {
+    for (const definition of defs) {
+      if (definition.scheduleType === 'interval' || definition.scheduleType === 'daily') {
+        if (isWorkflowDue(definition)) runGraphWorkflow(definition, null);
+      } else if (definition.scheduleType === 'folder_watch') {
+        const filePath = checkFolderWatch(definition);
+        if (filePath) runGraphWorkflow(definition, filePath);
+      }
     }
   }
 
