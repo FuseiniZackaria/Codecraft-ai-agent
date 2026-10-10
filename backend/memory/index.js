@@ -9,7 +9,15 @@ function getMemory() {
   if (instance) return instance;
 
   let backing;
-  if (config.supabase.url && config.supabase.serviceKey) {
+  // CC_FORCE_MEMORY_STORE is the kill switch set by scripts/run-tests.js so
+  // `npm test` can NEVER touch the real database, even if someone later
+  // adds a config path that reads SUPABASE_URL in a way the runner can't
+  // zero out first. Belt-and-braces for the normal check below.
+  const forceMemory = process.env.CC_FORCE_MEMORY_STORE === '1';
+  if (forceMemory) {
+    console.log('[memory] Using in-memory MemoryStore (CC_FORCE_MEMORY_STORE=1)');
+    backing = new MemoryStore();
+  } else if (config.supabase.url && config.supabase.serviceKey) {
     console.log('[memory] Using SupabaseStore (SUPABASE_URL configured)');
     backing = new SupabaseStore(config.supabase);
   } else {

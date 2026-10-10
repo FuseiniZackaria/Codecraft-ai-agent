@@ -36,6 +36,12 @@ function selectProvider(task = {}) {
   if (task.overrideProvider && registry[task.overrideProvider]) {
     return registry[task.overrideProvider];
   }
+  // CC_FORCE_MOCK_PROVIDER is set by mockProvider.js the moment a test
+  // overrides mockProvider.complete, so the test's stub actually runs
+  // instead of being silently bypassed when AI_API_KEY is present in .env.
+  if (process.env.CC_FORCE_MOCK_PROVIDER === '1') {
+    return registry.mock;
+  }
   const candidates = availableProviders();
   const best = candidates.sort((a, b) => score(b, task) - score(a, task))[0];
   return registry[best];
