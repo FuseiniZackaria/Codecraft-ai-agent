@@ -28,8 +28,6 @@ import ResetPassword from './pages/ResetPassword';
 export default function App() {
   const [session, setSession] = useState(undefined); // undefined = still checking, null = logged out
   const refresh = useStore((s) => s.refresh);
-  const refreshConnectors = useStore((s) => s.refreshConnectors);
-  const loadChatHistory = useStore((s) => s.loadChatHistory);
   const loadPublicConfig = useStore((s) => s.loadPublicConfig);
   const loadUserRole = useStore((s) => s.loadUserRole);
   const user = useStore((s) => s.user);
@@ -47,26 +45,46 @@ export default function App() {
     loadPublicConfig();
   }, [loadPublicConfig]);
 
+  // Supabase fires onAuthStateChange on token refresh and (in some browsers)
+  // on tab focus - each firing hands us a NEW session object with the same
+  // user.id. If we naively replace state every time, every downstream
+  // effect reruns and we end up re-fetching /api/me, /api/chat/history,
+  // /api/dashboard/summary, /api/agents, /api/tasks, and every connector
+  // status on each one. Instead, only update `session` when the user
+  // actually changed (sign-in, sign-out, or a different user). TOKEN_REFRESHED
+  // and spurious SIGNED_IN with the same user are no-ops.
   useEffect(() => {
-    supabase.auth.getSession().then(({ data }) => setSession(data.session));
+    supabase.auth.getSession().then(({ data }) => setSession(data.session || null));
     const { data: listener } = supabase.auth.onAuthStateChange((event, newSession) => {
       if (event === 'PASSWORD_RECOVERY') setPasswordRecovery(true);
-      setSession(newSession);
+      setSession((prev) => {
+        const prevId = prev?.user?.id || null;
+        const nextId = newSession?.user?.id || null;
+        if (prevId === nextId) return prev; // identity-stable: no re-render, no effect reruns
+        return newSession;
+      });
     });
     return () => listener.subscription.unsubscribe();
   }, []);
 
+  // The session-change effect only re-fires when the user.id ACTUALLY
+  // changes (see the identity-stable updater above), so a fetch here is
+  // always for a different user than the one in the store - force it to
+  // bypass the loadUserRole cache.
   useEffect(() => {
-    if (session) loadUserRole();
+    if (session) loadUserRole({ force: true });
   }, [session, loadUserRole]);
 
-    useEffect(() => {
+  // Dashboard / agents / tasks refresh loop. Keyed on user?.id (not user) so
+  // a new user object with the same id doesn't restart the whole timer.
+  // Paused entirely while the tab is hidden; one catch-up refresh on return.
+  useEffect(() => {
     if (!user || user.role !== 'admin') return;
     let timer;
     let stopped = false;
 
     async function tick() {
-      if (stopped) return;
+      if (stopped || document.visibilityState === 'hidden') return;
       const ok = await refresh();
       if (stopped) return;
       backoffRef.current = ok ? 60_000 : Math.min(backoffRef.current * 2, 60_000);
@@ -75,12 +93,14 @@ export default function App() {
 
     refresh().then((ok) => {
       backoffRef.current = ok ? 60_000 : 5_000;
-      if (!stopped) timer = setTimeout(tick, backoffRef.current);
+      if (!stopped && document.visibilityState !== 'hidden') {
+        timer = setTimeout(tick, backoffRef.current);
+      }
     });
 
     function onVisibility() {
       if (document.visibilityState === 'hidden') {
-        clearTimeout(timer);
+        clearTimeout(timer); // pause - no fetches while the tab is backgrounded
       } else if (!stopped) {
         refresh().then((ok) => {
           backoffRef.current = ok ? 60_000 : Math.min(backoffRef.current * 2, 60_000);
@@ -95,19 +115,11 @@ export default function App() {
       clearTimeout(timer);
       document.removeEventListener('visibilitychange', onVisibility);
     };
-  }, [user, refresh]);
+  }, [user?.id, user?.role, refresh]);
 
-  useEffect(() => {
-    if (!user || user.role !== 'admin') return;
-    loadChatHistory();
-  }, [user, loadChatHistory]);
-
-  useEffect(() => {
-    if (!user || user.role !== 'admin') return;
-    refreshConnectors();
-    const interval = setInterval(refreshConnectors, 5 * 60 * 1000);
-    return () => clearInterval(interval);
-  }, [user, refreshConnectors]);
+  // Chat history and connector status are now fetched from the pages that
+  // display them (Chat page, Plugins page). The admin shell no longer
+  // reloads either on every auth state change.
 
   // Any 401 from the authenticated API helper fires `cc:unauthorized` once.
   // Sign the user out exactly once in response - the auth state change below

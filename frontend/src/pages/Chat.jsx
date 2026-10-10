@@ -155,6 +155,19 @@ export default function Chat({ scope = null }) {
   const { connected, chatMessages, addChatMessage, refresh } = useStore();
   const sendMessage = useStore((s) => s.sendMessage);
   const assistantSession = useStore((s) => s.assistant);
+  const loadChatHistory = useStore((s) => s.loadChatHistory);
+  const loadMoreChatHistory = useStore((s) => s.loadMoreChatHistory);
+  const chatMessagesLoaded = useStore((s) => s.chatMessagesLoaded);
+  const [hasMoreHistory, setHasMoreHistory] = useState(true);
+  const [loadingMore, setLoadingMore] = useState(false);
+
+  // Chat history is loaded here (not in the shell), so the admin dashboard
+  // doesn't need to pay for /api/chat/history on every auth-state change.
+  // loadChatHistory is idempotent in the store - repeat mounts of this
+  // page are no-ops.
+  useEffect(() => {
+    loadChatHistory();
+  }, [loadChatHistory]);
   const [input, setInput] = useState('');
   const [files, setFiles] = useState([]);
   const busy = assistantSession.streaming;
@@ -475,6 +488,23 @@ export default function Chat({ scope = null }) {
       )}
 
       <div className="flex-1 overflow-y-auto px-4 md:px-6 space-y-3">
+        {chatMessagesLoaded && chatMessages.length > 0 && hasMoreHistory && (
+          <div className="flex justify-center pt-2">
+            <button
+              type="button"
+              disabled={loadingMore}
+              onClick={async () => {
+                setLoadingMore(true);
+                const grew = await loadMoreChatHistory();
+                setHasMoreHistory(grew);
+                setLoadingMore(false);
+              }}
+              className="text-[11px] text-[var(--color-text-muted)] hover:text-[var(--color-accent)] disabled:opacity-50"
+            >
+              {loadingMore ? 'Loading…' : 'Load older messages'}
+            </button>
+          </div>
+        )}
         {chatMessages.length === 0 && (
           <div className="text-sm text-[var(--color-text-muted)] py-8 text-center">
             Say hello, ask a question, attach a file, or give it something to do.

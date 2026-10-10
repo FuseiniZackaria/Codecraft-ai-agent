@@ -8,18 +8,41 @@ export const useStore = create((set, get) => ({
   authLoading: true,
   connectionError: null,
   user: null,
+  // Cache marks so repeated callers don't re-hit the backend during a session.
+  // Supabase onAuthStateChange fires SIGNED_IN / TOKEN_REFRESHED on tab focus
+  // and token rotations - without these flags, each one would re-fetch /api/me,
+  // /api/chat/history, and every /api/composio/*/status call.
+  userLoadedAt: 0,
+  chatMessagesLoaded: false,
+  chatHistoryLimit: 50,
+  connectorsLastFetchedAt: 0,
 
   async signOut() {
     await supabase.auth.signOut();
-    set({ user: null });
+    // Clear the cache so the NEXT user signing in on this tab starts fresh.
+    set({
+      user: null,
+      userLoadedAt: 0,
+      chatMessagesLoaded: false,
+      chatMessages: [],
+      connectorsLastFetchedAt: 0,
+    });
+    try { localStorage.removeItem('cc_chat'); } catch { /* ignore */ }
   },
 
-    async loadUserRole() {
+  async loadUserRole({ force = false } = {}) {
+    // Idempotent: once we have a user, don't refetch unless the caller asks.
+    // Protects against the Supabase auth-state-change storm (tab focus,
+    // token refresh) that would otherwise fire /api/me on every event.
+    if (!force && get().user && get().userLoadedAt) {
+      set({ authLoading: false });
+      return;
+    }
     try {
       const me = await api.getMe();
-      set({ user: me, authLoading: false, connected: true, loading: false });
+      set({ user: me, authLoading: false, connected: true, loading: false, userLoadedAt: Date.now() });
     } catch {
-      set({ user: null, authLoading: false, connected: false, loading: false });
+      set({ user: null, authLoading: false, connected: false, loading: false, userLoadedAt: 0 });
     }
   },
   summary: DEMO.summary,
@@ -77,14 +100,20 @@ export const useStore = create((set, get) => ({
       return { chatMessages };
     }),
 
-  // One-time hydration from the backend on app mount - chat history now
-  // lives server-side (survives a refresh or a different device/browser).
-  // localStorage stays as an offline fallback: used as the initial state
-  // above, and kept in sync here so it's still useful if the backend is
-  // ever unreachable later in the session.
-  async loadChatHistory() {
+  // One-time hydration from the backend when the Chat page mounts. Chat
+  // history lives server-side (survives a refresh or a different device/
+  // browser). localStorage stays as an offline fallback: used as the
+  // initial state above, and kept in sync here so it's still useful if the
+  // backend is ever unreachable later in the session.
+  //
+  // Loads a short first page (default 50). Call loadMoreChatHistory to
+  // extend. New messages arrive through the live chat stream, not through
+  // repeated history fetches.
+  async loadChatHistory({ force = false } = {}) {
+    if (!force && get().chatMessagesLoaded) return;
     try {
-      const serverMessages = await api.getChatHistory();
+      const limit = get().chatHistoryLimit || 50;
+      const serverMessages = await api.getChatHistory(limit);
       const chatMessages = serverMessages.map((m) => ({
         role: m.role,
         content: m.content,
@@ -92,10 +121,34 @@ export const useStore = create((set, get) => ({
         task: m.taskId ? { id: m.taskId } : undefined,
       }));
       localStorage.setItem('cc_chat', JSON.stringify(chatMessages));
-      set({ chatMessages });
+      set({ chatMessages, chatMessagesLoaded: true });
     } catch {
       // Backend not reachable - keep whatever was already loaded from
-      // localStorage as a reasonable offline fallback.
+      // localStorage as a reasonable offline fallback. Don't flip the
+      // loaded flag; a later retry can still succeed.
+    }
+  },
+
+  // Doubles the fetched window (50 -> 100 -> 200 -> ...). Returns true when
+  // the server actually gave more messages than before, so the UI can hide
+  // the "Load more" button once the top of history is reached.
+  async loadMoreChatHistory() {
+    const current = get().chatHistoryLimit || 50;
+    const next = current * 2;
+    try {
+      const serverMessages = await api.getChatHistory(next);
+      const chatMessages = serverMessages.map((m) => ({
+        role: m.role,
+        content: m.content,
+        attachmentNames: m.attachmentNames,
+        task: m.taskId ? { id: m.taskId } : undefined,
+      }));
+      const grew = chatMessages.length > get().chatMessages.length;
+      localStorage.setItem('cc_chat', JSON.stringify(chatMessages));
+      set({ chatMessages, chatMessagesLoaded: true, chatHistoryLimit: next });
+      return grew;
+    } catch {
+      return false;
     }
   },
 
@@ -116,7 +169,13 @@ export const useStore = create((set, get) => ({
     }
   },
 
-  async refreshConnectors() {
+  // Only called from pages that actually display connector state (currently
+  // Plugins). 6 parallel requests is expensive, so a 5-minute cache
+  // suppresses re-fetching on page navigation. The Refresh button on the
+  // page passes { force: true } to bypass the cache.
+  async refreshConnectors({ force = false } = {}) {
+    const now = Date.now();
+    if (!force && now - (get().connectorsLastFetchedAt || 0) < 5 * 60 * 1000) return;
     try {
       const results = await Promise.allSettled([
         api.getGmailStatus(),
@@ -134,6 +193,7 @@ export const useStore = create((set, get) => ({
         githubConnected: val(3),
         googlecalendarConnected: val(4),
         telegramConnected: val(5),
+        connectorsLastFetchedAt: now,
       });
     } catch {
       // ignore — connector status is non-critical

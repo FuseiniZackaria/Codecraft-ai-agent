@@ -67,6 +67,32 @@ app.use(cors({
   credentials: true,
 }));app.use(express.json({ limit: '35mb' }));
 
+// Dev-only: once per minute, print one line summarizing how many requests
+// hit each route since the last tick, so the frontend's "flood check"
+// story is observable from the server side too. Silent in production and
+// cheap at idle (two integers per path).
+if (process.env.NODE_ENV !== 'production') {
+  const requestCounts = new Map(); // path -> count
+  let totalInWindow = 0;
+  app.use((req, _res, next) => {
+    const path = req.path.split('?')[0];
+    requestCounts.set(path, (requestCounts.get(path) || 0) + 1);
+    totalInWindow += 1;
+    next();
+  });
+  setInterval(() => {
+    if (totalInWindow === 0) {
+      console.log('[req/min] 0 requests in the last minute - idle');
+    } else {
+      const top = Array.from(requestCounts.entries()).sort((a, b) => b[1] - a[1]);
+      const summary = top.map(([p, n]) => `${n}x ${p}`).join(', ');
+      console.log(`[req/min] ${totalInWindow} total: ${summary}`);
+    }
+    requestCounts.clear();
+    totalInWindow = 0;
+  }, 60_000).unref();
+}
+
 const loadedPlugins = loadPlugins();
 console.log(`[startup] Loaded plugins: ${loadedPlugins.join(', ') || '(none)'}`);
 

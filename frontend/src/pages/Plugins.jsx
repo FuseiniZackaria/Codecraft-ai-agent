@@ -1,4 +1,5 @@
-import { Mail, MessageCircle, MessageSquare, GitBranch, Calendar, Hash, CheckCircle2, ExternalLink } from 'lucide-react';
+import { useEffect, useState } from 'react';
+import { Mail, MessageCircle, MessageSquare, GitBranch, Calendar, Hash, CheckCircle2, ExternalLink, RefreshCw } from 'lucide-react';
 import { useStore } from '../store/useStore';
 
 const CATALOG = [
@@ -49,15 +50,46 @@ function ComposioCard({ icon: Icon, name, desc, toolPrefix, connectedKey, viaLab
 
 export default function Plugins() {
   const { summary } = useStore();
+  const refreshConnectors = useStore((s) => s.refreshConnectors);
+  const connectorsLastFetchedAt = useStore((s) => s.connectorsLastFetchedAt);
+  const [busy, setBusy] = useState(false);
   const installed = new Set(summary.installedTools.map((t) => t.split('.')[0]));
+
+  // Connector status is fetched here, not in the admin shell. Store has a
+  // 5-minute cache, so repeatedly navigating onto this page is cheap. The
+  // Refresh button forces a fresh fetch.
+  useEffect(() => {
+    refreshConnectors();
+  }, [refreshConnectors]);
+
+  async function handleRefresh() {
+    setBusy(true);
+    try { await refreshConnectors({ force: true }); } finally { setBusy(false); }
+  }
 
   return (
     <div className="p-4 md:p-6 max-w-5xl">
-      <h1 className="font-[var(--font-display)] text-xl font-semibold mb-1">Plugins</h1>
-      <p className="text-sm text-[var(--color-text-muted)] mb-6">
+      <div className="flex items-start justify-between gap-3 mb-1">
+        <h1 className="font-[var(--font-display)] text-xl font-semibold">Plugins</h1>
+        <button
+          type="button"
+          onClick={handleRefresh}
+          disabled={busy}
+          className="flex items-center gap-1 text-[11px] px-2 py-1 rounded-md border border-[var(--color-border)] text-[var(--color-text-muted)] hover:text-[var(--color-accent)] hover:border-[var(--color-accent)]/40 disabled:opacity-50"
+        >
+          <RefreshCw size={11} className={busy ? 'animate-spin' : ''} />
+          {busy ? 'Checking…' : 'Refresh'}
+        </button>
+      </div>
+      <p className={`text-sm text-[var(--color-text-muted)] ${connectorsLastFetchedAt > 0 ? 'mb-1' : 'mb-6'}`}>
         Install integrations to give agents new tools — no core changes required. Connections for
         Composio-backed tools (like Gmail) are managed in your Composio dashboard, not here.
       </p>
+      {connectorsLastFetchedAt > 0 && (
+        <p className="text-[11px] text-[var(--color-text-muted)] mb-6">
+          Status last checked {new Date(connectorsLastFetchedAt).toLocaleTimeString()} · cached for 5 min
+        </p>
+      )}
 
       <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-4">
         <ComposioCard icon={Mail} name="Gmail" desc="Read and send email on your behalf." toolPrefix="gmail" connectedKey="gmailConnected" />
