@@ -40,7 +40,11 @@ function loadPlugins() {
     }
 
     // Fire-and-forget: don't let a slow/unreachable memory backend block startup.
-    activityLog.record('system', 'plugin_loaded', manifest.name, { version: manifest.version }).catch((err) => {
+    activityLog.record('system', 'plugin_loaded', manifest.name, {
+      version: manifest.version,
+      scope: 'system',
+      systemCaller: 'plugin-loader',
+    }).catch((err) => {
       console.warn(`[pluginLoader] failed to write audit log for ${manifest.name}: ${err.message}`);
     });
     loaded.push(manifest.name);

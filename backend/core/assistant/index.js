@@ -22,8 +22,8 @@ function getClient() {
  * `chat_messages` stores rows oldest-first after SupabaseStore.listChatMessages
  * reverses them, so just take the tail.
  */
-async function loadRecentHistory(limit) {
-  const rows = await memory.listChatMessages(limit);
+async function loadRecentHistory(limit, { workspaceId = null } = {}) {
+  const rows = await memory.listChatMessages(limit, { workspaceId });
   return rows
     .filter((m) => m.content && m.content.trim().length > 0)
     .slice(-limit)
@@ -58,7 +58,7 @@ function buildSystemBlocks({ voice }) {
  * @param {function} opts.onEvent - called with {type, ...} for each stream event
  * @returns {Promise<{reply: string, taskIds: string[], usage: object, iterations: number}>}
  */
-async function runAssistant({ message, scope = null, voice = false, onEvent = () => {} }) {
+async function runAssistant({ message, scope = null, voice = false, workspaceId = null, onEvent = () => {} }) {
   if (await usage.isOverCap(memory)) {
     const daily = await usage.getDaily(memory);
     const err = new Error(`daily_cap_reached: $${daily.usd.toFixed(2)} today`);
@@ -67,14 +67,14 @@ async function runAssistant({ message, scope = null, voice = false, onEvent = ()
   }
 
   const anthropic = getClient();
-  const history = await loadRecentHistory(config.assistant.historyLimit);
+  const history = await loadRecentHistory(config.assistant.historyLimit, { workspaceId });
   const tools = buildTools(scope);
   const system = buildSystemBlocks({ voice });
 
   const messages = [...history, { role: 'user', content: message }];
 
   const collectedTaskIds = [];
-  const context = { history, collectedTaskIds };
+  const context = { history, collectedTaskIds, workspaceId };
   const totalUsage = { input_tokens: 0, output_tokens: 0, cache_read_input_tokens: 0, cache_creation_input_tokens: 0 };
 
   let fullReply = '';

@@ -65,7 +65,9 @@ function containsPlaceholderText(text) {
 }
 
 async function countSentToday(tool) {
-  const allTasks = await memory.listTasks();
+  // Called from inbound WhatsApp/Telegram webhooks that have no user
+  // session - the daily-send-cap check is intentionally cross-workspace.
+  const allTasks = await memory.listTasks({ scope: 'system', systemCaller: 'auto-reply-safety' });
   const today = new Date().toISOString().slice(0, 10);
   return allTasks.filter(
     (t) => t.toolCall?.tool === tool && t.status === 'done' && (t.updated_at || t.created_at || '').slice(0, 10) === today

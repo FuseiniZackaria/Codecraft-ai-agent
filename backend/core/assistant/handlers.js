@@ -93,8 +93,8 @@ async function runDepartmentTask(toolName, input, context) {
   return summariseTask(first);
 }
 
-async function listPendingApprovals() {
-  const tasks = await memory.listTasks();
+async function listPendingApprovals(context = {}) {
+  const tasks = await memory.listTasks({ workspaceId: context.workspaceId || null });
   const pending = tasks
     .filter((t) => t.status === 'pending_approval')
     .slice(0, 20)
@@ -114,7 +114,7 @@ const HANDLERS = {
   run_support_task: runDepartmentTask,
   run_strategy_task: runDepartmentTask,
   run_development_task: runDepartmentTask,
-  list_pending_approvals: () => listPendingApprovals(),
+  list_pending_approvals: (_name, _input, context) => listPendingApprovals(context),
   check_task_result: (name, input) => checkTaskResult(input),
 };
 

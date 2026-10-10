@@ -10,6 +10,7 @@ module.exports = [
   'tests/workspace-stamping.test.js',
   'tests/workspace-end-to-end.test.js',
   'tests/workspace-tables-phase2c.test.js',
+  'tests/workspace-system-scope.test.js',
   'tests/orchestrator.test.js',
   'tests/installer.test.js',
   'tests/coding.test.js',

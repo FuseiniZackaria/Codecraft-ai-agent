@@ -60,7 +60,7 @@ const NESTED_ALLOWED_TYPES = ['agent', 'tool', 'condition', 'switch'];
  * edge. Used by loop bodies and parallel branches - never by the top-level
  * run, which goes through walk() instead and supports pausing.
  */
-async function runSubgraph(subgraph, parentContext, runId) {
+async function runSubgraph(subgraph, parentContext, runId, runWorkspaceId = null) {
   const localContext = { ...parentContext };
   const targetIds = new Set(subgraph.edges.map((e) => e.target));
   const startNode = subgraph.nodes.find((n) => !targetIds.has(n.id));
@@ -74,7 +74,7 @@ async function runSubgraph(subgraph, parentContext, runId) {
       throw new Error(`Node type "${node.type}" isn't allowed inside a loop body or parallel branch (only agent/tool/condition/switch)`);
     }
 
-    const { output, branch } = await executeNode(node, localContext, runId);
+    const { output, branch } = await executeNode(node, localContext, runId, runWorkspaceId);
     localContext[node.id] = { output };
 
     const nextEdge = pickNextEdge(subgraph, node.id, branch);
@@ -85,7 +85,7 @@ async function runSubgraph(subgraph, parentContext, runId) {
 }
 
 /** Runs one node, returning its output string and (for branching nodes) which branch was taken. */
-async function executeNode(node, context, runId) {
+async function executeNode(node, context, runId, runWorkspaceId = null) {
   const config = resolveConfig(node.config, context);
   await activityLog.record('workflow', 'node_started', node.id, { runId, nodeType: node.type });
 
@@ -146,7 +146,10 @@ async function executeNode(node, context, runId) {
       // fallback behavior.
       const options = config.options || [];
       const optionList = options.map((o) => `- ${o.id}: ${o.label}`).join('\n');
-      const recentActivity = await analytics.getRecentActivitySummary({ limit: 5 });
+      const recentActivity = await analytics.getRecentActivitySummary({
+        limit: 5,
+        workspaceId: runWorkspaceId,
+      });
       const provider = selectProvider({});
       let chosen = 'NONE';
       try {
@@ -190,7 +193,7 @@ async function executeNode(node, context, runId) {
       for (let i = 0; i < items.length; i++) {
         await activityLog.record('workflow', 'loop_iteration_started', node.id, { runId, index: i, of: items.length });
         const iterContext = { ...context, loop: { item: String(items[i]), index: i } };
-        const bodyContext = await runSubgraph(node.config.body, iterContext, runId);
+        const bodyContext = await runSubgraph(node.config.body, iterContext, runId, runWorkspaceId);
         iterationOutputs.push(bodyContext[node.config.resultNodeId]?.output || '');
         await activityLog.record('workflow', 'loop_iteration_completed', node.id, { runId, index: i });
       }
@@ -200,7 +203,7 @@ async function executeNode(node, context, runId) {
       await activityLog.record('workflow', 'parallel_started', node.id, { runId, branchCount: branches.length });
       const branchOutputs = await Promise.all(
         branches.map(async (branch, i) => {
-          const bodyContext = await runSubgraph(branch.body, context, runId);
+          const bodyContext = await runSubgraph(branch.body, context, runId, runWorkspaceId);
           return bodyContext[branch.resultNodeId]?.output || '';
         })
       );
@@ -220,7 +223,7 @@ async function executeNode(node, context, runId) {
       const subTrigger = subDefinition.graph.nodes.find((n) => n.type === 'trigger');
       if (!subTrigger) throw new Error(`Sub-workflow "${subDefinition.name}" has no trigger node`);
 
-      await activityLog.record('workflow', 'subworkflow_started', node.id, { runId, subWorkflowId: subDefinition.id, workspaceId: run.workspace_id || null });
+      await activityLog.record('workflow', 'subworkflow_started', node.id, { runId, subWorkflowId: subDefinition.id, workspaceId: runWorkspaceId });
       // Sub-workflow run inherits the parent run's workspace_id. If parent
       // was legacy (null), the sub stays legacy too - matches outer loop.
       const subRun = {
@@ -231,12 +234,12 @@ async function executeNode(node, context, runId) {
         currentNodeId: null,
         pausedTaskId: null,
         error: null,
-        workspace_id: run.workspace_id || null,
+        workspace_id: runWorkspaceId,
       };
-      await memory.saveWorkflowRun(subRun, { workspaceId: run.workspace_id || null });
+      await memory.saveWorkflowRun(subRun, { workspaceId: runWorkspaceId });
       const subFirstEdge = pickNextEdge(subDefinition.graph, subTrigger.id, null);
       await walk(subRun, subDefinition, subFirstEdge?.target || null); // throws on failure, correctly propagating to the parent
-      await activityLog.record('workflow', 'subworkflow_completed', node.id, { runId, subRunId: subRun.id, workspaceId: run.workspace_id || null });
+      await activityLog.record('workflow', 'subworkflow_completed', node.id, { runId, subRunId: subRun.id, workspaceId: runWorkspaceId });
 
       output = subRun.context[config.resultNodeId]?.output || '';
     } else {
@@ -288,9 +291,10 @@ async function walk(run, definition, startNodeId) {
         toolCall: null,
         payload: { preview, previewType },
         workflowRunId: run.id,
+        workspace_id: run.workspace_id || null,
         created_at: new Date().toISOString(),
       };
-      await memory.saveTask(task);
+      await memory.saveTask(task, { workspaceId: run.workspace_id || null });
       await memory.updateWorkflowRun(run.id, {
         status: 'paused_for_approval',
         currentNodeId: node.id,
@@ -301,7 +305,7 @@ async function walk(run, definition, startNodeId) {
       return; // stop here - resume() picks up from node.id's next edge later
     }
 
-    const { output, branch } = await executeNode(node, run.context, run.id);
+    const { output, branch } = await executeNode(node, run.context, run.id, run.workspace_id || null);
     run.context[node.id] = { output };
     await memory.updateWorkflowRun(run.id, { context: run.context, currentNodeId: node.id });
 

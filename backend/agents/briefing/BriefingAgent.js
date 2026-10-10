@@ -291,7 +291,7 @@ class BriefingAgent extends BaseAgent {
    * never a default.
    */
   async deliverIfConfigured(goal, briefText) {
-    const workflows = await memory.listWorkflows();
+    const workflows = await memory.listWorkflows({ scope: 'system', systemCaller: 'briefing-agent-system' });
     const matching = workflows.find((w) => w.goal === goal);
     if (!matching?.deliverWhatsappEnabled || !matching?.deliverWhatsappTo) return;
 

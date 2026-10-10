@@ -10,6 +10,7 @@ export default function PasswordInput({
   className = '',
   visible: controlledVisible,
   onVisibleChange,
+  disabled = false,
 }) {
   const [internalVisible, setInternalVisible] = useState(false);
   const isControlled = controlledVisible !== undefined;
@@ -30,13 +31,15 @@ export default function PasswordInput({
         placeholder={placeholder}
         autoFocus={autoFocus}
         autoComplete={autoComplete}
-        className={`w-full pr-10 px-3 py-2 rounded-md border border-[var(--color-border)] bg-[var(--color-bg)] text-base md:text-sm outline-none focus:border-[var(--color-accent)]/50 ${className}`}
+        disabled={disabled}
+        className={`w-full pr-10 px-3 py-2 rounded-md border border-[var(--color-border)] bg-[var(--color-bg)] text-base md:text-sm outline-none focus:border-[var(--color-accent)]/50 disabled:opacity-50 disabled:cursor-not-allowed ${className}`}
       />
       <button
         type="button"
         onClick={toggle}
+        disabled={disabled}
         aria-label={visible ? 'Hide password' : 'Show password'}
-        className="absolute inset-y-0 right-0 flex items-center justify-center w-10 min-h-[40px] text-[var(--color-text-muted)] hover:text-[var(--color-text)]"
+        className="absolute inset-y-0 right-0 flex items-center justify-center w-10 min-h-[40px] text-[var(--color-text-muted)] hover:text-[var(--color-text)] disabled:opacity-50 disabled:cursor-not-allowed"
       >
         {visible ? <EyeOff size={16} /> : <Eye size={16} />}
       </button>

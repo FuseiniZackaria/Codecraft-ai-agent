@@ -26,9 +26,20 @@ async function record(actor, action, target, metadata = {}) {
     at: new Date().toISOString(),
   };
 
+  // metadata.scope === 'system' + metadata.systemCaller lets a legitimate
+  // non-user-context write (startup, scheduler tick, plugin loader,
+  // webhook) tell the workspace guard "this is NOT a missed scope - it's
+  // a background op". The 5th arg to memory.audit is read by the guard
+  // Proxy; the backing store itself still reads workspace_id from
+  // metadata as before.
+  const guardOpts = metadata.workspaceId
+    ? { workspaceId: metadata.workspaceId }
+    : (metadata.scope === 'system' ? { scope: 'system', systemCaller: metadata.systemCaller || null } : null);
+
   // Persist first (so a page refresh / new SSE client can catch up via
   // /api/events/recent), then broadcast live.
-  await memory.audit(actor, action, target, metadata);
+  if (guardOpts) await memory.audit(actor, action, target, metadata, guardOpts);
+  else await memory.audit(actor, action, target, metadata);
   bus.emit('event', event);
 
   return event;

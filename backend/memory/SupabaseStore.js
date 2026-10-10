@@ -128,12 +128,15 @@ class SupabaseStore {
     if (error) throw new Error(`SupabaseStore.audit: ${error.message}`);
   }
 
-    async getAuditLog(limit = 100) {
-    const { data, error } = await this.client
+    async getAuditLog(limit = 100, options = {}) {
+    const ws = options.workspaceId || options.workspace_id || null;
+    let query = this.client
       .from('audit_log')
-      .select('*')
+      .select('id,actor,action,target,metadata,workspace_id,created_at')
       .order('created_at', { ascending: false })
       .limit(limit);
+    if (ws) query = query.or(`workspace_id.is.null,workspace_id.eq.${ws}`);
+    const { data, error } = await query;
     if (error) throw new Error(`SupabaseStore.getAuditLog: ${error.message}`);
     // taskId only ever exists nested inside metadata in the database (it
     // has no own column) - but activityLog.js's live SSE events carry it

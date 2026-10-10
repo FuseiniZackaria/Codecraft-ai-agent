@@ -53,7 +53,10 @@ class ResponseDetectionAgent extends BaseAgent {
     // actually sent - nothing to reply to for anything still drafted or
     // awaiting approval, and already-responded pipelines don't need
     // re-matching (avoids reprocessing the same thread every run).
-    const allTasks = await memory.listTasks();
+    // Scheduler-driven system scan - reads tasks across every workspace to
+    // find sent outreach whose Gmail threads now have replies. Named system
+    // scope so the workspace guard doesn't flag this as an unscoped read.
+    const allTasks = await memory.listTasks({ scope: 'system', systemCaller: 'response-detection' });
     const sentPipelines = allTasks.filter(
       (t) => t.payload && t.payload.pipelineType === 'job_outreach_pipeline' && t.payload.stage === outreachPipeline.STAGES.SENT
     );

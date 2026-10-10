@@ -1,37 +1,56 @@
 /**
  * workspaceGuard - shadow-mode wrapper around the memory store.
  *
- * Phase 2.2 goal: no behavior change today, but every store call site that
- * SHOULD be scoped to a workspace can start declaring that scope. Call sites
- * that pass { workspaceId } let the guard verify the request matches the
- * row; call sites that don't are logged so we can see the coverage before
- * we flip to enforce in Phase 2.3.
+ * Call shapes:
+ *   await guarded.saveTask(task, { workspaceId });              // user path
+ *   await guarded.listTasks({ workspaceId });                   // user path
+ *   await guarded.listWorkflows({ scope: 'system', systemCaller: 'scheduler-tick' });
  *
- * Shape:
- *   const guarded = withWorkspaceGuard(memory);
- *   await guarded.saveTask(task, { workspaceId });
- *   await guarded.listTasks({ workspaceId });
+ * The guard distinguishes three cases:
+ *   1. Scoped user call      -> workspaceId is set on the opts object OR on
+ *                               the row being written. No log entry.
+ *   2. Legitimate system op  -> opts.scope === 'system' AND opts.systemCaller
+ *                               is in the ALLOWED_SYSTEM_CALLERS allowlist.
+ *                               No log entry.
+ *   3. Everything else       -> logged to backend/data/workspace_shadow.log
+ *                               as a miss (or mismatch), with no behavior
+ *                               change. Phase 2.3d flips the guard to throw.
  *
- * Phase 2.3 will:
- *   - Make `workspaceId` required for every mutator and every list (throw
- *     if absent).
- *   - Auto-filter list results by workspace_id when the column exists.
- *
- * TODAY (shadow):
- *   - Every call without a workspaceId is appended to a local log file at
- *     backend/data/workspace_shadow.log (JSONL), one line per missed call.
- *   - Behavior is unchanged - the underlying store is called with its
- *     normal arguments and whatever it returns is passed back.
- *   - If workspace_id is set on a row and a workspaceId was supplied for
- *     the call, we log a mismatch (would-be cross-tenant write).
- *
- * The log is append-only, local to the server, and NEVER contains row
- * contents or secrets - just method name, timestamp, caller-supplied
- * workspaceId, and the row's workspaceId if present.
+ * STRICT RULE: scope:'system' is for NAMED background callers only
+ * (scheduler tick, plugin loader, startup, webhooks that have no user
+ * context). API routes handling a user request MUST NOT use it - the
+ * allowlist below enumerates the only acceptable callers. A novel caller
+ * name is treated as a miss, not as an exemption, so a mistaken "mark
+ * this as system" by a human is caught immediately.
  */
 
 const fs = require('fs');
 const path = require('path');
+
+// Named system callers. ANYTHING not in this set is logged as a miss even
+// when scope:'system' is passed. Keep the list short, grep-able, and
+// obvious - adding a new caller is a deliberate PR-reviewable step.
+const ALLOWED_SYSTEM_CALLERS = new Set([
+  'scheduler-tick',             // core/scheduler.js tick() reads every workspace's workflows
+  'scheduler-migrate',          // core/scheduler.js migrateLegacyGmailTriage()
+  'plugin-loader',              // core/pluginLoader.js records plugin_loaded on startup
+  'startup',                    // other one-time startup audit events
+  'response-detection',         // agents/response-detection scheduler-triggered agent
+  'outreach-pipeline',          // core/outreachPipeline scheduler-triggered checks
+  'auto-reply-safety',          // webhook-triggered cross-workspace safety audit lookup
+  'personal-assistant-system',  // PA scheduler-driven system scans (not user-triggered)
+  'briefing-agent-system',      // BriefingAgent cross-workspace workflow listing
+  'installer-startup',          // Installer dependency resolution during startup activation
+  'workflow-engine-system',     // workflowEngine 'decide' node reads global recent activity
+  'webhook-telegram',           // telegram inbound webhook, no user session
+  'webhook-whatsapp',           // whatsapp inbound webhook, no user session
+  'test',                       // test fixtures
+]);
+
+function isNamedSystemCall(opts) {
+  if (!opts || opts.scope !== 'system') return false;
+  return ALLOWED_SYSTEM_CALLERS.has(opts.systemCaller);
+}
 
 const LOG_DIR = path.join(__dirname, '..', 'data');
 const LOG_FILE = path.join(LOG_DIR, 'workspace_shadow.log');
@@ -133,17 +152,36 @@ function withWorkspaceGuard(store) {
         // guard only needs to read workspace options to classify the call;
         // store methods like addReflection themselves accept an options
         // argument and stamp workspace_id from it.
-        const OPT_KEYS = new Set(['workspaceId', 'system']);
+        const OPT_KEYS = new Set(['workspaceId', 'system', 'scope', 'systemCaller']);
         let callerWs = null;
+        let callerOpts = null;
         const last = args[args.length - 1];
         if (
           last &&
           typeof last === 'object' &&
           !Array.isArray(last) &&
-          'workspaceId' in last &&
+          ('workspaceId' in last || 'scope' in last) &&
           Object.keys(last).every((k) => OPT_KEYS.has(k))
         ) {
           callerWs = last.workspaceId || null;
+          callerOpts = last;
+        }
+
+        // Named system calls (scheduler tick, plugin loader, webhooks, ...)
+        // skip the miss check entirely. Must be in ALLOWED_SYSTEM_CALLERS -
+        // an unrecognized name is still logged, so a stray "scope:'system'"
+        // in a route handler can't masquerade as legitimate.
+        if (isNamedSystemCall(callerOpts)) {
+          return original.apply(target, args);
+        }
+        if (callerOpts && callerOpts.scope === 'system' && !ALLOWED_SYSTEM_CALLERS.has(callerOpts.systemCaller)) {
+          // Visibly flag an attempted-but-not-allowlisted system scope so a
+          // misuse is caught in the shadow log instead of silently passing
+          // through as an ordinary workspace miss.
+          logMiss(prop, 'system_scope_but_caller_not_allowlisted', {
+            attemptedSystemCaller: callerOpts.systemCaller || '(unset)',
+          });
+          return original.apply(target, args);
         }
 
         if (ROW_WRITE_METHODS.has(prop)) {
@@ -203,4 +241,5 @@ module.exports = {
   LOG_FILE,
   ROW_WRITE_METHODS,
   LIST_METHODS,
+  ALLOWED_SYSTEM_CALLERS,
 };

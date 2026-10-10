@@ -585,11 +585,13 @@ class SalesAgent extends BaseAgent {
           droppedNoSource++;
           try {
             if (typeof memory.audit === 'function') {
+              const workspaceId = task?.workspace_id || this._currentTask?.workspace_id || null;
               await memory.audit('sales-agent', 'lead_dropped_no_source', l.name || '(unnamed)', {
                 taskId: task.id,
                 reason: 'no_source_url',
                 leadFields: Object.keys(l),
-              });
+                workspaceId,
+              }, { workspaceId });
             }
           } catch { /* non-fatal */ }
           continue;

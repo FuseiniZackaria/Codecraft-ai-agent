@@ -9,7 +9,10 @@ const router = express.Router();
 router.get('/recent', async (req, res) => {
   try {
     const limit = Math.min(Number(req.query.limit) || 100, 500);
-    const log = await memory.getAuditLog(limit); // was silently capped at getAuditLog's own default of 100, regardless of what was requested
+    // Scope to the admin's workspace so Console/Dashboard only ever see
+    // audit entries from their own workspace. Legacy rows (workspace_id =
+    // null) still appear so pre-migration activity doesn't vanish.
+    const log = await memory.getAuditLog(limit, { workspaceId: req.user?.workspaceId || null });
     res.json(log.slice(-limit));
   } catch (err) {
     res.status(500).json({ error: err.message });

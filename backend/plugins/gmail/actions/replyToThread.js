@@ -34,11 +34,19 @@ module.exports = {
     if (verdict?.outreachThread) {
       try {
         const memory = require('../../../memory');
+        // Scope the update to the thread's own workspace so the guard
+        // sees a correctly-stamped write. The approved task also carries
+        // workspace_id as a fallback for threads created before Phase 2.3b.
+        const workspaceId =
+          verdict.outreachThread.workspace_id ||
+          verdict.task?.workspace_id ||
+          null;
         await memory.updateOutreachThread(verdict.outreachThread.id, {
           lastMessageId: messageId || verdict.outreachThread.lastMessageId || null,
           outreachStatus: 'sent',
           approvedTaskId: verdict.task?.id || verdict.outreachThread.approvedTaskId || null,
-        });
+          workspace_id: workspaceId,
+        }, { workspaceId });
       } catch {
         // Non-fatal.
       }

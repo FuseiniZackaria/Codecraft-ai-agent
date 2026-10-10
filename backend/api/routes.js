@@ -132,6 +132,7 @@ router.post('/chat/stream', async (req, res) => {
       message,
       scope: scope || null,
       voice: !!voice,
+      workspaceId: req.user?.workspaceId || null,
       onEvent: (event) => {
         if (event.type === 'text_delta') accumulated += event.text;
         if (event.type === 'tool_end' && event.result?.task_id) tasksForTurn.push(event.result.task_id);

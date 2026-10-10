@@ -78,7 +78,15 @@ class Installer {
         throw new InstallError(`Skill "${manifest.id}" is already installed (v${existing.version}). Use update instead.`);
       }
 
-      const installedSkillIds = (await memory.listSkills()).map((s) => s.id);
+      // Dependency resolution reads every installed skill regardless of
+      // workspace - a workspace-scoped install still has to see cross-
+      // workspace shared skills to avoid double-install. If a workspaceId
+      // is known for the install, prefer that; otherwise mark as system.
+      const installedSkillIds = (
+        workspaceId
+          ? await memory.listSkills({ workspaceId })
+          : await memory.listSkills({ scope: 'system', systemCaller: 'installer-startup' })
+      ).map((s) => s.id);
       const toolNamespaces = [...new Set(toolRegistry.list().map((t) => t.split('.')[0]))];
       const { satisfied, missing } = this.depResolver.classify(manifest.dependencies, {
         installedSkillIds,

@@ -236,6 +236,7 @@ export const api = {
 
   // --- Workspace (admin-only observability) ---
   getWorkspaceShadowLog: (limit = 200) => request(`/workspace/shadow-log?limit=${limit}`),
+  clearWorkspaceShadowLog: () => request('/workspace/shadow-log/clear', { method: 'POST' }),
 
   connectMCP: (url) => browserPost('/mcp/connect', { url }),
 

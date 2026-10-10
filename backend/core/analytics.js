@@ -9,19 +9,33 @@ const AUDIT_LOG_WINDOW = 10000; // enough for meaningful aggregation without bei
  * contributes exactly 0 cost/tokens, which is the honest answer, not an
  * estimate.
  */
-async function getSummary({ sinceDays = 30 } = {}) {
+async function getSummary({ sinceDays = 30, workspaceId = null } = {}) {
   const sinceMs = Date.now() - sinceDays * 24 * 60 * 60 * 1000;
 
+  // Prefer a workspace scope when the caller (usually /api/analytics/summary
+  // behind requireAuth) supplied one; fall back to the workflow-engine-system
+  // scope for the one internal caller (workflowEngine 'decide' node) that
+  // reads cross-workspace recent activity.
+  const scope = workspaceId
+    ? { workspaceId }
+    : { scope: 'system', systemCaller: 'workflow-engine-system' };
+
   const [tasks, auditLog, workflowRuns, workflowDefs] = await Promise.all([
-    memory.listTasks(),
-    memory.getAuditLog(AUDIT_LOG_WINDOW),
-    memory.listWorkflowRuns(),
-    memory.listWorkflowDefinitions(),
+    memory.listTasks(scope),
+    memory.getAuditLog(AUDIT_LOG_WINDOW, scope),
+    memory.listWorkflowRuns(), // not in the guard's LIST_METHODS watch set; left-filtered below by workflow_id
+    memory.listWorkflowDefinitions(scope),
   ]);
+  // When scoped, drop runs whose parent workflow isn't visible to this
+  // workspace. workflowDefs is already scoped above.
+  const visibleWorkflowIds = new Set(workflowDefs.map((d) => d.id));
+  const visibleRuns = workspaceId
+    ? workflowRuns.filter((r) => visibleWorkflowIds.has(r.workflowId))
+    : workflowRuns;
 
   const recentTasks = tasks.filter((t) => t.created_at && new Date(t.created_at).getTime() >= sinceMs);
   const recentAudit = auditLog.filter((a) => a.at && new Date(a.at).getTime() >= sinceMs);
-  const recentRuns = workflowRuns.filter((r) => r.startedAt && new Date(r.startedAt).getTime() >= sinceMs);
+  const recentRuns = visibleRuns.filter((r) => r.startedAt && new Date(r.startedAt).getTime() >= sinceMs);
 
   const llmCalls = recentAudit.filter((a) => a.action === 'llm_call');
   const totalCost = llmCalls.reduce((sum, a) => sum + (a.metadata?.cost || 0), 0);
@@ -105,8 +119,12 @@ function extractResultText(result) {
  * signal for a self-prompting decision to reason from, instead of asking
  * "is anything worth doing?" with nothing to go on.
  */
-async function getRecentActivitySummary({ limit = 5 } = {}) {
-  const tasks = await memory.listTasks();
+async function getRecentActivitySummary({ limit = 5, workspaceId = null } = {}) {
+  const tasks = await memory.listTasks(
+    workspaceId
+      ? { workspaceId }
+      : { scope: 'system', systemCaller: 'workflow-engine-system' }
+  );
   const recent = tasks
     .filter((t) => t.status === 'done' || t.status === 'failed')
     .sort((a, b) => new Date(b.updated_at).getTime() - new Date(a.updated_at).getTime())

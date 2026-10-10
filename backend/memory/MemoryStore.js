@@ -86,8 +86,12 @@ class MemoryStore {
     });
   }
 
-  async getAuditLog(limit) {
-    return limit ? this.auditLog.slice(-limit) : this.auditLog;
+  async getAuditLog(limit, options = {}) {
+    const ws = options.workspaceId || options.workspace_id || null;
+    const scoped = ws
+      ? this.auditLog.filter((e) => !e.workspace_id || e.workspace_id === ws)
+      : this.auditLog;
+    return limit ? scoped.slice(-limit) : scoped;
   }
 
   // --- Long-term memory (durable facts the user explicitly asks to remember) ---

@@ -52,7 +52,16 @@ function normalizeEmail(addr) {
 
 async function audit(action, metadata) {
   try {
-    await memory.audit('gmail-guard', action, metadata.target || '', metadata);
+    // metadata.workspaceId -> stamp onto the audit row so the guard sees
+    // a scoped write. Callers include workspaceId wherever the task or
+    // outreach row provides one; falls back to null for legacy events.
+    const workspaceId = metadata?.workspaceId || null;
+    const opts = workspaceId ? { workspaceId } : null;
+    if (opts) {
+      await memory.audit('gmail-guard', action, metadata.target || '', metadata, opts);
+    } else {
+      await memory.audit('gmail-guard', action, metadata.target || '', metadata);
+    }
   } catch {
     // Audit log must never block a send decision. If the log fails we still
     // return the verdict - the guard's job is to decide, not to persist.
@@ -97,10 +106,15 @@ async function verifyApprovedTask(approvedTaskId, expectedTool) {
  * Looks at the audit_log for a near-identical recent send and refuses if one
  * exists. Scanned window is small (DEDUP_WINDOW_MS) to keep this cheap.
  */
-async function checkDuplicateSend({ to, subject, bodyFp }) {
+async function checkDuplicateSend({ to, subject, bodyFp, workspaceId }) {
   try {
     const limit = 200;
-    const audits = typeof memory.getAuditLog === 'function' ? await memory.getAuditLog(limit) : [];
+    // Dedup only within the sending workspace - a workspace A send never
+    // suppresses a workspace B send. Legacy audit rows (workspace_id = null)
+    // still contribute, so a legacy send isn't duplicated after upgrade.
+    const audits = typeof memory.getAuditLog === 'function'
+      ? await memory.getAuditLog(limit, { workspaceId: workspaceId || null })
+      : [];
     const cutoff = Date.now() - DEDUP_WINDOW_MS;
     const match = audits.find((row) => {
       if (!row || row.action !== 'send_ok') return false;
@@ -123,10 +137,12 @@ async function checkDuplicateSend({ to, subject, bodyFp }) {
   }
 }
 
-async function checkDuplicateReply({ threadId, bodyFp }) {
+async function checkDuplicateReply({ threadId, bodyFp, workspaceId }) {
   try {
     const limit = 200;
-    const audits = typeof memory.getAuditLog === 'function' ? await memory.getAuditLog(limit) : [];
+    const audits = typeof memory.getAuditLog === 'function'
+      ? await memory.getAuditLog(limit, { workspaceId: workspaceId || null })
+      : [];
     const cutoff = Date.now() - DEDUP_WINDOW_MS;
     const match = audits.find((row) => {
       if (!row || row.action !== 'reply_ok') return false;
@@ -182,8 +198,8 @@ async function guardSend({ to, subject, body }, sendContext = {}) {
         `systemDigest sends are limited to the owner address; refused send to ${normalizedTo}.`,
         { to: normalizedTo, ownerEmail });
     }
-    await checkDuplicateSend({ to: normalizedTo, subject, bodyFp });
-    await audit('send_ok', { kind: 'systemDigest', to: normalizedTo, subject, bodyFp, role: ctx.role || null });
+    await checkDuplicateSend({ to: normalizedTo, subject, bodyFp, workspaceId: ctx.workspaceId || null });
+    await audit('send_ok', { kind: 'systemDigest', to: normalizedTo, subject, bodyFp, role: ctx.role || null, workspaceId: ctx.workspaceId || null });
     return { ok: true, kind: 'systemDigest' };
   }
 
@@ -208,13 +224,14 @@ async function guardSend({ to, subject, body }, sendContext = {}) {
       { approvedTaskId: task.id, approved: taskTo, attempted: normalizedTo });
   }
 
-  await checkDuplicateSend({ to: normalizedTo, subject, bodyFp });
+  await checkDuplicateSend({ to: normalizedTo, subject, bodyFp, workspaceId: task.workspace_id || null });
   await audit('send_ok', {
     approvedTaskId: task.id,
     role: ctx.role || task.agent || null,
     to: normalizedTo,
     subject,
     bodyFp,
+    workspaceId: task.workspace_id || null,
   });
   return { ok: true, kind: 'approved_send', task };
 }
@@ -300,13 +317,14 @@ async function guardReply({ threadId, body, recipientEmail }, sendContext = {}) 
       { approvedTaskId: task.id, approved: taskRecipient, attempted: normalizedTo });
   }
 
-  await checkDuplicateReply({ threadId, bodyFp });
+  await checkDuplicateReply({ threadId, bodyFp, workspaceId: task.workspace_id || null });
   await audit('reply_ok', {
     approvedTaskId: task.id,
     role: ctx.role || task.agent || null,
     threadId,
     to: normalizedTo,
     bodyFp,
+    workspaceId: task.workspace_id || null,
   });
   return { ok: true, kind: 'approved_reply', task, outreachThread };
 }
@@ -319,7 +337,7 @@ async function guardReply({ threadId, body, recipientEmail }, sendContext = {}) 
  * SalesAgent registered a draft row with the task id), falls back to
  * creating a fresh row keyed by thread_id when none exists.
  */
-async function recordSentThread({ approvedTaskId, threadId, recipientEmail, messageId, agentKey, companyName, campaign }) {
+async function recordSentThread({ approvedTaskId, threadId, recipientEmail, messageId, agentKey, companyName, campaign, workspaceId }) {
   if (!threadId) return null;
   try {
     const normalizedTo = normalizeEmail(recipientEmail);
@@ -330,6 +348,15 @@ async function recordSentThread({ approvedTaskId, threadId, recipientEmail, mess
     if (!row && typeof memory.getOutreachThreadByThreadId === 'function') {
       row = await memory.getOutreachThreadByThreadId(threadId);
     }
+    // Resolve the workspace to stamp: explicit arg wins, then the matched
+    // row's existing stamp, then the approved task's workspace, else null.
+    let ws = workspaceId || row?.workspace_id || null;
+    if (!ws && approvedTaskId && typeof memory.getTask === 'function') {
+      try {
+        const t = await memory.getTask(approvedTaskId);
+        ws = t?.workspace_id || null;
+      } catch { /* non-fatal */ }
+    }
     if (row) {
       if (typeof memory.updateOutreachThread === 'function') {
         await memory.updateOutreachThread(row.id, {
@@ -337,7 +364,8 @@ async function recordSentThread({ approvedTaskId, threadId, recipientEmail, mess
           lastMessageId: messageId || row.lastMessageId || null,
           outreachStatus: 'sent',
           approvedTaskId: approvedTaskId || row.approvedTaskId || null,
-        });
+          workspace_id: ws,
+        }, { workspaceId: ws });
       }
       return row;
     }
@@ -351,7 +379,8 @@ async function recordSentThread({ approvedTaskId, threadId, recipientEmail, mess
         outreachStatus: 'sent',
         lastMessageId: messageId || null,
         approvedTaskId: approvedTaskId || null,
-      });
+        workspace_id: ws,
+      }, { workspaceId: ws });
     }
   } catch {
     // Registry failures must not break a legitimate send that already

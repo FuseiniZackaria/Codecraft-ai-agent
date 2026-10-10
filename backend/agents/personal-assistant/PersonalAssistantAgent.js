@@ -106,7 +106,11 @@ class PersonalAssistantAgent extends BaseAgent {
     let outreachRecipients = new Set();
     try {
       if (typeof memory.listOutreachThreads === 'function') {
-        const rows = await memory.listOutreachThreads();
+        // Reads every workspace's outreach threads so PA won't mistakenly
+        // reply to a sales lead belonging to this or another workspace.
+        // Named system scope so this scheduler/task-driven read is a
+        // declared exemption, not an unscoped miss.
+        const rows = await memory.listOutreachThreads({ scope: 'system', systemCaller: 'personal-assistant-system' });
         for (const r of rows) {
           if (r.threadId) outreachThreadIds.add(r.threadId);
           if (r.recipientEmail) outreachRecipients.add(r.recipientEmail.toLowerCase());
@@ -230,7 +234,7 @@ class PersonalAssistantAgent extends BaseAgent {
     // essential once this runs on a schedule, not just manually, so the same
     // email doesn't get a fresh draft task every polling cycle.
     const existingThreadIds = new Set(
-      (await memory.listTasks())
+      (await memory.listTasks({ scope: 'system', systemCaller: 'personal-assistant-system' }))
         .filter((t) => t.toolCall?.tool === 'gmail.replyToThread' && t.payload?.threadId)
         .map((t) => t.payload.threadId)
     );

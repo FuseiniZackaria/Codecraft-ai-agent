@@ -174,7 +174,8 @@ router.post('/', teamMutationLimiter, async (req, res) => {
       await memory.audit(req.user.email || req.user.id, 'admin_granted', userEmail || userId, {
         targetUserId: userId,
         existingAccount,
-      });
+        workspaceId: req.user?.workspaceId || null,
+      }, { workspaceId: req.user?.workspaceId || null });
     } catch {
       // Audit log failures must not leak the password or prevent success.
     }
@@ -245,7 +246,8 @@ router.delete('/:userId', teamMutationLimiter, async (req, res) => {
     try {
       await memory.audit(req.user.email || req.user.id, 'admin_revoked', targetEmail, {
         targetUserId: userId,
-      });
+        workspaceId: req.user?.workspaceId || null,
+      }, { workspaceId: req.user?.workspaceId || null });
     } catch {
       // Non-fatal.
     }

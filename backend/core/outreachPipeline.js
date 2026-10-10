@@ -357,7 +357,7 @@ async function checkAutoApprovalEligible(verification) {
     return { eligible: false, reason: 'Verification reasons include unresolved suspicious signals' };
   }
 
-  const allTasks = await memory.listTasks();
+  const allTasks = await memory.listTasks({ scope: 'system', systemCaller: 'outreach-pipeline' });
   const today = new Date().toISOString().slice(0, 10);
   const sentToday = allTasks.filter(
     (t) =>
@@ -423,7 +423,7 @@ async function recordResponse(pipelineId, response) {
  */
 async function checkFollowUps() {
   const followUpDays = config.outreach.followUpDays.slice(0, config.outreach.maxFollowUps);
-  const allTasks = await memory.listTasks();
+  const allTasks = await memory.listTasks({ scope: 'system', systemCaller: 'outreach-pipeline' });
   const eligible = allTasks.filter(
     (t) => t.payload && t.payload.pipelineType === 'job_outreach_pipeline' && t.payload.stage === STAGES.SENT && t.payload.sentAt
   );

@@ -207,7 +207,11 @@ async function tick() {
   // run; they just produce null-scoped tasks.
   let workflows;
   try {
-    workflows = await memory.listWorkflows();
+    // scope:'system' is the explicit "I'm reading EVERY workspace's
+    // workflows on purpose" declaration. The guard's allowlist contains
+    // 'scheduler-tick' so this doesn't log as a miss. The run itself still
+    // threads each workflow's own workspace_id down into submitGoal.
+    workflows = await memory.listWorkflows({ scope: 'system', systemCaller: 'scheduler-tick' });
   } catch (err) {
     console.warn(`[scheduler] failed to list workflows: ${err.message}`);
     return;
@@ -232,7 +236,7 @@ async function tick() {
   // both share the same field shape. folder_watch is new.
   let definitions;
   try {
-    definitions = await memory.listWorkflowDefinitions();
+    definitions = await memory.listWorkflowDefinitions({ scope: 'system', systemCaller: 'scheduler-tick' });
   } catch (err) {
     console.warn(`[scheduler] failed to list workflow definitions: ${err.message}`);
     return;
@@ -272,7 +276,7 @@ async function migrateLegacyGmailTriage() {
   const minutes = config.scheduler.gmailTriageIntervalMinutes;
   if (!minutes || minutes <= 0) return;
 
-  const existing = await memory.listWorkflows();
+  const existing = await memory.listWorkflows({ scope: 'system', systemCaller: 'scheduler-migrate' });
   const alreadyMigrated = existing.some((w) => w.goal === 'Check my inbox and reply to what needs a reply');
   if (alreadyMigrated) return;
 

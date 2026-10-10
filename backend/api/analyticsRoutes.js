@@ -6,7 +6,10 @@ const router = express.Router();
 router.get('/summary', async (req, res) => {
   try {
     const sinceDays = req.query.sinceDays ? Math.min(Number(req.query.sinceDays), 365) : 30;
-    res.json(await analytics.getSummary({ sinceDays }));
+    res.json(await analytics.getSummary({
+      sinceDays,
+      workspaceId: req.user?.workspaceId || null,
+    }));
   } catch (err) {
     res.status(500).json({ error: err.message });
   }

@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { Users, Plus, Trash2, Copy, Check, Sparkles, ShieldAlert, Activity, RefreshCw } from 'lucide-react';
+import { Users, Plus, Trash2, Copy, Check, Sparkles, ShieldAlert, Activity, RefreshCw, Trash } from 'lucide-react';
 import { api } from '../services/api';
 import PasswordInput from '../components/PasswordInput';
 
@@ -81,11 +81,33 @@ function AddAdminForm({ onAdded }) {
     }
   }
 
+  // Disabled while workspace isolation is still in shadow-log mode. Adding
+  // a second admin today would give them full cross-workspace visibility
+  // over the one shared workspace; wait until Phase 2.3d flips the guard
+  // to enforce and the invitation UI lands.
+  const addAdminDisabled = true;
+
   return (
     <div className="rounded-lg border border-[var(--color-border)] bg-[var(--color-surface)] p-4 mb-4 space-y-3">
-      <div className="text-sm font-medium">Add an admin</div>
+      <div className="flex items-center justify-between gap-2">
+        <div className="text-sm font-medium">Add an admin</div>
+        {addAdminDisabled && (
+          <span className="text-[10px] uppercase tracking-wide px-1.5 py-0.5 rounded-full border border-[var(--color-warning)]/40 bg-[var(--color-warning)]/10 text-[var(--color-warning)]">
+            disabled
+          </span>
+        )}
+      </div>
 
-      <form onSubmit={handleSubmit} className="space-y-3">
+      {addAdminDisabled && (
+        <div className="rounded-md border border-[var(--color-warning)]/30 bg-[var(--color-warning)]/10 p-3 text-xs text-[var(--color-text-muted)]">
+          Available once workspace isolation is enabled. Adding a second admin
+          while the workspace guard is still in log-only mode would give them
+          cross-workspace visibility - we'll re-enable this once the guard
+          flips to enforce.
+        </div>
+      )}
+
+      <form onSubmit={addAdminDisabled ? (e) => e.preventDefault() : handleSubmit} className="space-y-3">
         <div>
           <label className="text-xs text-[var(--color-text-muted)] mb-1 block">Email</label>
           <input
@@ -94,7 +116,8 @@ function AddAdminForm({ onAdded }) {
             onChange={(e) => setEmail(e.target.value)}
             placeholder="teammate@example.com"
             autoComplete="off"
-            className="w-full px-3 py-2 rounded-md border border-[var(--color-border)] bg-[var(--color-bg)] text-base md:text-sm outline-none focus:border-[var(--color-accent)]/50"
+            disabled={addAdminDisabled}
+            className="w-full px-3 py-2 rounded-md border border-[var(--color-border)] bg-[var(--color-bg)] text-base md:text-sm outline-none focus:border-[var(--color-accent)]/50 disabled:opacity-50 disabled:cursor-not-allowed"
           />
         </div>
 
@@ -109,12 +132,14 @@ function AddAdminForm({ onAdded }) {
                 autoComplete="new-password"
                 visible={passwordVisible}
                 onVisibleChange={setPasswordVisible}
+                disabled={addAdminDisabled}
               />
             </div>
             <button
               type="button"
               onClick={handleGenerate}
-              className="shrink-0 flex items-center justify-center gap-1.5 text-sm px-3 py-2 rounded-md border border-[var(--color-border)] text-[var(--color-text-muted)] hover:text-[var(--color-accent)] hover:border-[var(--color-accent)]/40"
+              disabled={addAdminDisabled}
+              className="shrink-0 flex items-center justify-center gap-1.5 text-sm px-3 py-2 rounded-md border border-[var(--color-border)] text-[var(--color-text-muted)] hover:text-[var(--color-accent)] hover:border-[var(--color-accent)]/40 disabled:opacity-50 disabled:cursor-not-allowed"
             >
               <Sparkles size={14} />
               Generate
@@ -129,8 +154,9 @@ function AddAdminForm({ onAdded }) {
 
         <button
           type="submit"
-          disabled={busy}
-          className="flex items-center gap-1.5 text-sm font-medium px-3 py-1.5 rounded-md bg-[var(--color-accent)] text-black hover:brightness-110 disabled:opacity-50"
+          disabled={busy || addAdminDisabled}
+          title={addAdminDisabled ? 'Available once workspace isolation is enabled' : ''}
+          className="flex items-center gap-1.5 text-sm font-medium px-3 py-1.5 rounded-md bg-[var(--color-accent)] text-black hover:brightness-110 disabled:opacity-50 disabled:cursor-not-allowed"
         >
           <Plus size={14} />
           {busy ? 'Adding…' : 'Add admin'}
@@ -263,6 +289,7 @@ function WorkspaceHealth() {
   const [data, setData] = useState(null);
   const [error, setError] = useState(null);
   const [busy, setBusy] = useState(false);
+  const [clearing, setClearing] = useState(false);
   const [loadedAt, setLoadedAt] = useState(null);
 
   async function load() {
@@ -276,6 +303,20 @@ function WorkspaceHealth() {
       setError(err.message);
     } finally {
       setBusy(false);
+    }
+  }
+
+  async function clearLog() {
+    if (!window.confirm('Clear the workspace shadow log? This wipes the local diagnostic file; it does NOT touch audit_log or any real database row.')) return;
+    setClearing(true);
+    setError(null);
+    try {
+      await api.clearWorkspaceShadowLog();
+      await load();
+    } catch (err) {
+      setError(err.message);
+    } finally {
+      setClearing(false);
     }
   }
 
@@ -297,15 +338,27 @@ function WorkspaceHealth() {
           <Activity size={16} className="text-[var(--color-accent)] shrink-0" />
           <div className="text-sm font-medium">Workspace health</div>
         </div>
-        <button
-          type="button"
-          onClick={load}
-          disabled={busy}
-          className="flex items-center gap-1 text-[11px] px-2 py-1 rounded-md border border-[var(--color-border)] text-[var(--color-text-muted)] hover:text-[var(--color-accent)] hover:border-[var(--color-accent)]/40 disabled:opacity-50"
-        >
-          <RefreshCw size={11} className={busy ? 'animate-spin' : ''} />
-          {busy ? 'Checking…' : 'Refresh'}
-        </button>
+        <div className="flex items-center gap-2">
+          <button
+            type="button"
+            onClick={clearLog}
+            disabled={clearing || busy}
+            title="Wipe the local shadow log file (does not touch audit_log or any real DB row)"
+            className="flex items-center gap-1 text-[11px] px-2 py-1 rounded-md border border-[var(--color-border)] text-[var(--color-text-muted)] hover:text-[var(--color-danger)] hover:border-[var(--color-danger)]/40 disabled:opacity-50"
+          >
+            <Trash size={11} />
+            {clearing ? 'Clearing…' : 'Clear log'}
+          </button>
+          <button
+            type="button"
+            onClick={load}
+            disabled={busy}
+            className="flex items-center gap-1 text-[11px] px-2 py-1 rounded-md border border-[var(--color-border)] text-[var(--color-text-muted)] hover:text-[var(--color-accent)] hover:border-[var(--color-accent)]/40 disabled:opacity-50"
+          >
+            <RefreshCw size={11} className={busy ? 'animate-spin' : ''} />
+            {busy ? 'Checking…' : 'Refresh'}
+          </button>
+        </div>
       </div>
       <p className="text-xs text-[var(--color-text-muted)] mb-3">
         Store calls that did not pass a workspace scope, or attempted a cross-workspace write. During Phase 2.3 these are

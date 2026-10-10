@@ -159,6 +159,19 @@ app.get('/api/workspace/shadow-log', requireAuth, requireRole('admin'), (req, re
     res.status(500).json({ error: err.message });
   }
 });
+
+// Admin-only: wipe the shadow log so the panel's next read starts clean.
+// This never touches real audit_log rows - the shadow log is a separate
+// debug-only JSONL file at backend/data/workspace_shadow.log.
+app.post('/api/workspace/shadow-log/clear', requireAuth, requireRole('admin'), (req, res) => {
+  try {
+    const { clearShadowLog } = require('./memory/workspaceGuard');
+    clearShadowLog();
+    res.json({ cleared: true });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
 app.use('/api', requireAuth, requireRole('admin'), generalApiLimiter, routes);
 app.use('/api/events', requireAuth, requireRole('admin'), eventsRoutes);
 app.use('/api/skills', requireAuth, requireRole('admin'), skillsRoutes);
