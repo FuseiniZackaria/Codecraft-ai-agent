@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { Users, Plus, Trash2, Copy, Check, Sparkles, ShieldAlert } from 'lucide-react';
+import { Users, Plus, Trash2, Copy, Check, Sparkles, ShieldAlert, Activity, RefreshCw } from 'lucide-react';
 import { api } from '../services/api';
 import PasswordInput from '../components/PasswordInput';
 
@@ -259,6 +259,115 @@ function AdminRow({ admin, onRemoved }) {
   );
 }
 
+function WorkspaceHealth() {
+  const [data, setData] = useState(null);
+  const [error, setError] = useState(null);
+  const [busy, setBusy] = useState(false);
+  const [loadedAt, setLoadedAt] = useState(null);
+
+  async function load() {
+    setBusy(true);
+    setError(null);
+    try {
+      const result = await api.getWorkspaceShadowLog(200);
+      setData(result);
+      setLoadedAt(new Date());
+    } catch (err) {
+      setError(err.message);
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  // One-shot fetch on mount. No polling - this is a diagnostic read, not
+  // a live feed. The explicit Refresh button covers "I just exercised the
+  // app, show me what landed".
+  useEffect(() => {
+    load();
+  }, []);
+
+  const total = data?.total || 0;
+  const scoreboard = data?.byMethodReason ? Object.entries(data.byMethodReason).sort((a, b) => b[1] - a[1]) : [];
+  const recent = Array.isArray(data?.entries) ? data.entries.slice(-20).reverse() : [];
+
+  return (
+    <div className="rounded-lg border border-[var(--color-border)] bg-[var(--color-surface)] p-4 mb-4">
+      <div className="flex items-center justify-between gap-2 mb-2">
+        <div className="flex items-center gap-2">
+          <Activity size={16} className="text-[var(--color-accent)] shrink-0" />
+          <div className="text-sm font-medium">Workspace health</div>
+        </div>
+        <button
+          type="button"
+          onClick={load}
+          disabled={busy}
+          className="flex items-center gap-1 text-[11px] px-2 py-1 rounded-md border border-[var(--color-border)] text-[var(--color-text-muted)] hover:text-[var(--color-accent)] hover:border-[var(--color-accent)]/40 disabled:opacity-50"
+        >
+          <RefreshCw size={11} className={busy ? 'animate-spin' : ''} />
+          {busy ? 'Checking…' : 'Refresh'}
+        </button>
+      </div>
+      <p className="text-xs text-[var(--color-text-muted)] mb-3">
+        Store calls that did not pass a workspace scope, or attempted a cross-workspace write. During Phase 2.3 these are
+        logged, not blocked - the goal is to drive this list to zero before enforcement is turned on.
+      </p>
+
+      {error && (
+        <div className="text-xs text-[var(--color-danger)] mb-2">{error}</div>
+      )}
+
+      {data && (
+        <>
+          <div className="flex items-baseline gap-2 mb-3">
+            <div className={`text-2xl font-semibold ${total === 0 ? 'text-[var(--color-success)]' : 'text-[var(--color-warning)]'}`}>
+              {total}
+            </div>
+            <div className="text-xs text-[var(--color-text-muted)]">
+              shadow-log {total === 1 ? 'entry' : 'entries'}
+              {loadedAt && ` · as of ${loadedAt.toLocaleTimeString()}`}
+            </div>
+          </div>
+
+          {scoreboard.length > 0 && (
+            <div className="mb-3">
+              <div className="text-[11px] uppercase tracking-wide text-[var(--color-text-muted)] mb-1">By method · reason</div>
+              <div className="rounded-md border border-[var(--color-border)] overflow-hidden">
+                {scoreboard.map(([key, count]) => (
+                  <div key={key} className="flex items-center justify-between px-3 py-1.5 text-xs border-b border-[var(--color-border)] last:border-0">
+                    <span className="font-[var(--font-mono)] truncate">{key}</span>
+                    <span className="text-[var(--color-text-muted)] shrink-0 ml-2">{count}</span>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {recent.length > 0 && (
+            <details className="text-xs">
+              <summary className="cursor-pointer text-[var(--color-text-muted)] hover:text-[var(--color-text)]">
+                Last {recent.length} entries
+              </summary>
+              <div className="mt-2 rounded-md bg-[var(--color-bg)] border border-[var(--color-border)] max-h-60 overflow-auto font-[var(--font-mono)] text-[10px] text-[var(--color-text-muted)]">
+                {recent.map((e, i) => (
+                  <div key={i} className="px-2 py-1 border-b border-[var(--color-border)] last:border-0 whitespace-pre-wrap break-all">
+                    {JSON.stringify(e)}
+                  </div>
+                ))}
+              </div>
+            </details>
+          )}
+
+          {total === 0 && !error && (
+            <div className="text-xs text-[var(--color-success)]">
+              Clean. Every tracked store call is scoped to a workspace.
+            </div>
+          )}
+        </>
+      )}
+    </div>
+  );
+}
+
 export default function Team() {
   const [admins, setAdmins] = useState([]);
   const [loaded, setLoaded] = useState(false);
@@ -309,6 +418,10 @@ export default function Team() {
         ) : (
           admins.map((a) => <AdminRow key={a.id} admin={a} onRemoved={refresh} />)
         )}
+      </div>
+
+      <div className="mt-6">
+        <WorkspaceHealth />
       </div>
     </div>
   );

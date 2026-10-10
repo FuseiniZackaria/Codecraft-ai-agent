@@ -108,6 +108,22 @@ export default function App() {
     const interval = setInterval(refreshConnectors, 5 * 60 * 1000);
     return () => clearInterval(interval);
   }, [user, refreshConnectors]);
+
+  // Any 401 from the authenticated API helper fires `cc:unauthorized` once.
+  // Sign the user out exactly once in response - the auth state change below
+  // then routes to Login, which stops every background request this shell
+  // kicked off (refresh loop, SSE streams, connector refresh, etc.) because
+  // they're all gated on `user`.
+  useEffect(() => {
+    let signedOut = false;
+    function onUnauthorized() {
+      if (signedOut) return;
+      signedOut = true;
+      supabase.auth.signOut().catch(() => { /* ignore - the state change still fires */ });
+    }
+    window.addEventListener('cc:unauthorized', onUnauthorized);
+    return () => window.removeEventListener('cc:unauthorized', onUnauthorized);
+  }, []);
   useEffect(() => {
     document.title = pendingCount > 0 ? `(${pendingCount}) CodeCraft` : 'CodeCraft';
   }, [pendingCount]);

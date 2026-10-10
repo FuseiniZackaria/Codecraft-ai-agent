@@ -2,8 +2,6 @@ import { useEffect, useState, useRef } from 'react';
 import { Zap, X, ChevronDown, ChevronUp, Terminal, BookOpen } from 'lucide-react';
 import { api } from '../services/api';
 
-const POLL_INTERVAL_MS = 30000;
-
 export default function ConnectorPrompt() {
   const [prompt, setPrompt] = useState(null);
   const [cliResult, setCliResult] = useState(null);
@@ -17,10 +15,16 @@ export default function ConnectorPrompt() {
   const dismissedOrigins = useRef(new Set());
   const cliDismissedOrigins = useRef(new Set());
 
+  // One-shot fetch on mount, plus a single fetch when the tab becomes
+  // visible again (useful after switching back from the browser
+  // extension's page). No interval polling - browser-extension prompts
+  // are a passive hint, not a live stream. If the backend has no browser
+  // token configured, api.getBrowserPrompt() returns null forever and
+  // this effect cleanly does nothing.
   useEffect(() => {
     let cancelled = false;
 
-    async function poll() {
+    async function fetchOnce() {
       const result = await api.getBrowserPrompt();
       if (cancelled || !result) return;
 
@@ -37,28 +41,20 @@ export default function ConnectorPrompt() {
       }
     }
 
-    poll();
-    let interval = setInterval(poll, POLL_INTERVAL_MS);
+    fetchOnce();
 
     function onVisibility() {
-      if (document.visibilityState === 'hidden') {
-        clearInterval(interval);
-        interval = null;
-      } else {
-        poll();
-        if (!interval) interval = setInterval(poll, POLL_INTERVAL_MS);
-      }
+      if (document.visibilityState === 'visible') fetchOnce();
     }
     document.addEventListener('visibilitychange', onVisibility);
     return () => {
       cancelled = true;
-      clearInterval(interval);
       document.removeEventListener('visibilitychange', onVisibility);
     };
   }, []);
 
   function dismiss() {
-    dismissedOrigins.current.add(detection.origin);
+    if (prompt?.detection?.origin) dismissedOrigins.current.add(prompt.detection.origin);
     setPrompt(null);
     setExpanded(false);
     setConnectState('idle');

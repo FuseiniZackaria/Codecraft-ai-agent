@@ -3,15 +3,54 @@ import { supabase } from './supabaseClient';
 const BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:4000/api';
 const BROWSER_TOKEN = import.meta.env.VITE_BROWSER_EXTENSION_TOKEN || null;
 
+// --- Session-wide "stop background work" flags ---
+// Once an auth check fails, the shell is responsible for signing the user
+// out and routing to Login - we don't want every polling caller to keep
+// hitting /api until that lands. Browser-token mismatches are tracked
+// separately because they're a config problem for a different endpoint
+// (/api/browser/*) and shouldn't log the user out of the whole app.
+let authFailed = false;
+let browserAuthFailed = false;
+
+export function hasAuthFailed() { return authFailed; }
+
+function emitAuthFailure() {
+  if (authFailed) return;
+  authFailed = true;
+  try { window.dispatchEvent(new CustomEvent('cc:unauthorized')); } catch { /* non-browser env */ }
+}
+
+function emitUnreachable(message) {
+  try { window.dispatchEvent(new CustomEvent('cc:unreachable', { detail: { message } })); } catch { /* non-browser env */ }
+}
+
+function emitReachable() {
+  try { window.dispatchEvent(new CustomEvent('cc:reachable')); } catch { /* non-browser env */ }
+}
+
 async function request(path, options = {}) {
+  if (authFailed) throw new Error('Not authorized');
+
   const { data: { session } } = await supabase.auth.getSession();
   const headers = { 'Content-Type': 'application/json' };
   if (session?.access_token) headers['Authorization'] = `Bearer ${session.access_token}`;
 
-  const res = await fetch(`${BASE_URL}${path}`, {
-    headers,
-    ...options,
-  });
+  let res;
+  try {
+    res = await fetch(`${BASE_URL}${path}`, { headers, ...options });
+  } catch (err) {
+    // fetch() throws TypeError on connection refused / DNS failure / CORS.
+    // Signal "backend unreachable" once; the shell shows one banner with
+    // its own backoff - we don't retry inside this helper.
+    emitUnreachable(err.message);
+    throw err;
+  }
+  emitReachable();
+  if (res.status === 401) {
+    emitAuthFailure();
+    const body = await res.json().catch(() => ({}));
+    throw new Error(body.error || 'Not authorized');
+  }
   if (!res.ok) {
     const body = await res.json().catch(() => ({}));
     throw new Error(body.error || `Request failed: ${res.status}`);
@@ -23,11 +62,26 @@ async function request(path, options = {}) {
 // CORS is wide open on this backend - without a check, any website's own
 // JS could read your browsing history cross-origin. This mirrors that
 // token into the frontend's own requests via a matching Vite env var.
+//
+// Returns null for every "nothing to show" case, including a 401 from a
+// mismatched token. Callers must not retry on null - the browser prompt
+// feature is a one-shot hint, not a polling loop.
 async function browserRequest(path) {
-  if (!BROWSER_TOKEN) return null; // not configured - features using this fail quiet, not with an error toast
-  const res = await fetch(`${BASE_URL}${path}`, {
-    headers: { 'X-CodeCraft-Token': BROWSER_TOKEN },
-  });
+  if (!BROWSER_TOKEN || browserAuthFailed) return null;
+  let res;
+  try {
+    res = await fetch(`${BASE_URL}${path}`, {
+      headers: { 'X-CodeCraft-Token': BROWSER_TOKEN },
+    });
+  } catch {
+    return null; // network error - fail quiet, no retry loop
+  }
+  if (res.status === 401 || res.status === 503) {
+    // Token mismatch or server has no browser token configured. Latch so
+    // we don't keep calling this endpoint for the rest of the session.
+    browserAuthFailed = true;
+    return null;
+  }
   if (!res.ok) return null;
   return res.json();
 }
@@ -37,12 +91,17 @@ async function browserRequest(path) {
 // quiet like the read-only browserRequest above.
 async function browserPost(path, body) {
   if (!BROWSER_TOKEN) return { ok: false, error: 'VITE_BROWSER_EXTENSION_TOKEN is not configured in the frontend.' };
+  if (browserAuthFailed) return { ok: false, error: 'Browser extension token was rejected earlier in this session.' };
   try {
     const res = await fetch(`${BASE_URL}${path}`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', 'X-CodeCraft-Token': BROWSER_TOKEN },
       body: JSON.stringify(body),
     });
+    if (res.status === 401 || res.status === 503) {
+      browserAuthFailed = true;
+      return { ok: false, error: 'Browser extension token was rejected.' };
+    }
     return await res.json();
   } catch (err) {
     return { ok: false, error: err.message };
@@ -174,6 +233,9 @@ export const api = {
   listTeam: () => request('/team'),
   addAdmin: (email, password) => request('/team', { method: 'POST', body: JSON.stringify({ email, password }) }),
   removeAdmin: (userId) => request(`/team/${userId}`, { method: 'DELETE' }),
+
+  // --- Workspace (admin-only observability) ---
+  getWorkspaceShadowLog: (limit = 200) => request(`/workspace/shadow-log?limit=${limit}`),
 
   connectMCP: (url) => browserPost('/mcp/connect', { url }),
 
