@@ -1,138 +1,107 @@
 #!/usr/bin/env node
 /**
- * Test runner that FORCES in-memory stores and the mock LLM provider,
- * regardless of what's in `.env`.
+ * Default test runner - SAFE MODE.
  *
- * Why this exists: the previous `npm test` was a bare chain of
- * `node tests/foo.test.js && node tests/bar.test.js && ...`. If `.env`
- * had a real SUPABASE_URL (which this project does, for the running
- * server), every test ran against the REAL database. That caused:
- *   - test rows leaking into production tables (scheduled_workflows,
- *     workflow_definitions, workflow_runs, tasks, skills, long_term_memory),
- *   - flaky "test leftover" failures (scheduler.test.js seeing an old
- *     migrated workflow row from a prior run and asserting wrong values),
- *   - cross-run state that looked like mockProvider.complete leakage but
- *     was actually database leakage.
+ * - Zeroes every secret-bearing env var before any Node process starts.
+ * - Forces in-memory store (CC_FORCE_MEMORY_STORE=1) so tests can't touch
+ *   the real Supabase project even if dotenv somehow restored a URL.
+ * - Forces mockProvider (CC_FORCE_MOCK_PROVIDER=1) so router.selectProvider
+ *   returns mock no matter what; aiProvider / openaiProvider are never hit.
+ * - Marks CC_TESTING=1 so sendGuard refuses any accidental real send
+ *   (WhatsApp, Telegram, Gmail, YouTube, Reddit, GitHub) with a loud
+ *   error - safety net on top of the primary mock stubs that each test
+ *   already installs.
  *
- * This runner sets every env var that gates "real" vs "mock" code paths
- * to empty BEFORE any Node process is spawned. Each test is still a
- * separate child process (process isolation = no stub leakage possible),
- * and the forced-empty env is inherited.
- *
- * Guarantees:
- *   - SUPABASE_URL / SUPABASE_SERVICE_KEY are empty -> memory/index.js
- *     picks MemoryStore, auth.js / workspaceContext.js / teamRoutes.js /
- *     SupabaseTokenStore.js all fall back to their no-Supabase branches.
- *   - AI_API_KEY / OPENAI_API_KEY are empty -> core/router.js's
- *     availableProviders() returns ['mock'], so selectProvider always
- *     returns mockProvider and stubs in tests can be swapped reliably.
- *   - CC_FORCE_MEMORY_STORE=1 is a belt-and-braces kill switch that
- *     memory/index.js honors even if someone later adds a config path
- *     that doesn't read SUPABASE_URL directly.
+ * This runner MUST never make real external calls. If you want real
+ * calls (to verify an integration still works), use the opt-in
+ * `npm run test:integration` runner.
  */
 
-// SUPABASE is zeroed because the user's rule is "tests must never read or
-// write my real database". AI_API_KEY / OPENAI_API_KEY are NOT touched here:
-// several integration tests (image-generation, speech-to-text, youtube-*)
-// legitimately verify behavior with and without a real key, and killing
-// those keys would turn them into noise rather than useful signal.
-process.env.SUPABASE_URL = '';
-process.env.SUPABASE_SERVICE_KEY = '';
+// Secrets zeroed BEFORE any require(), so when config/index.js runs
+// dotenv.config() these keys already exist in process.env (with empty
+// string value) and dotenv's default no-override behavior leaves them
+// as "". Any guard that checks `if (process.env.FOO)` sees falsy.
+const SECRETS_TO_BLANK = [
+  // Database
+  'SUPABASE_URL',
+  'SUPABASE_SERVICE_KEY',
+  'SUPABASE_ANON_KEY',
+  // LLM / AI
+  'OPENAI_API_KEY',
+  'AI_API_KEY',
+  'ANTHROPIC_API_KEY',
+  // Search / web
+  'TAVILY_API_KEY',
+  'YOUTUBE_API_KEY',
+  // Composio (and the pinned connected-account ids)
+  'COMPOSIO_API_KEY',
+  'COMPOSIO_GMAIL_CONNECTED_ACCOUNT_ID',
+  'COMPOSIO_REDDIT_CONNECTED_ACCOUNT_ID',
+  'COMPOSIO_GITHUB_CONNECTED_ACCOUNT_ID',
+  // WhatsApp (Meta direct)
+  'WHATSAPP_PHONE_NUMBER_ID',
+  'WHATSAPP_ACCESS_TOKEN',
+  'WHATSAPP_WEBHOOK_VERIFY_TOKEN',
+  // WhatsApp (Twilio Sandbox)
+  'TWILIO_ACCOUNT_SID',
+  'TWILIO_AUTH_TOKEN',
+  'TWILIO_WHATSAPP_FROM',
+  // Telegram
+  'TELEGRAM_BOT_TOKEN',
+  'TELEGRAM_WEBHOOK_SECRET',
+  // Browser extension pairing token
+  'BROWSER_EXTENSION_TOKEN',
+  // Owner-notification destinations (so a test can't text or email the user)
+  'OWNER_TELEGRAM_CHAT_ID',
+  'OWNER_WHATSAPP_NUMBER',
+];
+for (const key of SECRETS_TO_BLANK) process.env[key] = '';
+
+// Also force the "automatic" automation switches OFF for tests. These are
+// not secrets but misconfigured as "true" they could, in principle, let a
+// scheduler tick during a test queue a real send that then gets blocked
+// by the guard but still spams the shadow log.
+process.env.OUTREACH_MODE = 'manual';
+process.env.OUTREACH_AUTOMATIC_ENABLED = 'false';
+process.env.TELEGRAM_AUTO_REPLY_ENABLED = 'false';
+process.env.WHATSAPP_AUTO_REPLY_ENABLED = 'false';
+process.env.GMAIL_TRIAGE_INTERVAL_MINUTES = '0';
+process.env.OUTREACH_RESPONSE_CHECK_INTERVAL_MINUTES = '0';
+process.env.OUTREACH_FOLLOWUP_CHECK_INTERVAL_MINUTES = '0';
+
+// Mark the run as a test so sendGuard can refuse any real send attempt.
+process.env.CC_TESTING = '1';
 process.env.CC_FORCE_MEMORY_STORE = '1';
+process.env.CC_FORCE_MOCK_PROVIDER = '1';
+
+// ALLOW_REAL_SENDS must NEVER be inherited into the default suite. If an
+// invoker had it set in their shell, clear it here - safe mode means safe
+// mode. (Integration runner has its own, deliberate handling.)
+delete process.env.ALLOW_REAL_SENDS;
+
+// Last-line sanity check. If any secret is still populated after the
+// override above (e.g. because someone wires a new one and forgets to
+// add it to SECRETS_TO_BLANK), fail loud.
+const stillLive = SECRETS_TO_BLANK.filter((k) => process.env[k]);
+if (stillLive.length) {
+  console.error(`[test-runner] REFUSING to start: these secrets are still set after override: ${stillLive.join(', ')}`);
+  process.exit(2);
+}
 
 const { spawnSync } = require('child_process');
 const path = require('path');
 
-const TESTS = [
-  'tests/outreach-threads.test.js',
-  'tests/gmail-guard.test.js',
-  'tests/inbox-triage-self-mail.test.js',
-  'tests/workspace-context.test.js',
-  'tests/workspace-stamping.test.js',
-  'tests/workspace-end-to-end.test.js',
-  'tests/workspace-tables-phase2c.test.js',
-  'tests/orchestrator.test.js',
-  'tests/installer.test.js',
-  'tests/coding.test.js',
-  'tests/content-studio.test.js',
-  'tests/twilio-whatsapp.test.js',
-  'tests/intent-classifier.test.js',
-  'tests/scheduler.test.js',
-  'tests/chat-history.test.js',
-  'tests/document-handling.test.js',
-  'tests/workflow-engine.test.js',
-  'tests/workflow-engine-phase2.test.js',
-  'tests/workflow-marketplace.test.js',
-  'tests/image-generation.test.js',
-  'tests/image-generation-no-key.test.js',
-  'tests/youtube-search.test.js',
-  'tests/youtube-trending-comment.test.js',
-  'tests/folder-watch-trigger.test.js',
-  'tests/speech-to-text.test.js',
-  'tests/video-editing.test.js',
-  'tests/approval-video-preview.test.js',
-  'tests/youtube-upload.test.js',
-  'tests/analytics.test.js',
-  'tests/self-prompting.test.js',
-  'tests/guidance-skills.test.js',
-  'tests/browser-extension-api.test.js',
-  'tests/mcp-discovery.test.js',
-  'tests/connector-detection.test.js',
-  'tests/mcp-client.test.js',
-  'tests/mcp-tool-safety.test.js',
-  'tests/cli-detection.test.js',
-  'tests/api-connector.test.js',
-  'tests/cli-import.test.js',
-  'tests/coding-agent-narration.test.js',
-  'tests/chat-live-narration.test.js',
-  'tests/job-verification.test.js',
-  'tests/outreach-pipeline.test.js',
-  'tests/response-followup.test.js',
-  'tests/scheduling.test.js',
-  'tests/outreach-automation.test.js',
-  'tests/job-lead-gen-integration.test.js',
-  // tests/telegram-integration.test.js intentionally omitted - the file was
-  // referenced by the old `npm test` chain but has never existed on disk;
-  // the runner would just hard-fail every run on a missing file.
-  'tests/auto-reply-safety.test.js',
-  'tests/owner-notifications.test.js',
-  'tests/business-profile-chat.test.js',
-  'tests/computer-operator-search.test.js',
-  'tests/computer-operator-openfile.test.js',
-  'tests/computer-operator-openfolder.test.js',
-  'tests/computer-operator-largefile.test.js',
-  'tests/computer-operator-oldfile.test.js',
-  'tests/computer-operator-duplicates.test.js',
-  'tests/computer-operator-recyclebin.test.js',
-  'tests/briefing-report.test.js',
-  'tests/briefing-dashboard-articles.test.js',
-  'tests/dashboard-stats.test.js',
-];
-
+const TESTS = require('./_test-list');
 const BACKEND_DIR = path.resolve(__dirname, '..');
 
-// Last-line sanity check: refuse to start if a test env var still looks
-// like real credentials. Protects against someone replacing the hardening
-// above with a half-measure that reads from .env.
-for (const key of ['SUPABASE_URL', 'SUPABASE_SERVICE_KEY']) {
-  if (process.env[key]) {
-    console.error(`[test-runner] REFUSING to start: ${key} is still set after override`);
-    process.exit(2);
-  }
-}
+const envForChild = { ...process.env };
 
-const envForChild = {
-  ...process.env,
-  SUPABASE_URL: '',
-  SUPABASE_SERVICE_KEY: '',
-  CC_FORCE_MEMORY_STORE: '1',
-};
-
-console.log('[test-runner] Running every test in a fresh Node process');
-console.log('[test-runner] DB is forced in-memory: SUPABASE_URL="", CC_FORCE_MEMORY_STORE=1');
-console.log('[test-runner] (API keys like AI_API_KEY / YOUTUBE_API_KEY are left as-is from .env;');
-console.log('[test-runner]  integration tests rely on them to exercise real-call branches)');
-console.log(`[test-runner] ${TESTS.length} tests to run\n`);
+console.log('[test-runner] SAFE MODE: every test runs with no real credentials.');
+console.log('[test-runner]   - DB forced in-memory (CC_FORCE_MEMORY_STORE=1)');
+console.log('[test-runner]   - LLM forced to mockProvider (CC_FORCE_MOCK_PROVIDER=1)');
+console.log(`[test-runner]   - ${SECRETS_TO_BLANK.length} secret env vars blanked`);
+console.log('[test-runner]   - CC_TESTING=1 (sendGuard refuses real sends if reached)');
+console.log(`[test-runner] Running ${TESTS.length} tests in fresh child processes\n`);
 
 const failed = [];
 let passed = 0;

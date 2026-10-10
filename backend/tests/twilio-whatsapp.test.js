@@ -1,5 +1,15 @@
 const assert = require('assert');
 
+// This test deliberately calls the real whatsappTwilio.sendMessage so it
+// can verify the exact HTTP request shape (URL, basic auth header, form-
+// encoded body). It stubs global.fetch so no real Twilio call ever goes
+// out. The sendGuard, however, runs BEFORE fetch - so we opt in here
+// with a stubbed fetch that intercepts the request. ALLOW_REAL_SENDS=1
+// is scoped to this one test file only: process.env assignments in a
+// child Node process never leak back to the parent runner or to other
+// test files.
+process.env.ALLOW_REAL_SENDS = '1';
+
 async function main() {
   process.env.TWILIO_ACCOUNT_SID = 'ACtest123';
   process.env.TWILIO_AUTH_TOKEN = 'secrettoken';

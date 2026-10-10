@@ -29,6 +29,7 @@ function toWhatsAppAddress(number) {
  * business verification needed for sandbox use).
  */
 async function sendMessage(to, body) {
+  require('./sendGuard').assertRealSendsAllowed('WhatsApp (Twilio)');
   assertConfigured();
 
   const params = new URLSearchParams({

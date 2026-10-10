@@ -91,6 +91,10 @@ async function resolveConnectedAccountId(toolkitSlug) {
  * @param {string} toolkitSlug - e.g. "gmail" - used to resolve version and connected account.
  */
 async function execute(actionSlug, args = {}, toolkitSlug) {
+  // sendGuard: in test mode, refuse real sends unless ALLOW_REAL_SENDS=1.
+  // Read-only actions (GMAIL_FETCH_EMAILS, GMAIL_GET_THREAD, YOUTUBE_SEARCH,
+  // etc.) pass through so integration tests of read paths keep working.
+  require('./sendGuard').assertComposioActionAllowed(actionSlug);
   const composio = getClient();
   try {
     const version = toolkitSlug ? await resolveLatestVersion(toolkitSlug) : undefined;
@@ -147,6 +151,9 @@ async function checkConnectionStatus(toolkitSlug) {
  * the raw path first, the more common convenience shape for upload helpers.
  */
 async function uploadFile(filePath, actionSlug, toolkitSlug) {
+  // Every uploadFile call stages content for a subsequent send/upload
+  // action - treat the staging step itself as a send for guard purposes.
+  require('./sendGuard').assertRealSendsAllowed(`Composio file upload for ${actionSlug}`);
   const composio = getClient();
   try {
     return await composio.files.upload({ file: filePath, toolSlug: actionSlug, toolkitSlug });

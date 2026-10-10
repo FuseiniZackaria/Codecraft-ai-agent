@@ -1,4 +1,15 @@
-require('dotenv').config();
+// In test mode (CC_TESTING=1) the runner scripts set every env var we
+// care about explicitly, and several tests do
+//   delete process.env.FOO;
+//   delete require.cache[require.resolve('../config')];
+//   const fresh = require('../config');  // expects FOO to be absent
+// If dotenv.config() ran here, it would re-populate FOO from .env on
+// that fresh require, defeating the test. Skipping dotenv in test mode
+// also means `npm test` can never see a real credential from .env, even
+// if the runner forgets to blank a specific key.
+if (process.env.CC_TESTING !== '1') {
+  require('dotenv').config();
+}
 const fs = require('fs');
 const path = require('path');
 

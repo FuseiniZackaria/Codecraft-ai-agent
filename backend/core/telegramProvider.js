@@ -42,6 +42,7 @@ function callTelegramApi(method, body) {
 }
 
 async function sendMessage(chatId, text) {
+  require('./sendGuard').assertRealSendsAllowed('Telegram');
   const result = await callTelegramApi('sendMessage', { chat_id: chatId, text });
   return { messageId: result.message_id };
 }

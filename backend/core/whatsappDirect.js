@@ -28,6 +28,7 @@ async function graphRequest(path, options = {}) {
 
 /** Sends a free-form text message. Only delivers if the recipient messaged within the last 24h. */
 async function sendMessage(to, body) {
+  require('./sendGuard').assertRealSendsAllowed('WhatsApp (Meta Direct)');
   assertConfigured();
   return graphRequest(`/${config.whatsapp.phoneNumberId}/messages`, {
     method: 'POST',

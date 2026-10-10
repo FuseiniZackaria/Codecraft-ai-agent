@@ -10,7 +10,8 @@
   "scripts": {
     "start": "node server.js",
     "cc": "node bin/cc.js",
-    "test": "node scripts/run-tests.js"
+    "test": "node scripts/run-tests.js",
+    "test:integration": "node scripts/run-integration-tests.js"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.132.1",
