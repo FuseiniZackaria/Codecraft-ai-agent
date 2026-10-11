@@ -32,8 +32,10 @@ class MemoryStore {
     return updated;
   }
 
-  async listTasks() {
-    return Array.from(this.tasks.values());
+  async listTasks(options = {}) {
+    const ws = options.workspaceId || options.workspace_id || null;
+    const all = Array.from(this.tasks.values());
+    return ws ? all.filter((t) => !t.workspace_id || t.workspace_id === ws) : all;
   }
 
   async deleteTask(id) {

@@ -52,6 +52,31 @@ function isNamedSystemCall(opts) {
   return ALLOWED_SYSTEM_CALLERS.has(opts.systemCaller);
 }
 
+// Mode: 'log' (default) just appends misses to the shadow log; 'enforce'
+// throws so unscoped user calls fail loudly with a clear error, while
+// named system callers keep working. Switch via WORKSPACE_GUARD_MODE in
+// .env - no code change needed to flip back to log mode on Render.
+function currentMode() {
+  const raw = (process.env.WORKSPACE_GUARD_MODE || 'log').toLowerCase().trim();
+  return raw === 'enforce' ? 'enforce' : 'log';
+}
+
+class WorkspaceGuardError extends Error {
+  constructor(reason, method, extras = {}) {
+    super(
+      `[workspace-guard:${reason}] ${method} refused in enforce mode - ` +
+      `the call did not supply a workspace scope. Pass { workspaceId } (user ` +
+      `path) or { scope: 'system', systemCaller: '<allowlisted-name>' } ` +
+      `(background path). To temporarily switch back to log-only mode without ` +
+      `redeploying code, set WORKSPACE_GUARD_MODE=log on the server.`
+    );
+    this.name = 'WorkspaceGuardError';
+    this.code = reason;
+    this.method = method;
+    Object.assign(this, extras);
+  }
+}
+
 const LOG_DIR = path.join(__dirname, '..', 'data');
 const LOG_FILE = path.join(LOG_DIR, 'workspace_shadow.log');
 
@@ -177,12 +202,21 @@ function withWorkspaceGuard(store) {
         if (callerOpts && callerOpts.scope === 'system' && !ALLOWED_SYSTEM_CALLERS.has(callerOpts.systemCaller)) {
           // Visibly flag an attempted-but-not-allowlisted system scope so a
           // misuse is caught in the shadow log instead of silently passing
-          // through as an ordinary workspace miss.
+          // through as an ordinary workspace miss. In enforce mode this is
+          // a hard refusal - a stray "scope:'system'" in a route handler
+          // must never silently gain cross-workspace access.
           logMiss(prop, 'system_scope_but_caller_not_allowlisted', {
             attemptedSystemCaller: callerOpts.systemCaller || '(unset)',
           });
+          if (currentMode() === 'enforce') {
+            throw new WorkspaceGuardError('system_scope_but_caller_not_allowlisted', prop, {
+              attemptedSystemCaller: callerOpts.systemCaller || '(unset)',
+            });
+          }
           return original.apply(target, args);
         }
+
+        const enforce = currentMode() === 'enforce';
 
         if (ROW_WRITE_METHODS.has(prop)) {
           // Different store methods put the row at different arg positions
@@ -198,16 +232,18 @@ function withWorkspaceGuard(store) {
           }
           if (!callerWs && !rowWs) {
             logMiss(prop, 'no_workspace_on_call_or_row');
+            if (enforce) throw new WorkspaceGuardError('no_workspace_on_call_or_row', prop);
           } else if (callerWs && rowWs && callerWs !== rowWs) {
             logMiss(prop, 'workspace_mismatch', { callerWs, rowWs });
+            if (enforce) throw new WorkspaceGuardError('workspace_mismatch', prop, { callerWs, rowWs });
           }
-          // Shadow: do not block.
           return original.apply(target, args);
         }
 
         if (LIST_METHODS.has(prop)) {
           if (!callerWs) {
             logMiss(prop, 'list_without_workspace');
+            if (enforce) throw new WorkspaceGuardError('list_without_workspace', prop);
           }
           return original.apply(target, args);
         }
@@ -242,4 +278,6 @@ module.exports = {
   ROW_WRITE_METHODS,
   LIST_METHODS,
   ALLOWED_SYSTEM_CALLERS,
+  WorkspaceGuardError,
+  currentMode,
 };

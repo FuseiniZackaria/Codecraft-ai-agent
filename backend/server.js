@@ -145,7 +145,7 @@ app.get('/api/workspace/me', requireAuth, (req, res) => {
 // "throw" once this endpoint is reporting zero or near-zero per minute.
 app.get('/api/workspace/shadow-log', requireAuth, requireRole('admin'), (req, res) => {
   try {
-    const { readShadowLog } = require('./memory/workspaceGuard');
+    const { readShadowLog, currentMode } = require('./memory/workspaceGuard');
     const limit = Math.min(Number(req.query.limit) || 200, 1000);
     const entries = readShadowLog(limit);
     // Simple aggregation so the UI can show a scoreboard, not just a feed.
@@ -154,7 +154,7 @@ app.get('/api/workspace/shadow-log', requireAuth, requireRole('admin'), (req, re
       const key = `${e.method}:${e.reason}`;
       byMethodReason[key] = (byMethodReason[key] || 0) + 1;
     }
-    res.json({ total: entries.length, limit, byMethodReason, entries });
+    res.json({ mode: currentMode(), total: entries.length, limit, byMethodReason, entries });
   } catch (err) {
     res.status(500).json({ error: err.message });
   }

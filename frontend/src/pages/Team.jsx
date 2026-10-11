@@ -81,10 +81,12 @@ function AddAdminForm({ onAdded }) {
     }
   }
 
-  // Disabled while workspace isolation is still in shadow-log mode. Adding
-  // a second admin today would give them full cross-workspace visibility
-  // over the one shared workspace; wait until Phase 2.3d flips the guard
-  // to enforce and the invitation UI lands.
+  // Disabled until Phase 2.5 (per-admin connections) lands. Even with
+  // the workspace guard in enforce mode, there is still only ONE set of
+  // Composio/Gmail/Twilio connections per workspace today, so adding a
+  // second admin here would hand them access to the first admin's
+  // integrations. Phase 2.5 adds per-admin connection ownership; the
+  // button comes back then.
   const addAdminDisabled = true;
 
   return (
@@ -100,10 +102,11 @@ function AddAdminForm({ onAdded }) {
 
       {addAdminDisabled && (
         <div className="rounded-md border border-[var(--color-warning)]/30 bg-[var(--color-warning)]/10 p-3 text-xs text-[var(--color-text-muted)]">
-          Available once workspace isolation is enabled. Adding a second admin
-          while the workspace guard is still in log-only mode would give them
-          cross-workspace visibility - we'll re-enable this once the guard
-          flips to enforce.
+          Available once per-admin connections (Phase 2.5) are set up. Right
+          now each workspace still has one shared set of Gmail / Composio /
+          Twilio credentials, so inviting a second admin would hand them
+          access to yours. We'll re-enable this once each admin can connect
+          their own accounts.
         </div>
       )}
 
@@ -360,10 +363,21 @@ function WorkspaceHealth() {
           </button>
         </div>
       </div>
-      <p className="text-xs text-[var(--color-text-muted)] mb-3">
-        Store calls that did not pass a workspace scope, or attempted a cross-workspace write. During Phase 2.3 these are
-        logged, not blocked - the goal is to drive this list to zero before enforcement is turned on.
+      <p className="text-xs text-[var(--color-text-muted)] mb-2">
+        Store calls that did not pass a workspace scope, or attempted a cross-workspace write.
       </p>
+      {data?.mode && (
+        <div className={`text-[11px] inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full border mb-3 ${
+          data.mode === 'enforce'
+            ? 'border-[var(--color-success)]/40 bg-[var(--color-success)]/10 text-[var(--color-success)]'
+            : 'border-[var(--color-warning)]/40 bg-[var(--color-warning)]/10 text-[var(--color-warning)]'
+        }`}>
+          Guard mode: <span className="font-[var(--font-mono)]">{data.mode}</span>
+          {data.mode === 'log'
+            ? ' — misses are logged but not blocked (set WORKSPACE_GUARD_MODE=enforce on the server to flip)'
+            : ' — unscoped user calls are refused with an error'}
+        </div>
+      )}
 
       {error && (
         <div className="text-xs text-[var(--color-danger)] mb-2">{error}</div>

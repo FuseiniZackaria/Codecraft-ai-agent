@@ -53,8 +53,11 @@ class SupabaseStore {
     return data ? this._fromRow(data) : null;
   }
 
-  async listTasks() {
-    const { data, error } = await this.client.from('tasks').select('*').order('created_at', { ascending: false });
+  async listTasks(options = {}) {
+    const ws = options.workspaceId || options.workspace_id || null;
+    let query = this.client.from('tasks').select('*').order('created_at', { ascending: false });
+    if (ws) query = query.or(`workspace_id.is.null,workspace_id.eq.${ws}`);
+    const { data, error } = await query;
     if (error) throw new Error(`SupabaseStore.listTasks: ${error.message}`);
     return (data || []).map((row) => this._fromRow(row));
   }

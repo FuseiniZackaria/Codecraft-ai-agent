@@ -1,0 +1,123 @@
+-- =====================================================================
+-- 0002_backfill_null_workspace.sql
+-- =====================================================================
+-- Phase 2.3d backfill: stamp every row with workspace_id = NULL as
+-- belonging to the single existing workspace, so enforce mode (which
+-- requires scope on every user-path read/write) doesn't silently expose
+-- old data to future workspaces.
+--
+-- RUN THIS BEFORE flipping WORKSPACE_GUARD_MODE=enforce on Render.
+--
+-- Safety:
+--   * Idempotent - only touches rows where workspace_id IS NULL.
+--   * Wrapped in a single transaction so it's all-or-nothing.
+--   * Keyed on a single workspace lookup you review below (first query).
+--
+-- Pre-steps before you run this:
+--   1. Take a database backup via scripts/backup-db.js (same way as
+--      0001_workspaces_phase1.sql) OR Supabase CLI dump. Keep until
+--      you've confirmed Phase 2.3d is stable for 24h.
+--   2. Open this file in the Supabase SQL Editor.
+--   3. Run the TWO review queries at the top first - confirm the
+--      workspace id/name is correct AND confirm the per-table null
+--      counts match what you expect.
+--   4. Only then uncomment and run the BACKFILL block.
+-- =====================================================================
+
+
+-- -- REVIEW 1: Which workspace will claim every null-stamped row?
+-- --           There should be exactly one row. If there are zero or
+-- --           multiple, STOP and resolve manually.
+-- select id, name, owner_user_id, created_at
+--   from workspaces
+--  order by created_at asc;
+
+
+-- -- REVIEW 2: How many null-workspace rows does each table have?
+-- --           Match this against your expectation before backfilling.
+-- --           Expected after Phase 2.3c: pre-migration rows across
+-- --           tasks (27-ish), chat_messages (326-ish), audit_log (lots),
+-- --           outreach_threads (9), briefing_articles (varies), etc.
+-- select 'tasks'                 as table_name, count(*) as null_rows from tasks                 where workspace_id is null
+-- union all select 'chat_messages',       count(*) from chat_messages       where workspace_id is null
+-- union all select 'audit_log',           count(*) from audit_log           where workspace_id is null
+-- union all select 'agent_memory',        count(*) from agent_memory        where workspace_id is null
+-- union all select 'reflections',         count(*) from reflections         where workspace_id is null
+-- union all select 'long_term_memory',    count(*) from long_term_memory    where workspace_id is null
+-- union all select 'outreach_threads',    count(*) from outreach_threads    where workspace_id is null
+-- union all select 'scheduled_workflows', count(*) from scheduled_workflows where workspace_id is null
+-- union all select 'workflow_definitions',count(*) from workflow_definitions where workspace_id is null
+-- union all select 'workflow_runs',       count(*) from workflow_runs       where workspace_id is null
+-- union all select 'briefing_runs',       count(*) from briefing_runs       where workspace_id is null
+-- union all select 'briefing_articles',   count(*) from briefing_articles   where workspace_id is null
+-- union all select 'skills',              count(*) from skills              where workspace_id is null
+-- union all select 'assistant_usage_daily', count(*) from assistant_usage_daily where workspace_id is null;
+
+
+-- =====================================================================
+-- BACKFILL BLOCK - uncomment all of this once the reviews look right.
+-- =====================================================================
+
+-- do $$
+-- declare
+--   v_workspace_id uuid;
+--   v_workspace_count int;
+--   v_updated int := 0;
+--   r record;
+--   t text;
+-- begin
+--   -- Resolve the single workspace. If zero or many, raise and bail.
+--   select count(*) into v_workspace_count from workspaces;
+--   if v_workspace_count <> 1 then
+--     raise exception 'backfill expects exactly one workspace, found %', v_workspace_count;
+--   end if;
+--   select id into v_workspace_id from workspaces limit 1;
+--   raise notice 'Backfilling null workspace_id rows into workspace % ...', v_workspace_id;
+--
+--   -- Each table is a separate statement so Postgres reports GET DIAGNOSTICS
+--   -- row counts per table, and a failure in one doesn't partial-commit the
+--   -- rest. All of it runs inside the same enclosing DO block transaction.
+--   foreach t in array array[
+--     'tasks',
+--     'chat_messages',
+--     'audit_log',
+--     'agent_memory',
+--     'reflections',
+--     'long_term_memory',
+--     'outreach_threads',
+--     'scheduled_workflows',
+--     'workflow_definitions',
+--     'workflow_runs',
+--     'briefing_runs',
+--     'briefing_articles',
+--     'skills',
+--     'assistant_usage_daily'
+--   ]
+--   loop
+--     execute format('update %I set workspace_id = $1 where workspace_id is null', t) using v_workspace_id;
+--     get diagnostics v_updated = row_count;
+--     raise notice '  %: stamped % rows', t, v_updated;
+--   end loop;
+--
+--   raise notice 'Done. Flip WORKSPACE_GUARD_MODE=enforce on Render once you''ve verified the UI still looks right.';
+-- end$$;
+
+
+-- =====================================================================
+-- VERIFICATION (run after the backfill block). Every count should be 0.
+-- =====================================================================
+
+-- select 'tasks'                 as table_name, count(*) as null_rows_remaining from tasks                 where workspace_id is null
+-- union all select 'chat_messages',       count(*) from chat_messages       where workspace_id is null
+-- union all select 'audit_log',           count(*) from audit_log           where workspace_id is null
+-- union all select 'agent_memory',        count(*) from agent_memory        where workspace_id is null
+-- union all select 'reflections',         count(*) from reflections         where workspace_id is null
+-- union all select 'long_term_memory',    count(*) from long_term_memory    where workspace_id is null
+-- union all select 'outreach_threads',    count(*) from outreach_threads    where workspace_id is null
+-- union all select 'scheduled_workflows', count(*) from scheduled_workflows where workspace_id is null
+-- union all select 'workflow_definitions',count(*) from workflow_definitions where workspace_id is null
+-- union all select 'workflow_runs',       count(*) from workflow_runs       where workspace_id is null
+-- union all select 'briefing_runs',       count(*) from briefing_runs       where workspace_id is null
+-- union all select 'briefing_articles',   count(*) from briefing_articles   where workspace_id is null
+-- union all select 'skills',              count(*) from skills              where workspace_id is null
+-- union all select 'assistant_usage_daily', count(*) from assistant_usage_daily where workspace_id is null;

@@ -96,6 +96,18 @@ router.get('/', async (req, res) => {
 });
 
 router.post('/', teamMutationLimiter, async (req, res) => {
+  // Phase 2.3d/2.5 safety: refuse admin creation server-side too, not
+  // just via the disabled frontend form. Until per-admin connections
+  // land in Phase 2.5, a second admin would share the first admin's
+  // Composio/Gmail/Twilio credentials - the UI makes that explicit,
+  // and this guard blocks a crafted request that bypasses the UI.
+  return res.status(409).json({
+    error: 'Adding admins is disabled until Phase 2.5 (per-admin connections) lands. ' +
+      'Right now each workspace has one shared set of credentials; a second admin would gain ' +
+      'access to the first admin\'s Gmail / Composio / Twilio connections.',
+  });
+
+  // eslint-disable-next-line no-unreachable
   if (!requireSupabase(res)) return;
   const { email, password } = req.body || {};
   const trimmedEmail = (email || '').trim();
