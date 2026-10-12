@@ -14,6 +14,7 @@ const browserRoutes = require('./api/browserRoutes');
 const mcpRoutes = require('./api/mcpRoutes');
 const teamRoutes = require('./api/teamRoutes');
 const businessProfileRoutes = require('./api/businessProfileRoutes');
+const connectionRoutes = require('./api/connectionRoutes');
 const scheduler = require('./core/scheduler');
 const briefingDashboardRoutes = require('./api/briefingDashboardRoutes');
 const { requireAuth, requireRole } = require('./core/auth');
@@ -188,6 +189,7 @@ app.use('/api/browser', browserRoutes);
 app.use('/api/mcp', requireAuth, requireRole('admin'), mcpRoutes);
 app.use('/api/team', requireAuth, requireRole('admin'), teamRoutes);
 app.use('/api/business-profile', requireAuth, requireRole('admin'), businessProfileRoutes);
+app.use('/api/connections', requireAuth, requireRole('admin'), connectionRoutes);
 app.get('/health', (req, res) => res.json({ status: 'ok', plugins: loadedPlugins }));
 
 app.listen(config.port, () => {

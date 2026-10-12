@@ -242,6 +242,19 @@ export const api = {
   getBusinessProfile: () => request('/business-profile'),
   saveBusinessProfile: (patch) => request('/business-profile', { method: 'PATCH', body: JSON.stringify(patch) }),
 
+  // --- Connections (Phase 2.5) ---
+  listConnections: () => request('/connections'),
+  getConnectionStatus: (provider) => request(`/connections/${provider}/status`),
+  connectTelegram: (botToken) => request('/connections/telegram/connect', { method: 'POST', body: JSON.stringify({ botToken }) }),
+  testTelegram: (chatId) => request('/connections/telegram/test', { method: 'POST', body: JSON.stringify({ chatId }) }),
+  disconnectTelegram: () => request('/connections/telegram', { method: 'DELETE' }),
+  connectWhatsApp: (data) => request('/connections/whatsapp/connect', { method: 'POST', body: JSON.stringify(data) }),
+  testWhatsApp: (to) => request('/connections/whatsapp/test', { method: 'POST', body: JSON.stringify({ to }) }),
+  disconnectWhatsApp: () => request('/connections/whatsapp', { method: 'DELETE' }),
+  connectComposio: (provider, data) => request(`/connections/${provider}/connect`, { method: 'POST', body: JSON.stringify(data || {}) }),
+  checkComposio: (provider, connectionId) => request(`/connections/${provider}/check`, { method: 'POST', body: JSON.stringify({ connectionId }) }),
+  disconnectProvider: (provider) => request(`/connections/${provider}`, { method: 'DELETE' }),
+
   connectMCP: (url) => browserPost('/mcp/connect', { url }),
 
   // Turns a page's own text into a reference skill for agents to consult -

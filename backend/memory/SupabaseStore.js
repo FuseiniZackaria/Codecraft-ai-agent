@@ -822,6 +822,72 @@ class SupabaseStore {
     if (error) throw new Error(`SupabaseStore.updateBusinessProfile: ${error.message}`);
     return data;
   }
+
+  // --- Workspace connections (Phase 2.5) ---
+  async getWorkspaceConnection(workspaceId, provider) {
+    if (!workspaceId || !provider) return null;
+    const { data, error } = await this.client
+      .from('workspace_connections')
+      .select('*')
+      .eq('workspace_id', workspaceId)
+      .eq('provider', provider)
+      .maybeSingle();
+    if (error) throw new Error(`SupabaseStore.getWorkspaceConnection: ${error.message}`);
+    return data || null;
+  }
+
+  async listWorkspaceConnections(workspaceId) {
+    if (!workspaceId) return [];
+    const { data, error } = await this.client
+      .from('workspace_connections')
+      .select('*')
+      .eq('workspace_id', workspaceId)
+      .order('provider');
+    if (error) throw new Error(`SupabaseStore.listWorkspaceConnections: ${error.message}`);
+    return data || [];
+  }
+
+  async upsertWorkspaceConnection(workspaceId, provider, row) {
+    if (!workspaceId || !provider) throw new Error('workspaceId and provider required');
+    const payload = {
+      workspace_id: workspaceId,
+      provider,
+      composio_account_id: row.composio_account_id || null,
+      provider_meta: row.provider_meta || {},
+      status: row.status || 'connected',
+      connected_email: row.connected_email || null,
+      updated_at: new Date().toISOString(),
+    };
+    const { data, error } = await this.client
+      .from('workspace_connections')
+      .upsert(payload, { onConflict: 'workspace_id,provider' })
+      .select()
+      .maybeSingle();
+    if (error) throw new Error(`SupabaseStore.upsertWorkspaceConnection: ${error.message}`);
+    return data;
+  }
+
+  async deleteWorkspaceConnection(workspaceId, provider) {
+    const { error } = await this.client
+      .from('workspace_connections')
+      .delete()
+      .eq('workspace_id', workspaceId)
+      .eq('provider', provider);
+    if (error) throw new Error(`SupabaseStore.deleteWorkspaceConnection: ${error.message}`);
+    return true;
+  }
+
+  async findConnectionByWebhookToken(provider, webhookToken) {
+    if (!webhookToken) return null;
+    const { data, error } = await this.client
+      .from('workspace_connections')
+      .select('*')
+      .eq('provider', provider)
+      .eq('provider_meta->>webhook_token', webhookToken)
+      .maybeSingle();
+    if (error) throw new Error(`SupabaseStore.findConnectionByWebhookToken: ${error.message}`);
+    return data || null;
+  }
 }
 
 module.exports = SupabaseStore;

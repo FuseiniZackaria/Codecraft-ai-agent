@@ -5,8 +5,6 @@ const { selectProvider } = require('../../core/router');
 const { businessContextLine } = require('../../core/businessContext');
 const { classifyReplySafety } = require('../../core/autoReplySafety');
 const notifications = require('../../core/notifications');
-const { getSoleWorkspaceId } = require('../../core/workspaceContext');
-
 /**
  * TelegramAgent - triggered by the webhook receiver on each incoming
  * message, not a user goal, so it skips the standard plan/execute loop.
@@ -35,11 +33,8 @@ class TelegramAgent extends BaseAgent {
     });
   }
 
-  async handleIncomingMessage({ from, body }) {
-    // Webhook path - no user auth to carry workspace. Resolve the sole
-    // workspace once per webhook so the approval task + its audit stamp
-    // the right account. See WhatsAppAgent for the same pattern + rationale.
-    const workspaceId = await getSoleWorkspaceId();
+  async handleIncomingMessage({ from, body, workspaceId: wsFromWebhook }) {
+    const workspaceId = wsFromWebhook || null;
 
     const provider = selectProvider({});
     const businessLine = await businessContextLine(workspaceId);

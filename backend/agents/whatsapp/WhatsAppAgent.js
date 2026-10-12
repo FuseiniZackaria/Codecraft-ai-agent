@@ -5,7 +5,6 @@ const { selectProvider } = require('../../core/router');
 const { businessContextLine } = require('../../core/businessContext');
 const { classifyReplySafety } = require('../../core/autoReplySafety');
 const notifications = require('../../core/notifications');
-const { getSoleWorkspaceId } = require('../../core/workspaceContext');
 
 /**
  * WhatsAppAgent - triggered by the webhook receiver on each incoming
@@ -32,13 +31,8 @@ class WhatsAppAgent extends BaseAgent {
     });
   }
 
-  async handleIncomingMessage({ from, body }) {
-    // Webhook path - no logged-in user to carry a workspace. In a single-
-    // admin deployment there's exactly one workspace, so resolve it here
-    // and thread it through so the approval task + its audit stamp the
-    // right workspace. Returns null in dev / unmigrated DBs; the chain
-    // then behaves as before and the row stays legacy-null.
-    const workspaceId = await getSoleWorkspaceId();
+  async handleIncomingMessage({ from, body, workspaceId: wsFromWebhook }) {
+    const workspaceId = wsFromWebhook || null;
 
     const provider = selectProvider({});
     const businessLine = await businessContextLine(workspaceId);

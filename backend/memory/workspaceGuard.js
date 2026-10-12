@@ -123,6 +123,8 @@ const ROW_WRITE_METHODS = new Set([
   'addFact',
   'upsertAssistantUsage',
   'updateBusinessProfile',
+  'upsertWorkspaceConnection',
+  'deleteWorkspaceConnection',
 ]);
 
 /**

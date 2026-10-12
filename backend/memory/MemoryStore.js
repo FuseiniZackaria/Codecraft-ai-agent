@@ -399,6 +399,52 @@ class MemoryStore {
     this.businessProfiles.set(ws, merged);
     return merged;
   }
+
+  // --- Workspace connections (Phase 2.5) ---
+  async getWorkspaceConnection(workspaceId, provider) {
+    if (!workspaceId || !provider) return null;
+    if (!this._connections) this._connections = new Map();
+    return this._connections.get(`${workspaceId}:${provider}`) || null;
+  }
+
+  async listWorkspaceConnections(workspaceId) {
+    if (!workspaceId) return [];
+    if (!this._connections) this._connections = new Map();
+    return Array.from(this._connections.values()).filter((c) => c.workspace_id === workspaceId);
+  }
+
+  async upsertWorkspaceConnection(workspaceId, provider, data) {
+    if (!workspaceId || !provider) throw new Error('workspaceId and provider required');
+    if (!this._connections) this._connections = new Map();
+    const key = `${workspaceId}:${provider}`;
+    const existing = this._connections.get(key) || {};
+    const { randomUUID } = require('crypto');
+    const merged = {
+      id: existing.id || randomUUID(),
+      workspace_id: workspaceId,
+      provider,
+      ...existing,
+      ...data,
+      updated_at: new Date().toISOString(),
+    };
+    if (!merged.created_at) merged.created_at = merged.updated_at;
+    this._connections.set(key, merged);
+    return merged;
+  }
+
+  async deleteWorkspaceConnection(workspaceId, provider) {
+    if (!this._connections) return true;
+    this._connections.delete(`${workspaceId}:${provider}`);
+    return true;
+  }
+
+  async findConnectionByWebhookToken(provider, webhookToken) {
+    if (!this._connections || !webhookToken) return null;
+    for (const conn of this._connections.values()) {
+      if (conn.provider === provider && conn.provider_meta?.webhook_token === webhookToken) return conn;
+    }
+    return null;
+  }
 }
 
 module.exports = MemoryStore;
