@@ -231,7 +231,9 @@ export const api = {
 
   // --- Team (admin management) ---
   listTeam: () => request('/team'),
-  addAdmin: (email, mode) => request('/team', { method: 'POST', body: JSON.stringify({ email, mode }) }),
+  addAdmin: (email, mode, confirmed) => request('/team', { method: 'POST', body: JSON.stringify({ email, mode, confirmed }) }),
+  resendInvite: (userId) => request(`/team/resend/${userId}`, { method: 'POST' }),
+  cancelInvite: (userId) => request(`/team/cancel/${userId}`, { method: 'POST' }),
   removeAdmin: (userId) => request(`/team/${userId}`, { method: 'DELETE' }),
 
   // --- Workspace (admin-only observability) ---

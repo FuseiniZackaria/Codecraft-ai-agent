@@ -21,6 +21,26 @@ function requireSupabase(res) {
 
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
+const DOMAIN_TYPOS = {
+  'gmail.co': 'gmail.com', 'gmail.con': 'gmail.com', 'gmial.com': 'gmail.com',
+  'gmai.com': 'gmail.com', 'gamil.com': 'gmail.com', 'gnail.com': 'gmail.com',
+  'hotmail.co': 'hotmail.com', 'hotmail.con': 'hotmail.com',
+  'yahoo.co': 'yahoo.com', 'yahoo.con': 'yahoo.com', 'yaho.com': 'yahoo.com',
+  'outlok.com': 'outlook.com', 'outloo.com': 'outlook.com', 'outlook.co': 'outlook.com',
+};
+
+function detectEmailTypo(email) {
+  const domain = (email.split('@')[1] || '').toLowerCase();
+  const suggestion = DOMAIN_TYPOS[domain];
+  if (!suggestion) return null;
+  return email.replace(/@[^@]+$/, `@${suggestion}`);
+}
+
+function isAppOwner(req) {
+  const ownerEmail = process.env.APP_OWNER_EMAIL || config.applicant?.email;
+  return !!(ownerEmail && req.user?.email?.toLowerCase() === ownerEmail.toLowerCase());
+}
+
 async function getAdminRoleId() {
   const { data, error } = await supabase.from('roles').select('id').eq('name', 'admin').maybeSingle();
   if (error) throw new Error(`Failed to look up admin role: ${error.message}`);
@@ -62,7 +82,13 @@ router.get('/', async (req, res) => {
 
     // Fetch workspace membership for context
     let memberRows = [];
-    if (callerWorkspaceId) {
+    const appOwner = isAppOwner(req);
+    if (appOwner) {
+      const { data: mRows } = await supabase
+        .from('workspace_members')
+        .select('user_id, role, workspace_id');
+      memberRows = mRows || [];
+    } else if (callerWorkspaceId) {
       const { data: mRows } = await supabase
         .from('workspace_members')
         .select('user_id, role, workspace_id')
@@ -70,6 +96,18 @@ router.get('/', async (req, res) => {
       memberRows = mRows || [];
     }
     const memberMap = new Map(memberRows.map((m) => [m.user_id, m]));
+
+    let workspaceNames = {};
+    if (appOwner) {
+      const wsIds = [...new Set(memberRows.map((m) => m.workspace_id).filter(Boolean))];
+      if (wsIds.length > 0) {
+        const { data: wsRows } = await supabase
+          .from('workspaces')
+          .select('id, name')
+          .in('id', wsIds);
+        for (const w of wsRows || []) workspaceNames[w.id] = w.name;
+      }
+    }
 
     const found = [];
     let page = 1;
@@ -82,14 +120,18 @@ router.get('/', async (req, res) => {
       for (const u of users) {
         if (remaining.has(u.id)) {
           const membership = memberMap.get(u.id);
+          const inCaller = membership && membership.workspace_id === callerWorkspaceId;
           found.push({
             id: u.id,
             email: u.email || null,
             createdAt: u.created_at || null,
             lastSignInAt: u.last_sign_in_at || null,
+            pending: !u.last_sign_in_at,
             isYou: u.id === req.user.id,
             workspaceRole: membership?.role || null,
-            inMyWorkspace: !!membership,
+            inMyWorkspace: appOwner ? inCaller : !!membership,
+            workspaceName: appOwner && membership ? workspaceNames[membership.workspace_id] || null : undefined,
+            workspaceId: appOwner && membership ? membership.workspace_id : undefined,
           });
           remaining.delete(u.id);
         }
@@ -110,12 +152,24 @@ router.get('/', async (req, res) => {
 router.post('/', teamMutationLimiter, async (req, res) => {
   if (!requireSupabase(res)) return;
 
-  const { email, mode } = req.body || {};
+  const { email, mode, confirmed } = req.body || {};
   const trimmedEmail = (email || '').trim();
   const addMode = mode === 'team_member' ? 'team_member' : 'new_workspace';
 
   if (!trimmedEmail || !EMAIL_RE.test(trimmedEmail)) {
     return res.status(400).json({ error: 'A valid email is required.' });
+  }
+
+  if (!confirmed) {
+    const suggested = detectEmailTypo(trimmedEmail);
+    if (suggested) {
+      return res.status(422).json({
+        emailTypo: true,
+        original: trimmedEmail,
+        suggested,
+        message: `Did you mean ${suggested}?`,
+      });
+    }
   }
 
   if (req.user.workspaceRole !== 'owner') {
@@ -148,7 +202,11 @@ router.post('/', teamMutationLimiter, async (req, res) => {
         { redirectTo: redirectUrl },
       );
       if (inviteError) {
-        return res.status(400).json({ error: inviteError.message });
+        const msg = inviteError.message || '';
+        if (msg.toLowerCase().includes('rate') || msg.toLowerCase().includes('limit') || inviteError.status === 429) {
+          return res.status(429).json({ error: 'Too many invites right now. Try again in an hour.', rateLimited: true });
+        }
+        return res.status(400).json({ error: msg });
       }
       userId = invited.user.id;
       userEmail = invited.user.email;
@@ -266,6 +324,104 @@ router.post('/', teamMutationLimiter, async (req, res) => {
   }
 });
 
+// ---------- POST /team/resend/:userId ----------
+router.post('/resend/:userId', teamMutationLimiter, async (req, res) => {
+  if (!requireSupabase(res)) return;
+  if (req.user.workspaceRole !== 'owner' && !isAppOwner(req)) {
+    return res.status(403).json({ error: 'Only the workspace owner can resend invites.' });
+  }
+
+  try {
+    const { data: userData, error: userError } = await supabase.auth.admin.getUserById(req.params.userId);
+    if (userError || !userData?.user) {
+      return res.status(404).json({ error: 'User not found.' });
+    }
+    const target = userData.user;
+    if (target.last_sign_in_at) {
+      return res.status(400).json({ error: 'This user has already signed in — no invite to resend.' });
+    }
+
+    const redirectUrl = `${req.headers.origin || ''}/`;
+    const { error: inviteError } = await supabase.auth.admin.inviteUserByEmail(
+      target.email,
+      { redirectTo: redirectUrl },
+    );
+    if (inviteError) {
+      const msg = inviteError.message || '';
+      if (msg.toLowerCase().includes('rate') || msg.toLowerCase().includes('limit') || inviteError.status === 429) {
+        return res.status(429).json({ error: 'Too many invites right now. Try again in an hour.', rateLimited: true });
+      }
+      return res.status(400).json({ error: msg });
+    }
+
+    res.json({ ok: true, email: target.email });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// ---------- POST /team/cancel/:userId ----------
+router.post('/cancel/:userId', teamMutationLimiter, async (req, res) => {
+  if (!requireSupabase(res)) return;
+  if (req.user.workspaceRole !== 'owner' && !isAppOwner(req)) {
+    return res.status(403).json({ error: 'Only the workspace owner can cancel invites.' });
+  }
+
+  try {
+    const { data: userData, error: userError } = await supabase.auth.admin.getUserById(req.params.userId);
+    if (userError || !userData?.user) {
+      return res.status(404).json({ error: 'User not found.' });
+    }
+    const target = userData.user;
+    if (target.last_sign_in_at) {
+      return res.status(400).json({ error: 'This user has already signed in — cannot cancel.' });
+    }
+    if (target.id === req.user.id) {
+      return res.status(400).json({ error: "You can't cancel your own invite." });
+    }
+
+    const adminRoleId = await getAdminRoleId();
+
+    // Delete workspace they own (ON DELETE CASCADE handles members, profile)
+    const { data: ownedWs } = await supabase
+      .from('workspaces')
+      .select('id')
+      .eq('owner_user_id', target.id);
+    for (const ws of ownedWs || []) {
+      await supabase.from('workspace_connections').delete().eq('workspace_id', ws.id);
+      await supabase.from('workspaces').delete().eq('id', ws.id);
+    }
+
+    // Remove workspace_members rows where they're a member (not owner)
+    await supabase.from('workspace_members').delete().eq('user_id', target.id);
+
+    // Remove admin role
+    await supabase.from('user_roles').delete().eq('user_id', target.id).eq('role_id', adminRoleId);
+
+    // Delete auth user
+    const { error: deleteError } = await supabase.auth.admin.deleteUser(target.id);
+    if (deleteError) {
+      return res.status(500).json({ error: `Failed to delete auth user: ${deleteError.message}` });
+    }
+
+    invalidateUser(target.id);
+    invalidateSoleWorkspace();
+
+    try {
+      await memory.audit(req.user.email || req.user.id, 'invite_cancelled', target.email || target.id, {
+        targetUserId: target.id,
+        workspaceId: req.user.workspaceId,
+      }, { workspaceId: req.user.workspaceId });
+    } catch {
+      // Non-fatal
+    }
+
+    res.json({ ok: true, email: target.email });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
 // ---------- DELETE /team/:userId ----------
 router.delete('/:userId', teamMutationLimiter, async (req, res) => {
   if (!requireSupabase(res)) return;
@@ -275,7 +431,8 @@ router.delete('/:userId', teamMutationLimiter, async (req, res) => {
     return res.status(400).json({ error: "You can't remove yourself." });
   }
 
-  if (req.user.workspaceRole !== 'owner') {
+  const appOwner = isAppOwner(req);
+  if (req.user.workspaceRole !== 'owner' && !appOwner) {
     return res.status(403).json({ error: 'Only the workspace owner can remove team members.' });
   }
 
@@ -283,29 +440,37 @@ router.delete('/:userId', teamMutationLimiter, async (req, res) => {
     const adminRoleId = await getAdminRoleId();
     const callerWorkspaceId = req.user?.workspaceId;
 
-    // Only allow removing members of the caller's own workspace
-    if (callerWorkspaceId) {
-      const { data: targetMember } = await supabase
-        .from('workspace_members')
-        .select('workspace_id, role')
-        .eq('user_id', userId)
-        .maybeSingle();
+    const { data: targetMember } = await supabase
+      .from('workspace_members')
+      .select('workspace_id, role')
+      .eq('user_id', userId)
+      .maybeSingle();
 
+    if (!appOwner) {
       if (targetMember && targetMember.workspace_id !== callerWorkspaceId) {
         return res.status(403).json({ error: 'You can only remove members of your own workspace.' });
       }
-
       if (targetMember && targetMember.role === 'owner') {
         return res.status(400).json({ error: "You can't remove a workspace owner. Transfer ownership first." });
       }
-
-      // Remove from workspace_members
       if (targetMember) {
         await supabase
           .from('workspace_members')
           .delete()
           .eq('user_id', userId)
           .eq('workspace_id', callerWorkspaceId);
+      }
+    } else {
+      // App owner can remove from any workspace
+      if (targetMember && targetMember.role === 'owner') {
+        return res.status(400).json({ error: "You can't remove a workspace owner. Transfer ownership first or cancel the invite." });
+      }
+      if (targetMember) {
+        await supabase
+          .from('workspace_members')
+          .delete()
+          .eq('user_id', userId)
+          .eq('workspace_id', targetMember.workspace_id);
       }
     }
 

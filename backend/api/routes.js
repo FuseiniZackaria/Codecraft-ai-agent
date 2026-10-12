@@ -280,7 +280,9 @@ router.get('/tasks/:id', async (req, res) => {
 
 router.get('/tasks', async (req, res) => {
   try {
-    const rows = await memory.listTasks({ workspaceId: req.user?.workspaceId || null });
+    const wsId = req.user?.workspaceId;
+    if (!wsId) return res.json([]);
+    const rows = await memory.listTasks({ workspaceId: wsId });
     res.json(scopeByWorkspace(rows, req));
   } catch (err) {
     res.status(500).json({ error: err.message });
@@ -392,9 +394,10 @@ router.get('/agents', (req, res) => {
 // Dashboard summary
 router.get('/dashboard/summary', async (req, res) => {
   try {
-    const allTasks = await memory.listTasks({ workspaceId: req.user?.workspaceId || null });
+    const wsId = req.user?.workspaceId;
+    const allTasks = wsId ? await memory.listTasks({ workspaceId: wsId }) : [];
     const tasks = scopeByWorkspace(allTasks, req);
-    const auditLog = await memory.getAuditLog(undefined, { workspaceId: req.user?.workspaceId || null });
+    const auditLog = wsId ? await memory.getAuditLog(undefined, { workspaceId: wsId }) : [];
     res.json({
       activeAgents: Object.keys(agents).length,
       installedTools: toolRegistry.list(),

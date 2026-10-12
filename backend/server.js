@@ -115,6 +115,7 @@ app.get('/api/public-config', (req, res) => {
 
 app.use('/api/dashboard', requireAuth, requireRole('admin', 'client'), briefingDashboardRoutes);
 app.get('/api/me', requireAuth, async (req, res) => {
+  const ownerEmail = process.env.APP_OWNER_EMAIL || config.applicant?.email;
   const payload = {
     id: req.user.id,
     email: req.user.email,
@@ -123,6 +124,7 @@ app.get('/api/me', requireAuth, async (req, res) => {
     workspaceId: req.user.workspaceId || null,
     workspaceName: req.user.workspaceName || null,
     workspaceRole: req.user.workspaceRole || null,
+    isAppOwner: !!(ownerEmail && req.user.email?.toLowerCase() === ownerEmail.toLowerCase()),
   };
 
   if (req.user.role === 'admin' && req.user.workspaceId) {

@@ -1,6 +1,15 @@
 # CodeCraft AI — Progress
 
-## Phase 2.6: Team invites & workspace isolation (current)
+## Phase 2.6b: Team invite fixes & app-owner controls (current)
+
+- **Email typo detection:** Common domain misspellings (gmail.co, gmial.com, outlok.com, etc.) trigger a "Did you mean...?" prompt before sending, both client-side and server-side.
+- **Confirmation dialog:** Every invite now requires an explicit confirmation step before the email is sent.
+- **Pending invites:** Admins who haven't signed in yet show an "Invite pending" badge with Resend and Cancel buttons. Cancel deletes the auth user and their empty workspace (respects ON DELETE RESTRICT ordering).
+- **App-owner super-admin:** The app owner (APP_OWNER_EMAIL or APPLICANT_EMAIL) can see all admins across all workspaces, remove members from any workspace with typed-confirmation safety, and cancel pending invites.
+- **Rate-limit handling:** Supabase email rate-limit errors return a friendly "Too many invites right now. Try again in an hour." message. An expandable SMTP setup guide is shown on the Team page.
+- **listTasks guard fix:** Routes now return empty results when workspaceId is null instead of calling the workspace guard with an unscoped query — eliminates the `list_without_workspace` shadow-log noise.
+
+## Phase 2.6: Team invites & workspace isolation
 
 - **Two invite modes:** "New business (own workspace)" creates an empty workspace; "Team member of my workspace" shares the caller's workspace.
 - **Email invites:** New admins receive an email with a link to set their own password. No password is ever shown, typed, or sent by the inviting admin.
