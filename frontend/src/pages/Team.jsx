@@ -1,19 +1,7 @@
 import { useEffect, useState } from 'react';
-import { Users, Plus, Trash2, Copy, Check, Sparkles, ShieldAlert, Activity, RefreshCw, Trash } from 'lucide-react';
+import { Users, Plus, Trash2, ShieldAlert, Activity, RefreshCw, Trash, Mail, Building, UserPlus } from 'lucide-react';
 import { api } from '../services/api';
-import PasswordInput from '../components/PasswordInput';
-
-const PASSWORD_CHARS = 'abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789!@#$%^&*';
-
-function generatePassword(length = 14) {
-  const buf = new Uint32Array(length);
-  crypto.getRandomValues(buf);
-  let out = '';
-  for (let i = 0; i < length; i += 1) {
-    out += PASSWORD_CHARS[buf[i] % PASSWORD_CHARS.length];
-  }
-  return out;
-}
+import { useStore } from '../store/useStore';
 
 function formatDate(iso) {
   if (!iso) return 'Never';
@@ -24,36 +12,22 @@ function formatDate(iso) {
 
 function AddAdminForm({ onAdded }) {
   const [email, setEmail] = useState('');
-  const [password, setPassword] = useState('');
-  const [passwordVisible, setPasswordVisible] = useState(false);
+  const [mode, setMode] = useState('new_workspace');
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState(null);
   const [result, setResult] = useState(null);
-  const [copied, setCopied] = useState(false);
-
-  function handleGenerate() {
-    setPassword(generatePassword(14));
-    setPasswordVisible(true);
-  }
+  const user = useStore((s) => s.user);
+  const isOwner = user?.workspaceRole === 'owner';
 
   async function handleSubmit(e) {
     e.preventDefault();
     setError(null);
     if (!email.trim()) return setError('Enter an email.');
-    if (password.length < 8) return setError('Password must be at least 8 characters.');
     setBusy(true);
     try {
-      const res = await api.addAdmin(email.trim(), password);
-      setResult({
-        email: res.email || email.trim(),
-        password,
-        existingAccount: !!res.existingAccount,
-        alreadyAdmin: !!res.alreadyAdmin,
-      });
+      const res = await api.addAdmin(email.trim(), mode);
+      setResult(res);
       setEmail('');
-      setPassword('');
-      setPasswordVisible(false);
-      setCopied(false);
       onAdded();
     } catch (err) {
       setError(err.message);
@@ -62,55 +36,21 @@ function AddAdminForm({ onAdded }) {
     }
   }
 
-  async function handleCopy() {
-    if (!result) return;
-    const signInUrl = window.location.origin;
-    const lines = [
-      `Email: ${result.email}`,
-      result.existingAccount
-        ? '(This account already existed - their existing password still works.)'
-        : `Password: ${result.password}`,
-      `Sign-in URL: ${signInUrl}`,
-    ];
-    try {
-      await navigator.clipboard.writeText(lines.join('\n'));
-      setCopied(true);
-      setTimeout(() => setCopied(false), 2000);
-    } catch {
-      setError('Could not copy to clipboard.');
-    }
+  if (!isOwner) {
+    return (
+      <div className="rounded-lg border border-[var(--color-border)] bg-[var(--color-surface)] p-4 mb-4">
+        <div className="text-sm text-[var(--color-text-muted)]">
+          Only the workspace owner can add or remove team members.
+        </div>
+      </div>
+    );
   }
-
-  // Disabled until Phase 2.5 (per-admin connections) lands. Even with
-  // the workspace guard in enforce mode, there is still only ONE set of
-  // Composio/Gmail/Twilio connections per workspace today, so adding a
-  // second admin here would hand them access to the first admin's
-  // integrations. Phase 2.5 adds per-admin connection ownership; the
-  // button comes back then.
-  const addAdminDisabled = true;
 
   return (
     <div className="rounded-lg border border-[var(--color-border)] bg-[var(--color-surface)] p-4 mb-4 space-y-3">
-      <div className="flex items-center justify-between gap-2">
-        <div className="text-sm font-medium">Add an admin</div>
-        {addAdminDisabled && (
-          <span className="text-[10px] uppercase tracking-wide px-1.5 py-0.5 rounded-full border border-[var(--color-warning)]/40 bg-[var(--color-warning)]/10 text-[var(--color-warning)]">
-            disabled
-          </span>
-        )}
-      </div>
+      <div className="text-sm font-medium">Add someone</div>
 
-      {addAdminDisabled && (
-        <div className="rounded-md border border-[var(--color-warning)]/30 bg-[var(--color-warning)]/10 p-3 text-xs text-[var(--color-text-muted)]">
-          Available once per-admin connections (Phase 2.5) are set up. Right
-          now each workspace still has one shared set of Gmail / Composio /
-          Twilio credentials, so inviting a second admin would hand them
-          access to yours. We'll re-enable this once each admin can connect
-          their own accounts.
-        </div>
-      )}
-
-      <form onSubmit={addAdminDisabled ? (e) => e.preventDefault() : handleSubmit} className="space-y-3">
+      <form onSubmit={handleSubmit} className="space-y-3">
         <div>
           <label className="text-xs text-[var(--color-text-muted)] mb-1 block">Email</label>
           <input
@@ -119,120 +59,126 @@ function AddAdminForm({ onAdded }) {
             onChange={(e) => setEmail(e.target.value)}
             placeholder="teammate@example.com"
             autoComplete="off"
-            disabled={addAdminDisabled}
-            className="w-full px-3 py-2 rounded-md border border-[var(--color-border)] bg-[var(--color-bg)] text-base md:text-sm outline-none focus:border-[var(--color-accent)]/50 disabled:opacity-50 disabled:cursor-not-allowed"
+            className="w-full px-3 py-2 rounded-md border border-[var(--color-border)] bg-[var(--color-bg)] text-base md:text-sm outline-none focus:border-[var(--color-accent)]/50"
           />
         </div>
 
-        <div>
-          <label className="text-xs text-[var(--color-text-muted)] mb-1 block">Temporary password</label>
-          <div className="flex flex-col sm:flex-row gap-2">
-            <div className="flex-1 min-w-0">
-              <PasswordInput
-                value={password}
-                onChange={(e) => setPassword(e.target.value)}
-                placeholder="At least 8 characters"
-                autoComplete="new-password"
-                visible={passwordVisible}
-                onVisibleChange={setPasswordVisible}
-                disabled={addAdminDisabled}
-              />
+        <fieldset className="space-y-2">
+          <legend className="text-xs text-[var(--color-text-muted)] mb-1">How should they join?</legend>
+
+          <label
+            className={`flex items-start gap-3 p-3 rounded-md border cursor-pointer transition-colors ${
+              mode === 'new_workspace'
+                ? 'border-[var(--color-accent)]/60 bg-[var(--color-accent)]/5'
+                : 'border-[var(--color-border)] hover:border-[var(--color-accent)]/30'
+            }`}
+          >
+            <input
+              type="radio"
+              name="addMode"
+              value="new_workspace"
+              checked={mode === 'new_workspace'}
+              onChange={() => setMode('new_workspace')}
+              className="mt-0.5 accent-[var(--color-accent)]"
+            />
+            <div>
+              <div className="flex items-center gap-1.5 text-sm font-medium">
+                <Building size={14} />
+                New business (own workspace)
+              </div>
+              <p className="text-[11px] text-[var(--color-text-muted)] mt-0.5">
+                They get their own empty workspace with separate data, connections, and business profile. This is the default.
+              </p>
             </div>
-            <button
-              type="button"
-              onClick={handleGenerate}
-              disabled={addAdminDisabled}
-              className="shrink-0 flex items-center justify-center gap-1.5 text-sm px-3 py-2 rounded-md border border-[var(--color-border)] text-[var(--color-text-muted)] hover:text-[var(--color-accent)] hover:border-[var(--color-accent)]/40 disabled:opacity-50 disabled:cursor-not-allowed"
-            >
-              <Sparkles size={14} />
-              Generate
-            </button>
+          </label>
+
+          <label
+            className={`flex items-start gap-3 p-3 rounded-md border cursor-pointer transition-colors ${
+              mode === 'team_member'
+                ? 'border-[var(--color-accent)]/60 bg-[var(--color-accent)]/5'
+                : 'border-[var(--color-border)] hover:border-[var(--color-accent)]/30'
+            }`}
+          >
+            <input
+              type="radio"
+              name="addMode"
+              value="team_member"
+              checked={mode === 'team_member'}
+              onChange={() => setMode('team_member')}
+              className="mt-0.5 accent-[var(--color-accent)]"
+            />
+            <div>
+              <div className="flex items-center gap-1.5 text-sm font-medium">
+                <UserPlus size={14} />
+                Team member of my workspace
+              </div>
+              <p className="text-[11px] text-[var(--color-text-muted)] mt-0.5">
+                They join your workspace and see your data, tasks, and connections.
+              </p>
+            </div>
+          </label>
+        </fieldset>
+
+        {mode === 'team_member' && (
+          <div className="rounded-md border border-[var(--color-warning)]/30 bg-[var(--color-warning)]/10 p-3 flex items-start gap-2">
+            <ShieldAlert size={14} className="shrink-0 mt-0.5 text-[var(--color-warning)]" />
+            <div className="text-xs text-[var(--color-text-muted)]">
+              This person will have full access to your workspace: tasks, chat history, connected accounts,
+              and business profile. Only add people you trust.
+            </div>
           </div>
-          <p className="text-[11px] text-[var(--color-text-muted)] mt-1">
-            Share this with them securely - the password will only be shown once after the admin is added.
-          </p>
-        </div>
+        )}
 
         {error && <div className="text-xs text-[var(--color-danger)]">{error}</div>}
 
         <button
           type="submit"
-          disabled={busy || addAdminDisabled}
-          title={addAdminDisabled ? 'Available once workspace isolation is enabled' : ''}
+          disabled={busy}
           className="flex items-center gap-1.5 text-sm font-medium px-3 py-1.5 rounded-md bg-[var(--color-accent)] text-black hover:brightness-110 disabled:opacity-50 disabled:cursor-not-allowed"
         >
           <Plus size={14} />
-          {busy ? 'Adding…' : 'Add admin'}
+          {busy ? 'Adding…' : 'Send invite'}
         </button>
       </form>
 
       {result && (
         <div className="rounded-md border border-[var(--color-success)]/30 bg-[var(--color-success)]/10 p-3 space-y-2">
-          {result.alreadyAdmin ? (
+          {result.alreadyMember ? (
             <>
-              <div className="text-sm font-medium text-[var(--color-success)]">Nothing changed</div>
-              <p className="text-xs text-[var(--color-text-muted)] break-words">
-                <strong>{result.email}</strong> was already an admin. The typed password was not applied.
+              <div className="text-sm font-medium text-[var(--color-success)]">Already a member</div>
+              <p className="text-xs text-[var(--color-text-muted)]">
+                <strong>{result.email}</strong> is already in your workspace.
               </p>
-            </>
-          ) : result.existingAccount ? (
-            <>
-              <div className="text-sm font-medium text-[var(--color-success)]">Admin role granted</div>
-              <p className="text-xs text-[var(--color-text-muted)] break-words">
-                <strong>{result.email}</strong> already had an account - they're now an admin. Their existing password still
-                works; the password you typed was not applied.
-              </p>
-              <div className="flex flex-wrap items-center gap-2 pt-1">
-                <button
-                  type="button"
-                  onClick={handleCopy}
-                  className="flex items-center gap-1.5 text-xs px-2 py-1 rounded-md border border-[var(--color-border)] text-[var(--color-text-muted)] hover:text-[var(--color-accent)] hover:border-[var(--color-accent)]/40"
-                >
-                  {copied ? <Check size={12} /> : <Copy size={12} />}
-                  {copied ? 'Copied' : 'Copy details'}
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setResult(null)}
-                  className="text-xs text-[var(--color-text-muted)] hover:text-[var(--color-text)]"
-                >
-                  Dismiss
-                </button>
-              </div>
             </>
           ) : (
             <>
-              <div className="text-sm font-medium text-[var(--color-success)]">Admin added</div>
-              <div className="text-xs text-[var(--color-text-muted)] break-all">
-                <div><span className="text-[var(--color-text)]">Email:</span> {result.email}</div>
-                <div>
-                  <span className="text-[var(--color-text)]">Password:</span>{' '}
-                  <span className="font-[var(--font-mono)]">{result.password}</span>
-                </div>
-                <div><span className="text-[var(--color-text)]">Sign-in URL:</span> {window.location.origin}</div>
+              <div className="flex items-center gap-1.5 text-sm font-medium text-[var(--color-success)]">
+                <Mail size={14} />
+                {result.existingAccount ? 'Added' : 'Invite sent'}
               </div>
-              <p className="text-[11px] text-[var(--color-text-muted)]">
-                This password is only shown now. If they lose it, they can use "Forgot password?" on the sign-in page.
+              <p className="text-xs text-[var(--color-text-muted)]">
+                {result.existingAccount ? (
+                  <>
+                    <strong>{result.email}</strong> already had an account and has been{' '}
+                    {result.mode === 'team_member' ? 'added to your workspace' : 'given their own workspace'}.
+                  </>
+                ) : (
+                  <>
+                    An invite email has been sent to <strong>{result.email}</strong>.
+                    They'll set their own password when they click the link.
+                    {result.mode === 'new_workspace' && ' A new workspace has been created for them.'}
+                  </>
+                )}
               </p>
-              <div className="flex flex-wrap items-center gap-2 pt-1">
-                <button
-                  type="button"
-                  onClick={handleCopy}
-                  className="flex items-center gap-1.5 text-xs px-2 py-1 rounded-md border border-[var(--color-border)] text-[var(--color-text-muted)] hover:text-[var(--color-accent)] hover:border-[var(--color-accent)]/40"
-                >
-                  {copied ? <Check size={12} /> : <Copy size={12} />}
-                  {copied ? 'Copied' : 'Copy details'}
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setResult(null)}
-                  className="text-xs text-[var(--color-text-muted)] hover:text-[var(--color-text)]"
-                >
-                  Dismiss
-                </button>
-              </div>
             </>
           )}
+          <button
+            type="button"
+            onClick={() => setResult(null)}
+            className="text-xs text-[var(--color-text-muted)] hover:text-[var(--color-text)]"
+          >
+            Dismiss
+          </button>
         </div>
       )}
     </div>
@@ -242,9 +188,11 @@ function AddAdminForm({ onAdded }) {
 function AdminRow({ admin, onRemoved }) {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState(null);
+  const user = useStore((s) => s.user);
+  const isOwner = user?.workspaceRole === 'owner';
 
   async function handleRemove() {
-    if (!window.confirm(`Remove ${admin.email || admin.id} from the admin team?`)) return;
+    if (!window.confirm(`Remove ${admin.email || admin.id} from the team?`)) return;
     setBusy(true);
     setError(null);
     try {
@@ -266,18 +214,32 @@ function AdminRow({ admin, onRemoved }) {
               you
             </span>
           )}
+          {admin.workspaceRole && (
+            <span className={`text-[10px] px-1.5 py-0.5 rounded-full border shrink-0 ${
+              admin.workspaceRole === 'owner'
+                ? 'border-[var(--color-success)]/30 bg-[var(--color-success)]/10 text-[var(--color-success)]'
+                : 'border-[var(--color-border)] text-[var(--color-text-muted)]'
+            }`}>
+              {admin.workspaceRole}
+            </span>
+          )}
+          {!admin.inMyWorkspace && !admin.isYou && (
+            <span className="text-[10px] px-1.5 py-0.5 rounded-full border border-[var(--color-border)] text-[var(--color-text-muted)] shrink-0">
+              other workspace
+            </span>
+          )}
         </div>
         <div className="text-[11px] text-[var(--color-text-muted)]">
           Last sign-in: {formatDate(admin.lastSignInAt)}
         </div>
         {error && <div className="text-[11px] text-[var(--color-danger)] mt-1">{error}</div>}
       </div>
-      {!admin.isYou && (
+      {!admin.isYou && isOwner && admin.inMyWorkspace && (
         <button
           type="button"
           disabled={busy}
           onClick={handleRemove}
-          title="Remove admin"
+          title="Remove from team"
           className="shrink-0 self-end sm:self-auto flex items-center gap-1.5 text-xs font-medium px-2.5 py-1.5 rounded-md border border-[var(--color-border)] text-[var(--color-text-muted)] hover:text-[var(--color-danger)] hover:border-[var(--color-danger)]/40 disabled:opacity-40"
         >
           <Trash2 size={12} />
@@ -323,9 +285,6 @@ function WorkspaceHealth() {
     }
   }
 
-  // One-shot fetch on mount. No polling - this is a diagnostic read, not
-  // a live feed. The explicit Refresh button covers "I just exercised the
-  // app, show me what landed".
   useEffect(() => {
     load();
   }, []);
@@ -439,6 +398,8 @@ export default function Team() {
   const [admins, setAdmins] = useState([]);
   const [loaded, setLoaded] = useState(false);
   const [error, setError] = useState(null);
+  const user = useStore((s) => s.user);
+  const isOwner = user?.workspaceRole === 'owner';
 
   async function refresh() {
     try {
@@ -462,14 +423,14 @@ export default function Team() {
         <h1 className="font-[var(--font-display)] text-xl font-semibold truncate">Team</h1>
       </div>
       <p className="text-sm text-[var(--color-text-muted)] mb-4">
-        Admins can see everything and do everything in this dashboard - only add people you trust.
+        Manage who can access this dashboard. Each person gets an email invite to set their own password.
       </p>
 
       <div className="rounded-md border border-[var(--color-warning)]/30 bg-[var(--color-warning)]/10 p-3 mb-4 flex items-start gap-2">
         <ShieldAlert size={14} className="shrink-0 mt-0.5 text-[var(--color-warning)]" />
         <div className="text-xs text-[var(--color-text-muted)]">
-          A new admin's temporary password is shown once, right after they're added. Share it securely - they can change it
-          with "Forgot password?" on the sign-in page.
+          New admins receive an email invite and set their own password — you never see or handle it.
+          {isOwner ? ' Team members share your workspace data; new businesses get their own.' : ''}
         </div>
       </div>
 
@@ -487,9 +448,11 @@ export default function Team() {
         )}
       </div>
 
-      <div className="mt-6">
-        <WorkspaceHealth />
-      </div>
+      {isOwner && (
+        <div className="mt-6">
+          <WorkspaceHealth />
+        </div>
+      )}
     </div>
   );
 }

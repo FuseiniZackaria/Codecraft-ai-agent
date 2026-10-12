@@ -231,7 +231,7 @@ export const api = {
 
   // --- Team (admin management) ---
   listTeam: () => request('/team'),
-  addAdmin: (email, password) => request('/team', { method: 'POST', body: JSON.stringify({ email, password }) }),
+  addAdmin: (email, mode) => request('/team', { method: 'POST', body: JSON.stringify({ email, mode }) }),
   removeAdmin: (userId) => request(`/team/${userId}`, { method: 'DELETE' }),
 
   // --- Workspace (admin-only observability) ---

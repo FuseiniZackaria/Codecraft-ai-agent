@@ -3,11 +3,10 @@ const { createClient } = require('@supabase/supabase-js');
 const config = require('../config');
 const memory = require('../memory');
 const { teamMutationLimiter } = require('../core/rateLimits');
+const { invalidateUser, invalidateSoleWorkspace } = require('../core/workspaceContext');
 
 const router = express.Router();
 
-// Service-key client stays on the server - it bypasses RLS, so it must
-// never be exposed through a response, log line, or client-side bundle.
 const supabase = config.supabase.url && config.supabase.serviceKey
   ? createClient(config.supabase.url, config.supabase.serviceKey)
   : null;
@@ -21,7 +20,6 @@ function requireSupabase(res) {
 }
 
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-const MIN_PASSWORD_LENGTH = 8;
 
 async function getAdminRoleId() {
   const { data, error } = await supabase.from('roles').select('id').eq('name', 'admin').maybeSingle();
@@ -31,8 +29,6 @@ async function getAdminRoleId() {
 }
 
 async function findUserByEmail(email) {
-  // supabase.auth.admin.listUsers paginates - walk pages until we find them
-  // or run out. 1000 users per page is the service limit.
   const target = email.trim().toLowerCase();
   let page = 1;
   const perPage = 1000;
@@ -44,14 +40,17 @@ async function findUserByEmail(email) {
     if (match) return match;
     if (users.length < perPage) return null;
     page += 1;
-    if (page > 50) return null; // hard cap - 50k users is well past any realistic team dashboard
+    if (page > 50) return null;
   }
 }
 
+// ---------- GET /team ----------
 router.get('/', async (req, res) => {
   if (!requireSupabase(res)) return;
   try {
     const adminRoleId = await getAdminRoleId();
+    const callerWorkspaceId = req.user?.workspaceId || null;
+
     const { data: adminRows, error: rolesError } = await supabase
       .from('user_roles')
       .select('user_id')
@@ -61,8 +60,17 @@ router.get('/', async (req, res) => {
     const adminIds = new Set((adminRows || []).map((r) => r.user_id));
     if (adminIds.size === 0) return res.json([]);
 
-    // Walk auth.users pages, keeping only the admins we care about. Avoids
-    // one getUser() round-trip per admin.
+    // Fetch workspace membership for context
+    let memberRows = [];
+    if (callerWorkspaceId) {
+      const { data: mRows } = await supabase
+        .from('workspace_members')
+        .select('user_id, role, workspace_id')
+        .eq('workspace_id', callerWorkspaceId);
+      memberRows = mRows || [];
+    }
+    const memberMap = new Map(memberRows.map((m) => [m.user_id, m]));
+
     const found = [];
     let page = 1;
     const perPage = 1000;
@@ -73,12 +81,15 @@ router.get('/', async (req, res) => {
       const users = data?.users || [];
       for (const u of users) {
         if (remaining.has(u.id)) {
+          const membership = memberMap.get(u.id);
           found.push({
             id: u.id,
             email: u.email || null,
             createdAt: u.created_at || null,
             lastSignInAt: u.last_sign_in_at || null,
             isYou: u.id === req.user.id,
+            workspaceRole: membership?.role || null,
+            inMyWorkspace: !!membership,
           });
           remaining.delete(u.id);
         }
@@ -95,60 +106,56 @@ router.get('/', async (req, res) => {
   }
 });
 
+// ---------- POST /team ----------
 router.post('/', teamMutationLimiter, async (req, res) => {
-  // Phase 2.3d/2.5 safety: refuse admin creation server-side too, not
-  // just via the disabled frontend form. Until per-admin connections
-  // land in Phase 2.5, a second admin would share the first admin's
-  // Composio/Gmail/Twilio credentials - the UI makes that explicit,
-  // and this guard blocks a crafted request that bypasses the UI.
-  return res.status(409).json({
-    error: 'Adding admins is disabled until Phase 2.5 (per-admin connections) lands. ' +
-      'Right now each workspace has one shared set of credentials; a second admin would gain ' +
-      'access to the first admin\'s Gmail / Composio / Twilio connections.',
-  });
-
-  // eslint-disable-next-line no-unreachable
   if (!requireSupabase(res)) return;
-  const { email, password } = req.body || {};
+
+  const { email, mode } = req.body || {};
   const trimmedEmail = (email || '').trim();
+  const addMode = mode === 'team_member' ? 'team_member' : 'new_workspace';
+
   if (!trimmedEmail || !EMAIL_RE.test(trimmedEmail)) {
     return res.status(400).json({ error: 'A valid email is required.' });
   }
-  if (!password || typeof password !== 'string' || password.length < MIN_PASSWORD_LENGTH) {
-    return res.status(400).json({ error: `Password must be at least ${MIN_PASSWORD_LENGTH} characters.` });
+
+  if (req.user.workspaceRole !== 'owner') {
+    return res.status(403).json({ error: 'Only the workspace owner can add team members.' });
+  }
+
+  const callerWorkspaceId = req.user?.workspaceId;
+  if (addMode === 'team_member' && !callerWorkspaceId) {
+    return res.status(400).json({ error: 'You must have a workspace before adding team members.' });
   }
 
   try {
     const adminRoleId = await getAdminRoleId();
 
+    // --- Create or find the user ---
     let userId;
     let userEmail;
     let existingAccount = false;
-    let createdHere = false;
+    let inviteSent = false;
 
-    const { data: created, error: createError } = await supabase.auth.admin.createUser({
-      email: trimmedEmail,
-      password,
-      email_confirm: true,
-    });
-
-    if (createError) {
-      // Supabase returns a 422 / "User already registered" / "already been
-      // registered" style message. Fall back to lookup rather than failing.
-      const existing = await findUserByEmail(trimmedEmail);
-      if (!existing) {
-        return res.status(400).json({ error: createError.message });
-      }
+    const existing = await findUserByEmail(trimmedEmail);
+    if (existing) {
       userId = existing.id;
       userEmail = existing.email;
       existingAccount = true;
     } else {
-      userId = created.user.id;
-      userEmail = created.user.email;
-      createdHere = true;
+      const redirectUrl = `${req.headers.origin || ''}/`;
+      const { data: invited, error: inviteError } = await supabase.auth.admin.inviteUserByEmail(
+        trimmedEmail,
+        { redirectTo: redirectUrl },
+      );
+      if (inviteError) {
+        return res.status(400).json({ error: inviteError.message });
+      }
+      userId = invited.user.id;
+      userEmail = invited.user.email;
+      inviteSent = true;
     }
 
-    // Check if they're already an admin before inserting.
+    // --- Check they're not already an admin ---
     const { data: existingRoleRow, error: existingRoleError } = await supabase
       .from('user_roles')
       .select('user_id')
@@ -156,54 +163,110 @@ router.post('/', teamMutationLimiter, async (req, res) => {
       .eq('role_id', adminRoleId)
       .maybeSingle();
     if (existingRoleError) {
-      if (createdHere) {
-        await supabase.auth.admin.deleteUser(userId).catch(() => {});
-      }
       return res.status(500).json({ error: `Failed to check role: ${existingRoleError.message}` });
     }
+
+    // If already admin, check workspace membership
     if (existingRoleRow) {
-      return res.json({
-        id: userId,
-        email: userEmail,
-        existingAccount: true,
-        alreadyAdmin: true,
-      });
+      const { data: memberRow } = await supabase
+        .from('workspace_members')
+        .select('workspace_id')
+        .eq('user_id', userId)
+        .maybeSingle();
+
+      if (addMode === 'team_member' && memberRow && memberRow.workspace_id !== callerWorkspaceId) {
+        return res.status(409).json({ error: 'This admin already belongs to a different workspace.' });
+      }
+      if (addMode === 'team_member' && memberRow && memberRow.workspace_id === callerWorkspaceId) {
+        return res.json({ id: userId, email: userEmail, existingAccount: true, alreadyMember: true });
+      }
+      if (addMode === 'new_workspace' && memberRow) {
+        return res.status(409).json({ error: 'This admin already has a workspace.' });
+      }
     }
 
-    const { error: insertError } = await supabase
-      .from('user_roles')
-      .insert({ user_id: userId, role_id: adminRoleId });
-    if (insertError) {
-      // Only clean up if we just created the account - never delete an
-      // account that already belonged to someone.
-      if (createdHere) {
-        await supabase.auth.admin.deleteUser(userId).catch(() => {});
+    // --- Grant admin role ---
+    if (!existingRoleRow) {
+      const { error: insertError } = await supabase
+        .from('user_roles')
+        .insert({ user_id: userId, role_id: adminRoleId });
+      if (insertError) {
+        return res.status(500).json({ error: `Failed to grant admin role: ${insertError.message}` });
       }
-      return res.status(500).json({ error: `Failed to grant admin role: ${insertError.message}` });
     }
+
+    // --- Workspace setup ---
+    if (addMode === 'new_workspace') {
+      const workspaceName = `${trimmedEmail.split('@')[0]}'s workspace`;
+
+      const { data: wsData, error: wsError } = await supabase
+        .from('workspaces')
+        .insert({ name: workspaceName, owner_user_id: userId })
+        .select('id')
+        .single();
+      if (wsError) {
+        return res.status(500).json({ error: `Failed to create workspace: ${wsError.message}` });
+      }
+
+      await supabase
+        .from('workspace_members')
+        .insert({ workspace_id: wsData.id, user_id: userId, role: 'owner' });
+
+      await supabase
+        .from('business_profile')
+        .insert({ workspace_id: wsData.id })
+        .then(() => {});
+
+      invalidateSoleWorkspace();
+    } else {
+      // team_member: check they're not already in another workspace
+      const { data: existingMembership } = await supabase
+        .from('workspace_members')
+        .select('workspace_id')
+        .eq('user_id', userId)
+        .maybeSingle();
+
+      if (existingMembership && existingMembership.workspace_id !== callerWorkspaceId) {
+        return res.status(409).json({ error: 'This user already belongs to a different workspace.' });
+      }
+
+      if (!existingMembership) {
+        const { error: memberError } = await supabase
+          .from('workspace_members')
+          .insert({ workspace_id: callerWorkspaceId, user_id: userId, role: 'member' });
+        if (memberError) {
+          return res.status(500).json({ error: `Failed to add to workspace: ${memberError.message}` });
+        }
+      }
+    }
+
+    invalidateUser(userId);
 
     try {
-      const workspaceId = req.user?.workspaceId || null;
-      await memory.audit(req.user.email || req.user.id, 'admin_granted', userEmail || userId, {
+      await memory.audit(req.user.email || req.user.id, 'admin_added', userEmail || userId, {
         targetUserId: userId,
+        mode: addMode,
         existingAccount,
-        workspaceId,
-      }, { workspaceId });
+        inviteSent,
+        workspaceId: callerWorkspaceId,
+      }, { workspaceId: callerWorkspaceId });
     } catch {
-      // Audit log failures must not leak the password or prevent success.
+      // Non-fatal
     }
 
     res.status(201).json({
       id: userId,
       email: userEmail,
       existingAccount,
-      alreadyAdmin: false,
+      inviteSent,
+      mode: addMode,
     });
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
 });
 
+// ---------- DELETE /team/:userId ----------
 router.delete('/:userId', teamMutationLimiter, async (req, res) => {
   if (!requireSupabase(res)) return;
   const { userId } = req.params;
@@ -212,9 +275,41 @@ router.delete('/:userId', teamMutationLimiter, async (req, res) => {
     return res.status(400).json({ error: "You can't remove yourself." });
   }
 
+  if (req.user.workspaceRole !== 'owner') {
+    return res.status(403).json({ error: 'Only the workspace owner can remove team members.' });
+  }
+
   try {
     const adminRoleId = await getAdminRoleId();
+    const callerWorkspaceId = req.user?.workspaceId;
 
+    // Only allow removing members of the caller's own workspace
+    if (callerWorkspaceId) {
+      const { data: targetMember } = await supabase
+        .from('workspace_members')
+        .select('workspace_id, role')
+        .eq('user_id', userId)
+        .maybeSingle();
+
+      if (targetMember && targetMember.workspace_id !== callerWorkspaceId) {
+        return res.status(403).json({ error: 'You can only remove members of your own workspace.' });
+      }
+
+      if (targetMember && targetMember.role === 'owner') {
+        return res.status(400).json({ error: "You can't remove a workspace owner. Transfer ownership first." });
+      }
+
+      // Remove from workspace_members
+      if (targetMember) {
+        await supabase
+          .from('workspace_members')
+          .delete()
+          .eq('user_id', userId)
+          .eq('workspace_id', callerWorkspaceId);
+      }
+    }
+
+    // Check they are an admin
     const { data: existingRoleRow, error: existingRoleError } = await supabase
       .from('user_roles')
       .select('user_id')
@@ -228,17 +323,7 @@ router.delete('/:userId', teamMutationLimiter, async (req, res) => {
       return res.status(404).json({ error: 'That user is not an admin.' });
     }
 
-    const { count, error: countError } = await supabase
-      .from('user_roles')
-      .select('*', { count: 'exact', head: true })
-      .eq('role_id', adminRoleId);
-    if (countError) {
-      return res.status(500).json({ error: `Failed to count admins: ${countError.message}` });
-    }
-    if ((count || 0) <= 1) {
-      return res.status(400).json({ error: "Can't remove the last admin." });
-    }
-
+    // Revoke admin role
     const { error: deleteError } = await supabase
       .from('user_roles')
       .delete()
@@ -253,16 +338,18 @@ router.delete('/:userId', teamMutationLimiter, async (req, res) => {
       const { data: userData } = await supabase.auth.admin.getUserById(userId);
       if (userData?.user?.email) targetEmail = userData.user.email;
     } catch {
-      // Non-fatal - fall back to the id in the audit record.
+      // Non-fatal
     }
 
+    invalidateUser(userId);
+
     try {
-      await memory.audit(req.user.email || req.user.id, 'admin_revoked', targetEmail, {
+      await memory.audit(req.user.email || req.user.id, 'admin_removed', targetEmail, {
         targetUserId: userId,
-        workspaceId: req.user?.workspaceId || null,
-      }, { workspaceId: req.user?.workspaceId || null });
+        workspaceId: callerWorkspaceId,
+      }, { workspaceId: callerWorkspaceId });
     } catch {
-      // Non-fatal.
+      // Non-fatal
     }
 
     res.json({ ok: true });

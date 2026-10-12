@@ -114,19 +114,32 @@ app.get('/api/public-config', (req, res) => {
 });
 
 app.use('/api/dashboard', requireAuth, requireRole('admin', 'client'), briefingDashboardRoutes);
-app.get('/api/me', requireAuth, (req, res) => {
-  res.json({
+app.get('/api/me', requireAuth, async (req, res) => {
+  const payload = {
     id: req.user.id,
     email: req.user.email,
     role: req.user.role,
     dashboardGoal: req.user.dashboardGoal,
-    // Phase 2.1: expose current workspace. Null before the migration or for
-    // users who aren't yet in a workspace - frontend treats null as legacy
-    // behavior ("one shared workspace") until Phase 2.3 lands.
     workspaceId: req.user.workspaceId || null,
     workspaceName: req.user.workspaceName || null,
     workspaceRole: req.user.workspaceRole || null,
-  });
+  };
+
+  if (req.user.role === 'admin' && req.user.workspaceId) {
+    try {
+      const profile = await memory.getBusinessProfile({ workspaceId: req.user.workspaceId });
+      const conns = await memory.listWorkspaceConnections(req.user.workspaceId);
+      const profileDone = !!(profile && profile.display_name);
+      const connectionsDone = Array.isArray(conns) && conns.some((c) => c.status === 'connected');
+      if (!profileDone || !connectionsDone) {
+        payload.onboarding = { profileDone, connectionsDone };
+      }
+    } catch {
+      // Non-fatal — skip onboarding hints if the lookup fails.
+    }
+  }
+
+  res.json(payload);
 });
 
 // Dedicated workspace lookup. Same payload as the workspace block of /api/me,
