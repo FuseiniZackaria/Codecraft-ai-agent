@@ -81,7 +81,7 @@ async function countSentToday(tool) {
  * @param {string} params.draftReply - the drafted reply text
  * @returns {Promise<{safe: boolean, reason: string}>}
  */
-async function classifyReplySafety({ channel, incomingMessage, draftReply }) {
+async function classifyReplySafety({ channel, incomingMessage, draftReply, workspaceId = null }) {
   const incomingRisk = containsRiskKeyword(incomingMessage);
   if (incomingRisk) {
     return { safe: false, reason: `Customer's message touches a risk-category topic ("${incomingRisk}") - always routed to human review regardless of business info` };
@@ -103,18 +103,19 @@ async function classifyReplySafety({ channel, incomingMessage, draftReply }) {
     return { safe: false, reason: `Daily auto-reply limit (${config.autoReply.dailyLimitPerChannel}) already reached for ${channel}` };
   }
 
-  if (!hasBusinessKnowledge()) {
-    return { safe: false, reason: 'No business info configured yet - nothing for the AI to confidently ground an answer in, so it defaults to human review' };
+  if (!(await hasBusinessKnowledge(workspaceId))) {
+    return { safe: false, reason: 'No business info configured yet - nothing to confidently ground an answer in, so it defaults to human review' };
   }
 
   // Final check: is this reply actually supported by the business info
   // provided, or would it require guessing? Fails CLOSED on any error.
   try {
     const provider = selectProvider({});
+    const businessLine = await businessContextLine(workspaceId);
     const result = await provider.complete({
       maxTokens: 60,
       system:
-        `${businessContextLine()}You are a strict fact-checker for an auto-reply customer messaging bot. Respond ` +
+        `${businessLine}You are a strict fact-checker for an auto-reply customer messaging bot. Respond ` +
         'with ONLY "GROUNDED" or "NOT_GROUNDED". Say GROUNDED only if every factual claim in the drafted reply is ' +
         'directly supported by the business knowledge above - the customer\'s question is genuinely covered by it, ' +
         'not just plausible. If the reply states ANY specific fact - a URL, website, phone number, address, price, ' +

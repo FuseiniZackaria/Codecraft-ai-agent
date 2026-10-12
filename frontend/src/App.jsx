@@ -18,6 +18,7 @@ import BriefingDashboard from './pages/BriefingDashboard';
 import Departments from './pages/Departments';
 import DepartmentPage from './pages/DepartmentPage';
 import Team from './pages/Team';
+import Settings from './pages/Settings';
 import NotFound from './pages/NotFound';
 import { LogOut, WifiOff } from 'lucide-react';
 import { useStore } from './store/useStore';
@@ -241,6 +242,7 @@ function AdminLayout({ connectionError }) {
             <Route path="/plugins" element={<Plugins />} />
             <Route path="/chat" element={<Chat />} />
             <Route path="/team" element={<Team />} />
+            <Route path="/settings" element={<Settings />} />
 
             {/* Department routes */}
             <Route path="/departments" element={<Departments />} />

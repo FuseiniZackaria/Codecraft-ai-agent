@@ -56,10 +56,13 @@ ${departmentList}
 - **Manual work goes to the owner's email.** If the user asks you to do something you can't (e.g. a task no agent covers), say so plainly and suggest a next step, don't invent a workflow.`;
 }
 
-function buildPerRequestContextBlock({ voice = false } = {}) {
+async function buildPerRequestContextBlock({ voice = false, workspaceId = null } = {}) {
   const now = new Date();
   const date = now.toISOString().slice(0, 10);
-  const businessLine = businessContextLine().trim();
+  // Per-workspace business block via the Phase 2.4 business_profile row,
+  // falling back to legacy env/business.json when the workspace row is
+  // still blank.
+  const businessLine = (await businessContextLine(workspaceId)).trim();
   const parts = [`Today's date: ${date}.`];
   if (businessLine) parts.push(businessLine);
   if (voice) {

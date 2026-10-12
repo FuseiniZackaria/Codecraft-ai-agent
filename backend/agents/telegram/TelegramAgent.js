@@ -42,10 +42,11 @@ class TelegramAgent extends BaseAgent {
     const workspaceId = await getSoleWorkspaceId();
 
     const provider = selectProvider({});
+    const businessLine = await businessContextLine(workspaceId);
     const result = await provider.complete({
       maxTokens: 400,
       system:
-        `${businessContextLine()}You are drafting a Telegram reply to a customer message, in the ` +
+        `${businessLine}You are drafting a Telegram reply to a customer message, in the ` +
         `business's voice - warm, brief, direct, not robotic. Respond with ONLY the reply text, ` +
         `nothing else - no quotes, no explanation.`,
       prompt: `Customer's message: "${body}"`,
@@ -61,7 +62,7 @@ class TelegramAgent extends BaseAgent {
 
     let autoSent = false;
     if (config.autoReply.telegram.enabled) {
-      const safety = await classifyReplySafety({ channel: 'telegram', incomingMessage: body, draftReply: draft });
+      const safety = await classifyReplySafety({ channel: 'telegram', incomingMessage: body, draftReply: draft, workspaceId });
       await activityLog.record(this.role, safety.safe ? 'auto_reply_approved' : 'auto_reply_blocked', from, {
         approvalTaskId: approvalTask.id,
         reason: safety.reason,
@@ -81,7 +82,7 @@ class TelegramAgent extends BaseAgent {
 
     if (!autoSent) {
       notifications
-        .notifyOwnerPendingApproval({ channel: 'telegram', from, customerMessage: body, draftReply: draft, approvalTaskId: approvalTask.id })
+        .notifyOwnerPendingApproval({ channel: 'telegram', from, customerMessage: body, draftReply: draft, approvalTaskId: approvalTask.id, workspaceId })
         .catch((err) => console.warn(`[TelegramAgent] owner notification failed: ${err.message}`));
     }
 

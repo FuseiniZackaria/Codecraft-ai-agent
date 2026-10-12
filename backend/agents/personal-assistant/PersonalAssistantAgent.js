@@ -1,6 +1,7 @@
 const BaseAgent = require('../base/BaseAgent');
 const memory = require('../../memory');
 const config = require('../../config');
+const businessProfile = require('../../core/businessProfile');
 
 // Pulls a bare email address out of whatever format the "from" field shows up
 // in - "Name <email>", markdown "[text](mailto:email)", or a bare address.
@@ -9,8 +10,15 @@ function extractEmail(from) {
   return match ? match[0].toLowerCase() : null;
 }
 
-function myEmailSet() {
-  const set = new Set();
+/**
+ * Phase 2.4: self-email set for the triage filter is now sourced from the
+ * workspace's business_profile row - business_email + the Settings-page
+ * "other email addresses I use" list - instead of (only) the global env
+ * MY_EMAIL_ADDRESSES. Legacy env values are still merged in for a
+ * single-tenant install where the per-workspace row is empty.
+ */
+async function myEmailSet(workspaceId) {
+  const set = await businessProfile.selfEmailSet(workspaceId);
   for (const addr of config.myEmailAddresses || []) set.add(addr.toLowerCase());
   if (config.applicant?.email) set.add(config.applicant.email.toLowerCase());
   return set;
@@ -97,8 +105,8 @@ class PersonalAssistantAgent extends BaseAgent {
    * no "LLM thought this looked automated"; a hardcoded rule either keeps it
    * or drops it.
    */
-  async filterMessages(messages) {
-    const mine = myEmailSet();
+  async filterMessages(messages, workspaceId = null) {
+    const mine = await myEmailSet(workspaceId);
 
     // 1. Collect every outreach thread id and recipient (sales lane) so we
     //    can drop messages that belong to it either by threadId or by sender.
@@ -182,7 +190,7 @@ class PersonalAssistantAgent extends BaseAgent {
 
     if (step.type === 'tool_call' && step.tool === 'gmail.readInbox') {
       const messages = result?.messages || [];
-      const { survivors, counters } = await this.filterMessages(messages);
+      const { survivors, counters } = await this.filterMessages(messages, task?.workspace_id || null);
       // Stash counters on the task for reflect() to pick up later. Using a
       // field on the task object avoids coupling to the orchestrator's
       // internal result-array format.
@@ -239,7 +247,7 @@ class PersonalAssistantAgent extends BaseAgent {
         .map((t) => t.payload.threadId)
     );
 
-    const mine = myEmailSet();
+    const mine = await myEmailSet(task?.workspace_id || null);
     let created = 0;
     let dropped = 0;
     for (const item of toReply) {

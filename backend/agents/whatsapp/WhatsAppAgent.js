@@ -41,10 +41,11 @@ class WhatsAppAgent extends BaseAgent {
     const workspaceId = await getSoleWorkspaceId();
 
     const provider = selectProvider({});
+    const businessLine = await businessContextLine(workspaceId);
     const result = await provider.complete({
       maxTokens: 400,
       system:
-        `${businessContextLine()}You are drafting a WhatsApp reply to a customer message, in the ` +
+        `${businessLine}You are drafting a WhatsApp reply to a customer message, in the ` +
         `business's voice - warm, brief, direct, not robotic. Respond with ONLY the reply text, ` +
         `nothing else - no quotes, no explanation.`,
       prompt: `Customer's message: "${body}"`,
@@ -60,7 +61,7 @@ class WhatsAppAgent extends BaseAgent {
 
     let autoSent = false;
     if (config.autoReply.whatsapp.enabled) {
-      const safety = await classifyReplySafety({ channel: 'whatsapp', incomingMessage: body, draftReply: draft });
+      const safety = await classifyReplySafety({ channel: 'whatsapp', incomingMessage: body, draftReply: draft, workspaceId });
       await activityLog.record(this.role, safety.safe ? 'auto_reply_approved' : 'auto_reply_blocked', from, {
         approvalTaskId: approvalTask.id,
         reason: safety.reason,
@@ -76,7 +77,7 @@ class WhatsAppAgent extends BaseAgent {
 
     if (!autoSent) {
       notifications
-        .notifyOwnerPendingApproval({ channel: 'whatsapp', from, customerMessage: body, draftReply: draft, approvalTaskId: approvalTask.id })
+        .notifyOwnerPendingApproval({ channel: 'whatsapp', from, customerMessage: body, draftReply: draft, approvalTaskId: approvalTask.id, workspaceId })
         .catch((err) => console.warn(`[WhatsAppAgent] owner notification failed: ${err.message}`));
     }
 

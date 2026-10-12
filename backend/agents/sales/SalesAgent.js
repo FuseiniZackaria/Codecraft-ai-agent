@@ -411,11 +411,24 @@ class SalesAgent extends BaseAgent {
       //
       // This is an owner self-notification, not outreach to another person,
       // so it goes through the Gmail guard's `systemDigest` path. The guard
-      // enforces that systemDigest sends are only ever addressed to
-      // config.applicant.email - no arbitrary recipient can slip through
-      // this call site. Subject is prefixed with [CodeCraft/System] so
-      // inbox triage filters recognize it as app-generated mail and skip it.
-      if (manualApplyJobs.length > 0 && config.applicant?.email) {
+      // enforces that systemDigest sends only ever go to the workspace's
+      // configured owner email (business_profile.business_email, falling
+      // back to APPLICANT_EMAIL in env) - no arbitrary recipient can slip
+      // through. Subject is prefixed with [CodeCraft/System] so inbox
+      // triage filters recognize it as app-generated mail and skip it.
+      const workspaceId = this._currentTask?.workspace_id || null;
+      const businessProfile = require('../../core/businessProfile');
+      let ownerEmail = null;
+      try { ownerEmail = await businessProfile.ownerEmail(workspaceId); } catch { /* non-fatal */ }
+      if (!ownerEmail) ownerEmail = config.applicant?.email || null;
+      let ownerName = null;
+      try {
+        const p = await businessProfile.getProfile(workspaceId);
+        ownerName = p?.display_name || null;
+      } catch { /* non-fatal */ }
+      if (!ownerName) ownerName = config.applicant?.fullName || 'there';
+
+      if (manualApplyJobs.length > 0 && ownerEmail) {
         try {
           const jobLines = manualApplyJobs
             .map((j, i) => `${i + 1}. ${j.jobTitle} at ${j.company}\n   Apply: ${j.url || '(no URL)'}`)
@@ -423,17 +436,16 @@ class SalesAgent extends BaseAgent {
           await toolRegistry.call(
             'gmail.sendEmail',
             {
-              to: config.applicant.email,
+              to: ownerEmail,
               subject: `[CodeCraft/System] ${manualApplyJobs.length} job(s) need your manual application`,
               body:
-                `Hi Fuseini,\n\n` +
-                `CodeCraft found ${manualApplyJobs.length} job(s) that require manual application ` +
+                `Hi ${ownerName},\n\n` +
+                `Found ${manualApplyJobs.length} job(s) that require manual application ` +
                 `because they need you to be logged in (LinkedIn, Wellfound, etc.).\n\n` +
                 `${jobLines}\n\n` +
-                `The rest of your jobs are in the Tasks page awaiting your approval to auto-submit.\n\n` +
-                `— CodeCraft`,
+                `The rest of your jobs are in the Tasks page awaiting your approval to auto-submit.\n`,
             },
-            { role: 'sales', systemDigest: true }
+            { role: 'sales', systemDigest: true, workspaceId }
           );
           console.log(`[SalesAgent] sent manual-apply digest to the configured owner address (${manualApplyJobs.length} jobs)`);
         } catch (emailErr) {

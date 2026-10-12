@@ -110,9 +110,14 @@ class BaseAgent {
         ? `Context from previous steps:\n${priorContext}\n\n---\n\nNow: ${step.instruction}`
         : step.instruction;
       const guidance = guidanceRegistry.guidanceLine(step.instruction);
+      // Phase 2.4: businessContextLine now reads from the workspace's
+      // business_profile row. Falls back to the legacy env/business.json
+      // block when workspaceId is null (legacy single-tenant path) or
+      // when the row is still blank.
+      const businessLine = await businessContextLine(workspaceId);
       const result = await provider.complete({
         prompt,
-        system: `${businessContextLine()}${guidance}You are the ${this.role} inside CodeCraft AI. Be concise and actionable. If business context is provided above, use it instead of asking the user for it.`,
+        system: `${businessLine}${guidance}You are the ${this.role}, a drafting assistant inside the owner's business. Be concise and actionable. If business context is provided above, use it instead of asking the user for it.`,
         maxTokens: step.maxTokens,
       });
       await activityLog.record(this.role, 'llm_call', provider.provider, {

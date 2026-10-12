@@ -1,12 +1,33 @@
 const config = require('../config');
+const businessProfile = require('./businessProfile');
 
 /**
- * Builds the block of text every drafting/classification prompt in this
- * codebase prefixes onto its system message. Only includes fields that are
- * actually filled in - an empty business.json produces an empty string,
- * so nothing breaks for someone who hasn't configured this yet.
+ * Prompt-ready business-context block.
+ *
+ * Phase 2.4 added a per-workspace variant that reads from the
+ * business_profile Supabase table. All new call sites should pass a
+ * workspaceId and `await` the result. For backwards compatibility with
+ * tests and scripts that still call it synchronously, invoking without
+ * a workspaceId returns the single-tenant env/business.json block exactly
+ * as before.
+ *
+ *   // new, per-workspace
+ *   const line = await businessContextLine(task.workspace_id);
+ *
+ *   // legacy single-tenant (still supported)
+ *   const line = businessContextLine();
  */
-function businessContextLine() {
+function businessContextLine(workspaceId) {
+  if (workspaceId) return businessProfile.profileContextLine(workspaceId);
+  return legacySyncBlock();
+}
+
+/**
+ * Synchronous shape of the pre-Phase-2.4 helper. Reads config.business
+ * (loaded from business.json at startup) and renders the same block the
+ * old helper rendered. Kept purely so legacy sync call sites still work.
+ */
+function legacySyncBlock() {
   const b = config.business || {};
   const parts = [];
   if (b.companyName) parts.push(`Company: ${b.companyName}`);
@@ -26,15 +47,19 @@ function businessContextLine() {
     parts.push(`FAQ:\n${faqEntries.map((f) => `Q: ${f.question}\nA: ${f.answer}`).join('\n')}`);
   }
 
-  return parts.length ? `Business knowledge (only use what's stated here - never guess beyond it):\n${parts.join('\n')}\n\n` : '';
+  return parts.length
+    ? `Business knowledge (only use what's stated here - never guess beyond it):\n${parts.join('\n')}\n\n`
+    : '';
 }
 
 /**
- * The raw knowledge object itself, for callers (like the auto-reply safety
- * classifier) that need to reason about whether the knowledge base is
- * substantial enough to cover a given question, not just render it as text.
+ * Returns true when there's enough business context (from either source)
+ * to let auto-reply classifiers judge "grounded enough to send". Async
+ * when a workspaceId is supplied so a brand-new workspace with its own
+ * Settings-page knowledge is correctly recognised.
  */
-function hasBusinessKnowledge() {
+function hasBusinessKnowledge(workspaceId) {
+  if (workspaceId) return businessProfile.hasKnowledge(workspaceId);
   const b = config.business || {};
   return !!(
     b.description || b.hours || b.location || b.website || b.services || b.pricing || b.policies ||

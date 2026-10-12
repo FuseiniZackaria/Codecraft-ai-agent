@@ -183,9 +183,18 @@ async function guardSend({ to, subject, body }, sendContext = {}) {
 
   // --- Internal owner-digest path. Must be addressed only to the owner. ---
   if (ctx.systemDigest) {
-    const ownerEmail = normalizeEmail(config.applicant?.email);
+    // Phase 2.4: owner address comes from the workspace's business_profile
+    // row first (so a two-workspace deployment doesn't ever send one admin's
+    // digest to the other admin's inbox), falling back to the legacy
+    // APPLICANT_EMAIL env for a single-tenant install.
+    const businessProfile = require('../../core/businessProfile');
+    const profileEmail = ctx.workspaceId
+      ? await businessProfile.ownerEmail(ctx.workspaceId)
+      : null;
+    const ownerEmail = normalizeEmail(profileEmail || config.applicant?.email);
     if (!ownerEmail) {
-      throw new GmailGuardError('owner_not_configured', 'systemDigest requires APPLICANT_EMAIL to be configured.');
+      throw new GmailGuardError('owner_not_configured',
+        'systemDigest requires an owner address - set business_email on the workspace profile or APPLICANT_EMAIL in env.');
     }
     if (normalizedTo !== ownerEmail) {
       await audit('send_refused', {
@@ -193,6 +202,7 @@ async function guardSend({ to, subject, body }, sendContext = {}) {
         to: normalizedTo,
         subject,
         role: ctx.role || null,
+        workspaceId: ctx.workspaceId || null,
       });
       throw new GmailGuardError('systemDigest_recipient_mismatch',
         `systemDigest sends are limited to the owner address; refused send to ${normalizedTo}.`,

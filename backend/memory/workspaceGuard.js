@@ -122,6 +122,7 @@ const ROW_WRITE_METHODS = new Set([
   'updateSkill',
   'addFact',
   'upsertAssistantUsage',
+  'updateBusinessProfile',
 ]);
 
 /**

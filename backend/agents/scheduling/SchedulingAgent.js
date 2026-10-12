@@ -93,7 +93,7 @@ class SchedulingAgent extends BaseAgent {
 
     const slotsToOffer = freeSlots.slice(0, config.scheduling.slotsToPropose);
 
-    const draft = await this.draftProposal(state.opportunity, slotsToOffer);
+    const draft = await this.draftProposal(state.opportunity, slotsToOffer, workspaceId);
 
     const approvalTask = await this.createApprovalTask({
       instruction: `Propose call times to ${state.opportunity.contactEmail} re: ${state.opportunity.jobTitle} at ${state.opportunity.company}`,
@@ -202,13 +202,14 @@ class SchedulingAgent extends BaseAgent {
    * slots - the prompt hands the LLM the exact ISO times and instructs it
    * to phrase them naturally, never to invent or adjust them.
    */
-  async draftProposal(opportunity, slots) {
+  async draftProposal(opportunity, slots, workspaceId = null) {
     const slotList = slots.map((s) => `${s.start} to ${s.end}`).join('\n');
 
     const provider = selectProvider({});
+    const businessLine = await businessContextLine(workspaceId);
     const result = await provider.complete({
       system:
-        `${businessContextLine()}You are replying to someone who agreed to schedule a call, offering them specific ` +
+        `${businessLine}You are replying to someone who agreed to schedule a call, offering them specific ` +
         'available times. Rephrase the exact times below naturally and readably (e.g. "Tuesday at 2pm") - do NOT ' +
         'invent, add, or change any time, only reword the ones given. Keep it short and friendly. ' +
         'Respond with ONLY a JSON object: {"subject": "...", "body": "..."}',

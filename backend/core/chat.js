@@ -26,9 +26,10 @@ async function factsLine(options = {}) {
   return `Things you've been explicitly told to remember:\n${facts.map((f) => `- ${f.fact}`).join('\n')}\n\n`;
 }
 
-function buildSystemPrompt(facts) {
+async function buildSystemPrompt(facts, workspaceId = null) {
+  const businessLine = await businessContextLine(workspaceId);
   return (
-    `${businessContextLine()}${facts}You are the assistant inside CodeCraft AI, a business automation platform. ` +
+    `${businessLine}${facts}You are the assistant inside the owner's business. ` +
     `You're chatting conversationally with the business owner - be warm, direct, and concise, like a ` +
     `sharp colleague, not a formal support bot. Two kinds of real actions happen outside this direct reply: ` +
     `research/lookups run immediately and their findings get reported back to you right here in chat - ` +
@@ -109,13 +110,14 @@ async function handleMessage(message, history = [], attachments = [], options = 
     const facts = await factsLine({ workspaceId });
     const combinedMessage = (message || 'What is this?') + extractedText;
 
+    const systemPrompt = await buildSystemPrompt(facts, workspaceId);
     const result = nativeAttachments.length
       ? await provider.complete({
           content: buildMultimodalContent(combinedMessage, nativeAttachments),
-          system: buildSystemPrompt(facts),
+          system: systemPrompt,
           maxTokens: 2000,
         })
-      : await provider.complete({ prompt: combinedMessage, system: buildSystemPrompt(facts), maxTokens: 2000 });
+      : await provider.complete({ prompt: combinedMessage, system: systemPrompt, maxTokens: 2000 });
 
     const errorNote = extractionErrors.length ? `\n\n(Couldn't read: ${extractionErrors.join('; ')})` : '';
     return { reply: result.text + errorNote, actionable: false, task: null };
@@ -170,7 +172,7 @@ async function handleMessage(message, history = [], attachments = [], options = 
   const facts = await factsLine({ workspaceId });
   const result = await provider.complete({
     prompt: message,
-    system: buildSystemPrompt(facts),
+    system: await buildSystemPrompt(facts, workspaceId),
     history,
     maxTokens: 1024,
   });

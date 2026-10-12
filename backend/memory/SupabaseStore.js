@@ -781,6 +781,47 @@ class SupabaseStore {
       workspace_id: row.workspace_id || null,
     };
   }
+
+  // --- Business profile (Phase 2.4) ---
+  //
+  // The row is created by migration 0001 (one per workspace), so GET
+  // normally returns an object; it's still possible for the row not to
+  // exist (fresh workspace, legacy install), in which case we return null
+  // and the caller falls back to env/business.json defaults.
+  async getBusinessProfile({ workspaceId, workspace_id } = {}) {
+    const ws = workspaceId || workspace_id || null;
+    if (!ws) return null;
+    const { data, error } = await this.client
+      .from('business_profile')
+      .select('*')
+      .eq('workspace_id', ws)
+      .maybeSingle();
+    if (error) throw new Error(`SupabaseStore.getBusinessProfile: ${error.message}`);
+    return data || null;
+  }
+
+  async updateBusinessProfile(patch = {}, { workspaceId, workspace_id } = {}) {
+    const ws = workspaceId || workspace_id || patch?.workspace_id || null;
+    if (!ws) throw new Error('SupabaseStore.updateBusinessProfile requires a workspaceId');
+    // Only let callers set the columns the schema actually knows - a stray
+    // key from the frontend must never land as a Postgres error.
+    const ALLOWED = new Set([
+      'display_name', 'business_name', 'title', 'business_email',
+      'extra_email_addresses', 'phone', 'whatsapp', 'website', 'location',
+      'offers', 'signature', 'tone', 'logo_url',
+    ]);
+    const row = { workspace_id: ws, updated_at: new Date().toISOString() };
+    for (const [k, v] of Object.entries(patch)) {
+      if (ALLOWED.has(k)) row[k] = v;
+    }
+    const { data, error } = await this.client
+      .from('business_profile')
+      .upsert(row, { onConflict: 'workspace_id' })
+      .select()
+      .maybeSingle();
+    if (error) throw new Error(`SupabaseStore.updateBusinessProfile: ${error.message}`);
+    return data;
+  }
 }
 
 module.exports = SupabaseStore;

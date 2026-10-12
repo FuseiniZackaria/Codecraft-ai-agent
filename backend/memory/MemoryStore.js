@@ -376,6 +376,29 @@ class MemoryStore {
       return true;
     });
   }
+
+  // --- Business profile (Phase 2.4) ---
+  //
+  // One row per workspace, keyed by workspace_id. Shape mirrors the
+  // business_profile Supabase table exactly so a swap between stores is
+  // behaviour-identical. Returns null when no row exists for the workspace,
+  // and callers fall back to legacy env/business.json defaults.
+  async getBusinessProfile({ workspaceId, workspace_id } = {}) {
+    const ws = workspaceId || workspace_id || null;
+    if (!ws) return null;
+    if (!this.businessProfiles) this.businessProfiles = new Map();
+    return this.businessProfiles.get(ws) || null;
+  }
+
+  async updateBusinessProfile(patch = {}, { workspaceId, workspace_id } = {}) {
+    const ws = workspaceId || workspace_id || patch?.workspace_id || null;
+    if (!ws) throw new Error('MemoryStore.updateBusinessProfile requires a workspaceId');
+    if (!this.businessProfiles) this.businessProfiles = new Map();
+    const existing = this.businessProfiles.get(ws) || { workspace_id: ws };
+    const merged = { ...existing, ...patch, workspace_id: ws, updated_at: new Date().toISOString() };
+    this.businessProfiles.set(ws, merged);
+    return merged;
+  }
 }
 
 module.exports = MemoryStore;

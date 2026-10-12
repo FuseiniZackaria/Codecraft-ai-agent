@@ -35,7 +35,7 @@ async function loadRecentHistory(limit, { workspaceId = null } = {}) {
  * cache_control: ephemeral. Per-request context (date, business profile)
  * goes AFTER the breakpoint so it never invalidates the cache.
  */
-function buildSystemBlocks({ voice }) {
+async function buildSystemBlocks({ voice, workspaceId = null }) {
   return [
     {
       type: 'text',
@@ -44,7 +44,7 @@ function buildSystemBlocks({ voice }) {
     },
     {
       type: 'text',
-      text: buildPerRequestContextBlock({ voice }),
+      text: await buildPerRequestContextBlock({ voice, workspaceId }),
     },
   ];
 }
@@ -69,7 +69,7 @@ async function runAssistant({ message, scope = null, voice = false, workspaceId 
   const anthropic = getClient();
   const history = await loadRecentHistory(config.assistant.historyLimit, { workspaceId });
   const tools = buildTools(scope);
-  const system = buildSystemBlocks({ voice });
+  const system = await buildSystemBlocks({ voice, workspaceId });
 
   const messages = [...history, { role: 'user', content: message }];
 

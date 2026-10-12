@@ -238,6 +238,10 @@ export const api = {
   getWorkspaceShadowLog: (limit = 200) => request(`/workspace/shadow-log?limit=${limit}`),
   clearWorkspaceShadowLog: () => request('/workspace/shadow-log/clear', { method: 'POST' }),
 
+  // --- Business profile (Phase 2.4) ---
+  getBusinessProfile: () => request('/business-profile'),
+  saveBusinessProfile: (patch) => request('/business-profile', { method: 'PATCH', body: JSON.stringify(patch) }),
+
   connectMCP: (url) => browserPost('/mcp/connect', { url }),
 
   // Turns a page's own text into a reference skill for agents to consult -

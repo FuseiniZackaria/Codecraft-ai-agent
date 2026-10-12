@@ -67,7 +67,7 @@ const MODES = {
  * verification step didn't actually confirm - e.g. won't say "I saw you're
  * hiring for X" unless the job listing itself was verified.
  */
-async function draftOutreach(opportunity, verification) {
+async function draftOutreach(opportunity, verification, workspaceId = null) {
   const verifiedFacts = [
     `Company: ${opportunity.company}`,
     `Job title: ${opportunity.jobTitle}`,
@@ -76,9 +76,10 @@ async function draftOutreach(opportunity, verification) {
   ].filter(Boolean).join('\n');
 
   const provider = selectProvider({});
+  const businessLine = await businessContextLine(workspaceId);
   const result = await provider.complete({
     system:
-      `${businessContextLine()}You are drafting a short, genuinely personalized job outreach email. ` +
+      `${businessLine}You are drafting a short, genuinely personalized job outreach email. ` +
       'Keep it under 120 words, no hard sell, no generic filler. ONLY reference facts listed below as ' +
       'verified - never claim anything about the job/company that is not explicitly given. ' +
       'Respond with ONLY a JSON object: {"subject": "...", "body": "..."}',
@@ -258,7 +259,7 @@ async function processOpportunity(opportunity, options = {}) {
   record = await persist(pipelineId, state);
 
   // --- Draft outreach (semi_automatic and automatic both draft; manual already returned above) ---
-  const draft = await draftOutreach(opportunity, verification);
+  const draft = await draftOutreach(opportunity, verification, workspaceId);
   state = { ...state, stage: STAGES.OUTREACH_DRAFTED, draft };
   record = await persist(pipelineId, state);
 
@@ -462,7 +463,7 @@ async function checkFollowUps() {
     if (nextIndex >= followUpDays.length) continue; // sequence exhausted
     if (daysSinceSent < followUpDays[nextIndex]) continue; // not due yet
 
-    const draft = await draftFollowUp(state.opportunity, state.verification, nextIndex + 1);
+    const draft = await draftFollowUp(state.opportunity, state.verification, nextIndex + 1, state.workspace_id || task.workspace_id || null);
     const salesAgent = require('../agents/registry').getAgent('sales');
     const approvalTask = await salesAgent.createApprovalTask({
       instruction: `Follow-up #${nextIndex + 1} to ${state.opportunity.contactEmail} re: ${state.opportunity.jobTitle} at ${state.opportunity.company}`,
@@ -497,7 +498,7 @@ async function checkFollowUps() {
  * Short, low-pressure follow-up draft - explicitly NOT a repeat of the
  * original pitch. Same "only verified facts" discipline as draftOutreach.
  */
-async function draftFollowUp(opportunity, verification, followUpNumber) {
+async function draftFollowUp(opportunity, verification, followUpNumber, workspaceId = null) {
   const verifiedFacts = [
     `Company: ${opportunity.company}`,
     `Job title: ${opportunity.jobTitle}`,
@@ -505,9 +506,10 @@ async function draftFollowUp(opportunity, verification, followUpNumber) {
   ].filter(Boolean).join('\n');
 
   const provider = selectProvider({});
+  const businessLine = await businessContextLine(workspaceId);
   const result = await provider.complete({
     system:
-      `${businessContextLine()}You are drafting follow-up #${followUpNumber} to a job outreach email that got no response. ` +
+      `${businessLine}You are drafting follow-up #${followUpNumber} to a job outreach email that got no response. ` +
       'Keep it VERY short (under 60 words), friendly, low-pressure - a gentle bump, not a repeat of the original pitch. ' +
       'ONLY reference facts listed below as verified. ' +
       'Respond with ONLY a JSON object: {"subject": "...", "body": "..."}',

@@ -81,19 +81,27 @@ async function trySendWhatsapp(alertText) {
  * [CodeCraft/System] prefix so inbox triage filters recognize it as
  * app-generated mail and skips it.
  */
-async function trySendEmail({ subject, body }) {
-  if (!isChannelConfigured('email')) return 'not_configured';
+async function trySendEmail({ subject, body, workspaceId = null }) {
+  // Phase 2.4: route to the workspace's own business_email first; fall
+  // back to the legacy APPLICANT_EMAIL env for a single-tenant install.
+  let to = null;
+  if (workspaceId) {
+    const businessProfile = require('./businessProfile');
+    try { to = await businessProfile.ownerEmail(workspaceId); } catch { to = null; }
+  }
+  if (!to) to = config.applicant?.email || null;
+  if (!to) return 'not_configured';
   try {
     const toolRegistry = require('../tools/ToolRegistry');
     if (!toolRegistry.has('gmail.sendEmail')) return 'not_configured';
     await toolRegistry.call(
       'gmail.sendEmail',
       {
-        to: config.applicant.email,
+        to,
         subject: `[CodeCraft/System] ${subject}`,
         body,
       },
-      { role: 'notifications', systemDigest: true }
+      { role: 'notifications', systemDigest: true, workspaceId }
     );
     return 'sent';
   } catch (err) {
@@ -112,7 +120,7 @@ async function trySendEmail({ subject, body }) {
  * chat channel is unconfigured or failed, so a working Telegram/WhatsApp
  * channel is still preferred (less inbox noise).
  */
-async function notifyOwnerPendingApproval({ channel, from, customerMessage, draftReply, approvalTaskId }) {
+async function notifyOwnerPendingApproval({ channel, from, customerMessage, draftReply, approvalTaskId, workspaceId = null }) {
   const alertText =
     `New ${channel} message needs your approval\n\n` +
     `From: ${from}\n` +
@@ -132,6 +140,7 @@ async function notifyOwnerPendingApproval({ channel, from, customerMessage, draf
     results.email = await trySendEmail({
       subject: `Approval needed - ${channel} message from ${from}`,
       body: alertText,
+      workspaceId,
     });
   }
 

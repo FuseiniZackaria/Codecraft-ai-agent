@@ -199,9 +199,10 @@ class JobVerificationAgent extends BaseAgent {
           p.location      && `Applicant location: ${p.location}`,
           p.yearsOfExperience && `Years of experience: ${p.yearsOfExperience}`,
         ].filter(Boolean).join('\n');
+        const businessLine = await businessContextLine(workspaceId);
         const relevanceSystem = applicantCtx
           ? `${applicantCtx}\n\nRate how well this job matches the applicant above, from 0-15. Output ONLY the integer — no words, no punctuation, no explanation.`
-          : `${businessContextLine()}Rate how relevant this job opportunity is, from 0-15. Output ONLY the integer — no words, no punctuation, no explanation.`;
+          : `${businessLine}Rate how relevant this job opportunity is, from 0-15. Output ONLY the integer — no words, no punctuation, no explanation.`;
         const result = await provider.complete({
           system: relevanceSystem,
           prompt: `Job title: ${opportunity.jobTitle || 'unknown'}\nDescription: ${opportunity.jobDescription}`,

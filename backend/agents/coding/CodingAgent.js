@@ -148,6 +148,7 @@ class CodingAgent extends BaseAgent {
     // already failed would just fail the same way again.
     const tokenBudgets = [3500, 6000];
 
+    const businessLine = await businessContextLine(task?.workspace_id || null);
     for (let attempt = 0; attempt < tokenBudgets.length; attempt++) {
       const strictness =
         attempt === 0
@@ -158,7 +159,7 @@ class CodingAgent extends BaseAgent {
       const manifestResult = await provider.complete({
         maxTokens: tokenBudgets[attempt],
         system:
-          `${businessContextLine()}You are a software architect AND design lead planning a minimal, ` +
+          `${businessLine}You are a software architect AND design lead planning a minimal, ` +
           `working build for the request below. Choose the simplest stack that satisfies it (plain ` +
           `HTML/CSS/JS for a static site; React+Vite only if real interactivity/state is genuinely ` +
           `needed; a tiny Node/Express server only if a real backend is needed). Cap it at ${MAX_FILES} ` +
@@ -190,6 +191,7 @@ class CodingAgent extends BaseAgent {
   async _generateFileContent(provider, task, step, designLine) {
     const tokenBudgets = [4000, 7000, 14000];
 
+    const businessLine = await businessContextLine(task?.workspace_id || null);
     for (let attempt = 0; attempt < tokenBudgets.length; attempt++) {
       const brevityHint =
         attempt === 0
@@ -202,7 +204,7 @@ class CodingAgent extends BaseAgent {
       const result = await provider.complete({
         maxTokens: tokenBudgets[attempt],
         system:
-          `${businessContextLine()}You are the Coding Agent inside CodeCraft AI, writing one file of a real, ` +
+          `${businessLine}You are the Coding Agent, writing one file of a real, ` +
           `working project. Write complete, correct, production-quality code - no TODOs, no placeholders, ` +
           `no "implement this later".${designLine}\n\n${DESIGN_GUIDANCE}\n\n` +
           `Respond with ONLY the raw file content - no markdown code fences, no explanation before or after.${brevityHint}`,
