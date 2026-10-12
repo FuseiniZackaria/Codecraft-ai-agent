@@ -1,25 +1,24 @@
 # Architecture
 
-A plain-language overview, then the technical detail each developer needs to
-extend the system without surprises.
+Plain-language overview, then the detail each developer needs.
 
 ---
 
-## 1. Plain-language overview
+## 1. The five layers
 
 A request to CodeCraft travels through five layers:
 
 1. **Frontend (React)** — the user types in chat or on a department page.
 2. **Backend route** — authenticated API route accepts the request.
 3. **Intent + orchestrator** — a classifier picks the right agent; the
-   orchestrator queues a task row.
-4. **Agent** — the agent plans a sequence of steps, calls tools (LLM, web
+   orchestrator queues a task row stamped with the workspace.
+4. **Agent** — plans a sequence of steps, calls tools (model provider, web
    search, Gmail, etc.), and reflects on the result.
-5. **Approval gate** — any irreversible step (send, delete, book) is deferred
-   as a pending task until a human clicks Approve.
+5. **Approval gate** — any irreversible step (send, delete, book) becomes a
+   pending task until a human clicks Approve.
 
-Everything is logged. Every row carries a `workspace_id`. The scheduler runs
-the same orchestrator flow on a timer for recurring workflows.
+Every row carries a `workspace_id`. The scheduler runs the same orchestrator
+flow on a timer for recurring workflows.
 
 ---
 
@@ -32,24 +31,21 @@ flowchart TD
     R --> AU[requireAuth + attachWorkspace]
     AU --> CH[core/chat.handleMessage]
     CH --> IC[intentClassifier.classifyIntent]
-    IC -->|LLM succeeds| CAT[category]
-    IC -->|fail| KW[fallbackViaKeywords]
-    KW --> CAT
+    IC --> CAT[category]
     CAT --> ORC[orchestrator.submitGoal]
     ORC --> PL[planner.decompose]
     PL --> ST[memory.saveTask with workspace_id]
-    ST -->|task.irreversible| APPQ[status pending_approval]
+    ST -->|task.irreversible| APPQ[pending_approval]
     APPQ --> UI[Tasks page shows card]
     UI --> HU[Human clicks Approve]
     HU --> APP[orchestrator.approveTask]
     APP --> TR[toolRegistry.call with approvedTaskId]
-    TR -->|guards fire| DN[task done]
-    ST -->|not irreversible| RUN[agent.run task]
+    TR --> DN[task done]
+    ST -->|reversible| RUN[agent.run task]
     RUN --> PLAN[agent.plan]
     PLAN --> EX[agent.execute each step]
-    EX -->|tool_call irreversible| APPQ2[createApprovalTask -> pending_approval]
-    EX -->|tool_call reversible| TR2[toolRegistry.call]
-    EX -->|llm_call| LLM[selectProvider.complete]
+    EX -->|irreversible tool| APPQ
+    EX -->|llm_call or reversible tool| LLM[selectProvider / tool]
     EX --> REF[agent.reflect]
     REF --> DN2[task done]
     DN --> LOG[activityLog + audit_log]
@@ -60,156 +56,23 @@ flowchart TD
 
 ## 3. Modules
 
-### `backend/server.js`
-
-- Loads env via `config/`, installs CORS (allowlist + `chrome-extension://`),
-  `express.json({ limit: '35mb' })`.
-- Hooks `uncaughtException` / `unhandledRejection` and collapses Supabase
-  network noise so a transient DNS blip doesn't flood the log.
-- Dev-only per-minute route counter (silent in prod).
-- Calls `loadPlugins()` to register every plugin's actions in the tool
-  registry.
-- Mounts routes in a specific order (open webhooks first, then
-  requireAuth-protected `/api`, then token-protected `/api/browser` and
-  `/api/mcp`). See [api.md](api.md) for the full list.
-- Starts Express, then kicks off `scheduler.start()` inside the `listen`
-  callback.
-
-### `backend/agents/registry.js`
-
-Instantiates every agent and exports `getAgent(key)`, `registerAgent()`,
-`unregisterAgent()` (the last two power the universal Skill Installer). All
-agents extend `BaseAgent`.
-
-### `backend/agents/base/BaseAgent.js`
-
-The common contract: `key`, `role`, `goals`, `tools`, `plan()`, `execute()`,
-`reflect()`, `run()`. Every meaningful step emits a structured
-`activityLog.record` entry — never raw prompts/completions, just tool names
-and metadata. Every log event carries `workspace_id` so the audit stays
-scoped.
-
-`createApprovalTask()` is the pattern every agent uses to defer an irreversible
-action. It builds a UUID task with `status='pending_approval'`,
-`irreversible=true`, `toolCall={ tool, irreversible: true }`, and a payload the
-UI shows to the user.
-
-### `backend/core/orchestrator/index.js`
-
-Three functions:
-
-- `submitGoal(goal, options)` → calls `planner.decompose()` → iterates tasks →
-  saves each with `workspace_id` → either marks `pending_approval` (if
-  irreversible) or calls `agent.run(task)`.
-- `approveTask(taskId, options)` → verifies status, logs `human/task_approved`,
-  dispatches the originally-requested tool with `approvedTaskId` (what the
-  Gmail guard checks), flips to `done` or `failed`.
-- `rejectTask(taskId, options)` → logs the rejection, marks the task
-  `rejected`.
-
-### `backend/core/intentClassifier.js`
-
-Calls `selectProvider({}).complete(...)` with ~15 category labels and ~45
-few-shot examples. Returns `{ category }`. On any LLM failure it falls back to
-`fallbackViaKeywords()` which runs regex/keyword tests
-(`isComputerOperationGoal`, `isBriefingGoal`, etc.) and then a keyword
-classifier. **No** category is ever invented — a confused input lands in
-`conversational` or `research`, not in `email_send`.
-
-### `backend/core/scheduler.js`
-
-- Ticks every 60 seconds.
-- Each tick:
-  1. `memory.listWorkflows({ scope:'system', systemCaller:'scheduler-tick' })`
-     → filters by `isWorkflowDue()` → fires `runWorkflow(workflow)` for each.
-  2. `memory.listWorkflowDefinitions(...)` → same for graph workflows.
-  3. `tickOutreachAutomation()` → runs the response-detection and follow-up
-     jobs if their configured intervals are > 0.
-- Three schedule types: **interval**, **daily** (optional `daysOfWeek`), and
-  **folder_watch** (graph workflows only — scans a configured folder for new
-  video files).
-- `runWorkflow(workflow)` wraps `orchestrator.submitGoal(workflow.goal,
-  { workspaceId })`. `runGraphWorkflow(def, triggerOutput)` wraps
-  `workflowEngine.runWorkflow(def.id, triggerOutput, { workspaceId })`.
-- `runningIds` Set prevents overlapping runs of the same workflow.
-
-### `backend/core/workflowEngine.js`
-
-Graph-based workflow runner. Nodes: `trigger`, `agent`, `tool`, `condition`
-(LLM yes/no), `switch`, `decide` (LLM picks from a curated menu, or `NONE`),
-`approval` (pauses the run), `loop` (count or list, max 20 iterations), `parallel`
-(up to the number of branches configured), `sub_workflow` (max depth 5).
-Templates `{{nodeId.field}}` and loop vars `{{loop.item}}, {{loop.index}}` get
-resolved before each node runs.
-
-An `approval` node persists a `pending_approval` task with the paused
-`workflow_runs.id` attached. The UI's Approve button resumes it via
-`resumeWorkflow()`; Reject cancels it via `cancelWorkflow()`.
-
-### `backend/core/pluginLoader.js`
-
-On server start, scans `backend/plugins/*/actions/*.js` and registers each
-action with the tool registry under `<plugin>.<action>`. Logs the loaded names.
-
-### `backend/memory/`
-
-- `MemoryStore` (in-memory, used in tests and when `CC_FORCE_MEMORY_STORE=1`).
-- `SupabaseStore` (production — identical API, writes to Supabase).
-- `workspaceGuard` — a Proxy that watches every write/list method, logs or
-  throws on any call missing a workspace scope. See [workspaces.md](workspaces.md).
-- `workspaceContext` — resolves `req.user.workspaceId` for authenticated routes
-  (via `workspace_members`), and `getSoleWorkspaceId()` for webhook paths with
-  no logged-in user.
-
-### `backend/core/sendGuard.js`
-
-Test-mode defence. If `CC_TESTING=1` and `ALLOW_REAL_SENDS!=1`, any Composio
-action whose slug matches `_(SEND|POST|REPLY|UPLOAD|SUBMIT|CREATE|DELETE|UPDATE|REMOVE)_`
-or is in the hard-coded `SEND_ACTION_SLUGS` list throws `SendGuardError` **before**
-the HTTP call. No-op in production.
-
-### `backend/plugins/gmail/guard.js`
-
-Primary approval gate for Gmail. Every send must either:
-
-- Carry `approvedTaskId` + match the stored task's `toolCall.tool` + match the
-  stored recipient, or
-- Be a system-digest (`systemDigest: true` + `to === config.applicant.email`
-  exactly — anything else is refused).
-
-Also: dedup by `(to, subject, sha256(body))` within a 10-minute window; writes
-`memory.audit('gmail-guard', ...)` on every refusal (bodies hashed, never
-logged in full).
-
-### `backend/core/autoReplySafety.js`
-
-Gate for inbound-message auto-replies (WhatsApp/Telegram). Blocks on:
-
-1. Risk keywords (refund, cancel, complaint, legal, medical, suicide, etc.)
-2. Placeholder patterns in the draft (literal `[bracket]`, `example.com`,
-   `yourbusiness.com`, "lorem ipsum", etc.)
-3. Daily per-channel send limit
-4. LLM-judged "is this grounded in actual business knowledge" check — fails
-   **closed** on any error.
-
-### Inbox-triage filters
-
-`PersonalAssistantAgent.filterMessages` drops:
-
-- `fromEmail ∈ MY_EMAIL_ADDRESSES` (you're not replying to yourself)
-- Threads already in `outreach_threads` (don't double-send)
-- Subjects starting with `[CodeCraft` (system digests)
-- Automated senders (`no-reply@`, `noreply@`, `mailer-daemon@`, `bounce@`,
-  etc.)
-
-Surviving messages are grouped by thread id and only the latest is kept.
-
-### `backend/core/activityLog.js`
-
-The single entry point for every audit event. Takes `(actor, action, target,
-metadata)`. If `metadata.workspaceId` is present, scopes the write;
-otherwise, if `metadata.scope === 'system'`, uses the named-system-caller
-path; otherwise lets the shadow guard log the miss.
+| Module | What it does |
+|---|---|
+| `backend/server.js` | Loads env, installs CORS, mounts routes in a specific order, loads plugins, starts Express, kicks off the scheduler |
+| `backend/agents/registry.js` | Instantiates every agent and exports `getAgent(key)` |
+| `backend/agents/base/BaseAgent.js` | `plan`/`execute`/`reflect`/`run` contract; `createApprovalTask` builds a pending task; every step emits an `activityLog` entry carrying `workspace_id` |
+| `backend/core/orchestrator/index.js` | `submitGoal`, `approveTask`, `rejectTask`. On approval, dispatches the saved tool call with `approvedTaskId` so the Gmail guard can verify |
+| `backend/core/intentClassifier.js` | Model-based category pick with ~15 labels + a keyword fallback so a model failure never invents a category |
+| `backend/core/scheduler.js` | Ticks every 60 s; iterates due workflows per workspace; runs background jobs (response detection, follow-ups) if configured |
+| `backend/core/workflowEngine.js` | Graph workflow runner — node types: trigger, agent, tool, condition, switch, decide, approval, loop, parallel, sub_workflow |
+| `backend/core/pluginLoader.js` | Scans `backend/plugins/*/actions/*.js` and registers each with the tool registry |
+| `backend/memory/MemoryStore.js` + `SupabaseStore.js` | Behaviourally identical in-memory + Supabase persistence |
+| `backend/memory/workspaceGuard.js` | `Proxy` wrapper around the store that logs or throws on missing scope |
+| `backend/core/workspaceContext.js` | Resolves `req.user.workspaceId`; `getSoleWorkspaceId()` for webhook paths with no logged-in user |
+| `backend/core/sendGuard.js` | In test mode, refuses real sends on recognised Composio write slugs unless `ALLOW_REAL_SENDS=1` |
+| `backend/plugins/gmail/guard.js` | Verifies every send carries `approvedTaskId` matching a real pending/approved task; dedups near-identical sends within 10 min; audits refusals |
+| `backend/core/autoReplySafety.js` | Blocks WhatsApp/Telegram auto-replies on risk keywords, placeholders, daily caps, or model-judged ungrounded content |
+| `backend/core/activityLog.js` | The single entry point for every audit event; respects workspace scope and system-caller allowlist |
 
 ---
 
@@ -219,29 +82,77 @@ path; otherwise lets the shadow guard log the miss.
 |---|---|
 | `workspaces` | One row per tenant workspace |
 | `workspace_members` | `(workspace_id, user_id, role)` |
-| `workspace_connections` | Per-workspace integration creds (reserved for Phase 2.5) |
+| `workspace_connections` | Per-workspace integration credentials (reserved for Phase 2.5) |
 | `business_profile` | Per-workspace business profile (reserved for Phase 2.4) |
-| `roles` / `user_roles` | Legacy role grants (`admin`, `client`) |
-| `tasks` | Agent tasks; status, payload, workspace_id |
-| `scheduled_workflows` | Simple interval/daily workflows (saveWorkflow API) |
+| `roles`, `user_roles` | Role grants (`admin`, `client`) |
+| `tasks` | Agent tasks; status, payload, `workspace_id` |
+| `scheduled_workflows` | Simple interval/daily workflows (accessed via `saveWorkflow` / `listWorkflows` methods — table name differs from method name) |
 | `workflow_definitions` | Graph workflows |
 | `workflow_runs` | Execution history for `workflow_definitions` |
-| `chat_messages` | Ian chat history |
+| `chat_messages` | Chat history |
 | `audit_log` | Everything `activityLog.record` writes |
-| `agent_memory` | Per-agent scratchpad |
-| `reflections` | Per-task notes written by `agent.reflect()` |
+| `agent_memory`, `reflections` | Per-agent scratchpad and per-task notes |
 | `outreach_threads` | Thread registry for Gmail guard ownership + dedup |
 | `skills` | Universal Skill Installer registry |
-| `long_term_memory` | Facts the user asked Ian to remember |
-| `briefing_runs` | Snapshots of each briefing agent run |
-| `briefing_articles` | Normalized articles for the Intelligence dashboard |
-| `assistant_usage_daily` | Daily LLM cost accounting (for `ASSISTANT_DAILY_USD_CAP`) |
-| `whatsapp_messages` / `telegram_messages` | Dedup store for inbound webhook messages |
-| `rls_shadow_log` | Rows the Postgres trigger flagged for being out of workspace scope |
+| `long_term_memory` | Facts the user asked the assistant to remember |
+| `briefing_runs`, `briefing_articles` | Snapshots and normalised articles for the Intelligence dashboard |
+| `assistant_usage_daily` | Daily chat-spend accounting (for `ASSISTANT_DAILY_USD_CAP`) |
+| `whatsapp_messages`, `telegram_messages` | Dedup store for inbound webhook messages |
+| `rls_shadow_log` | Rows the Postgres trigger flagged for being out of workspace scope (Phase 1 shadow trigger) |
 
-> **TODO: confirm** — the `scheduled_workflows` table and the SupabaseStore
-> methods named `saveWorkflow` / `listWorkflows` map to each other. This is
-> intentional (shorter method names, more descriptive table name) but worth
-> renaming on a future cleanup.
+---
 
-See `backend/database/schema.sql` for the full column list.
+## 5. Workspaces (multi-tenancy)
+
+One workspace = one business. Every row in every meaningful table carries a
+`workspace_id`. Users attach to workspaces via `workspace_members`; on each
+authenticated request, `resolveWorkspaceForUser(userId)` stamps
+`req.user.workspaceId`.
+
+### Shadow guard
+
+`backend/memory/workspaceGuard.js` wraps the store in a `Proxy`. Every call
+to a watched method is classified:
+
+| Case | What happens |
+|---|---|
+| Scoped user call (`workspaceId` opt or `workspace_id` on the row) | Passes through |
+| Named system call (`scope:'system'` + `systemCaller` in allowlist) | Passes through |
+| Anything else | Logged (log mode) or thrown as `WorkspaceGuardError` (enforce mode) |
+
+**Mode:** `WORKSPACE_GUARD_MODE` env, `log` (default) or `enforce`. Flip on
+Render → Environment; no code redeploy needed. See
+[operations.md § Flip the workspace guard](operations.md).
+
+**Allowlist of 14 named callers:** `scheduler-tick`, `scheduler-migrate`,
+`plugin-loader`, `startup`, `response-detection`, `outreach-pipeline`,
+`auto-reply-safety`, `personal-assistant-system`, `briefing-agent-system`,
+`installer-startup`, `workflow-engine-system`, `webhook-telegram`,
+`webhook-whatsapp`, `test`. A `scope:'system'` call with any other
+`systemCaller` is **refused** immediately.
+
+### Workspace health panel
+
+Settings → Workspace health reads `/api/workspace/shadow-log` and renders
+each miss (`method`, `reason`, extras). Healthy state is empty aside from
+expected scheduler reads. **Clear log** button wipes the file via
+`POST /api/workspace/shadow-log/clear`.
+
+### Phase status
+
+| Phase | Status |
+|---|---|
+| 1 — schema, 14-table `workspace_id` columns, shadow RLS trigger | shipped |
+| 2.1 — resolve + stamp workspace on login | shipped |
+| 2.2 — shadow guard Proxy wraps the store | shipped |
+| 2.3 (a–d) — stamp writes, scope reads, enforce mode, backfill, isolation test, post-backfill leak fixes | shipped |
+| 2.4 — business profile per workspace | planned |
+| 2.5 — per-admin connection credentials; re-enable "Add admin" | planned |
+| 2.6 — enable Postgres RLS on all 14 tables; retire shadow log | planned |
+
+### Why "Add admin" is disabled
+
+Until Phase 2.5, every admin on the same server shares the same Gmail /
+Composio / WhatsApp credentials. A second admin would gain full access to
+the first admin's integrations. The UI disables the button; the server
+returns `409` on `POST /api/team`.

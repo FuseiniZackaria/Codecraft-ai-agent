@@ -99,23 +99,19 @@ codecraft-ai/
 ## Documentation
 
 - [User guide](docs/user-guide.md) — logging in, departments, running tasks,
-  approvals, writing good requests
-- [Setup guide](docs/setup-guide.md) — every env variable, Supabase setup,
-  running the migrations, connecting integrations
-- [Deployment](docs/deployment.md) — Vercel + Render + Supabase, keeping
-  configs in sync, Render free-plan sleeping
-- [Architecture](docs/architecture.md) — modules, request flow diagram, tables
-- [Workspaces](docs/workspaces.md) — Phase 1–2.3d status, shadow guard, enforce
-  mode, Workspace health panel
-- [Agents](docs/agents.md) — every agent, its tools, its department
-- [Agent value](docs/agent-value.md) — what each agent takes off a person's
-  plate
+  approvals, workflows
+- [Setup and deploy](docs/setup-and-deploy.md) — environment variables,
+  Supabase, migrations, Vercel + Render deploy
+- [Architecture](docs/architecture.md) — modules, request flow diagram,
+  Supabase tables, workspace multi-tenancy
+- [Agents](docs/agents.md) — every agent in one table
+- [API](docs/api.md) — every route in one table
 - [Why CodeCraft](docs/why-codecraft.md) — business-facing pitch
-- [Testing](docs/testing.md) — safe-mode vs integration mode, baseline results
-- [Runbooks](docs/runbooks.md) — backup, migrations, rollback, key rotation
-- [API reference](docs/api.md) — every backend route
-- [Troubleshooting](docs/troubleshooting.md) — common errors and fixes
+- [Operations](docs/operations.md) — procedures (backup, migrate, flip
+  guard, rollback, rotate keys) and a problem → fix table
+- [Testing](docs/testing.md) — safe-mode vs integration mode (reference only)
 - [Changelog](docs/changelog.md) — grouped by date
+- [TODO](docs/TODO.md) — small open items the docs reference
 
 ---
 
