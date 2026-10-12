@@ -4,6 +4,11 @@
 backups/
 backend/backups/
 
+# Generated PDFs - built from docs/ via backend/scripts/build-pdfs.js. These
+# are internal distribution artefacts and may change on every run, so they
+# are kept out of the repo. Regenerate with `node backend/scripts/build-pdfs.js`.
+docs/pdf/
+
 # Secrets - NEVER commit these
 .env
 .env.*

@@ -1,311 +1,247 @@
-# CodeCraft AI v1.0 — Architecture Document
+# Architecture
 
-**Build. Automate. Scale.**
-
-Scope note: this document is the foundational architecture — folder structure, orchestrator/agent design, plugin & skill SDKs, database schema, and memory system. It's the reference the backend skeleton and frontend shell will be built against.
-
----
-
-## 1. Folder Structure
-
-```
-codecraft-ai/
-├── frontend/                     # React + Vite app
-│   ├── src/
-│   │   ├── components/
-│   │   ├── pages/
-│   │   ├── hooks/
-│   │   ├── services/             # API clients
-│   │   ├── stores/                # Zustand stores
-│   │   └── utils/
-│   └── vite.config.js
-│
-├── backend/
-│   ├── core/
-│   │   ├── orchestrator/          # AI Core: planning, routing, monitoring
-│   │   ├── providers/             # LLM adapters (pluggable - swap providers freely)
-│   │   └── router.js              # model selection logic (cost/speed/capability)
-│   │
-│   ├── agents/
-│   │   ├── base/                  # BaseAgent class all agents extend
-│   │   ├── ceo/
-│   │   ├── research/
-│   │   ├── coding/
-│   │   ├── marketing/
-│   │   ├── sales/
-│   │   ├── support/
-│   │   ├── social-media/
-│   │   ├── project-manager/
-│   │   ├── finance/
-│   │   ├── hr/
-│   │   ├── personal-assistant/
-│   │   ├── analytics/
-│   │   └── automation/
-│   │
-│   ├── plugins/                   # gmail, whatsapp, telegram, github, calendar...
-│   │   └── <plugin-name>/
-│   │       ├── manifest.json
-│   │       ├── actions/
-│   │       ├── events/
-│   │       └── auth.js
-│   │
-│   ├── skills/                    # lead-gen, coding, seo, content-writing...
-│   │   └── <skill-name>/
-│   │       ├── skill.json
-│   │       └── handlers/
-│   │
-│   ├── tools/                     # low-level callable functions exposed to agents
-│   ├── memory/                    # memory read/write layer over Supabase
-│   ├── rag/                       # ingestion, chunking, embeddings, retrieval
-│   ├── workflows/                 # workflow engine + saved workflow definitions
-│   ├── api/                       # Express routes/controllers
-│   ├── database/                  # migrations, schema, seed scripts
-│   ├── config/
-│   └── tests/
-│
-└── docs/
-```
-
-**Rule:** `core/` never imports directly from `plugins/` or `skills/` — only through the SDK interfaces below. This is what makes features installable/removable without touching core.
+A plain-language overview, then the technical detail each developer needs to
+extend the system without surprises.
 
 ---
 
-## 2. AI Orchestrator
+## 1. Plain-language overview
 
-Central coordinator, not a chatbot loop. Pipeline per incoming goal:
+A request to CodeCraft travels through five layers:
 
-```
-Request → Intent Parse → Task Decomposition → Agent Assignment
-   → Model Routing (per task) → Execution (with approval gate if needed)
-   → Result Review → Merge/Reconcile → Final Response
-```
+1. **Frontend (React)** — the user types in chat or on a department page.
+2. **Backend route** — authenticated API route accepts the request.
+3. **Intent + orchestrator** — a classifier picks the right agent; the
+   orchestrator queues a task row.
+4. **Agent** — the agent plans a sequence of steps, calls tools (LLM, web
+   search, Gmail, etc.), and reflects on the result.
+5. **Approval gate** — any irreversible step (send, delete, book) is deferred
+   as a pending task until a human clicks Approve.
 
-**Key modules:**
-- `orchestrator/planner.js` — breaks a goal into a task graph (DAG), not just a list, so tasks can run in parallel or be dependent.
-- `orchestrator/scheduler.js` — assigns tasks to agents based on role match; queues if agent busy.
-- `orchestrator/approvalGate.js` — intercepts tasks flagged `irreversible: true` (payments, deletions, publishing) and blocks execution until a human approves via dashboard/notification.
-- `orchestrator/monitor.js` — tracks task status, retries failed steps (configurable backoff), logs everything.
-- `router.js` — picks LLM provider per task using a scoring function: `score = w1*capability_match + w2*(1/cost) + w3*(1/latency)`, with manual override via config.
+Everything is logged. Every row carries a `workspace_id`. The scheduler runs
+the same orchestrator flow on a timer for recurring workflows.
 
-**Approval gate example task object:**
-```json
-{
-  "id": "task_193",
-  "agent": "finance",
-  "action": "stripe.sendPayment",
-  "irreversible": true,
-  "status": "pending_approval",
-  "requested_by": "orchestrator",
-  "payload": { "amount": 500, "recipient": "vendor_x" }
-}
+---
+
+## 2. A request's journey
+
+```mermaid
+flowchart TD
+    U[User types in chat] --> F[Frontend Chat.jsx]
+    F --> R["POST /api/chat (or /api/orchestrator/goal)"]
+    R --> AU[requireAuth + attachWorkspace]
+    AU --> CH[core/chat.handleMessage]
+    CH --> IC[intentClassifier.classifyIntent]
+    IC -->|LLM succeeds| CAT[category]
+    IC -->|fail| KW[fallbackViaKeywords]
+    KW --> CAT
+    CAT --> ORC[orchestrator.submitGoal]
+    ORC --> PL[planner.decompose]
+    PL --> ST[memory.saveTask with workspace_id]
+    ST -->|task.irreversible| APPQ[status pending_approval]
+    APPQ --> UI[Tasks page shows card]
+    UI --> HU[Human clicks Approve]
+    HU --> APP[orchestrator.approveTask]
+    APP --> TR[toolRegistry.call with approvedTaskId]
+    TR -->|guards fire| DN[task done]
+    ST -->|not irreversible| RUN[agent.run task]
+    RUN --> PLAN[agent.plan]
+    PLAN --> EX[agent.execute each step]
+    EX -->|tool_call irreversible| APPQ2[createApprovalTask -> pending_approval]
+    EX -->|tool_call reversible| TR2[toolRegistry.call]
+    EX -->|llm_call| LLM[selectProvider.complete]
+    EX --> REF[agent.reflect]
+    REF --> DN2[task done]
+    DN --> LOG[activityLog + audit_log]
+    DN2 --> LOG
 ```
 
 ---
 
-## 3. Agent Model
+## 3. Modules
 
-Every agent extends a common `BaseAgent`:
+### `backend/server.js`
 
-```js
-class BaseAgent {
-  role;          // e.g. "Research Agent"
-  goals;         // array of active objectives
-  memory;        // scoped memory interface (short/long term)
-  tools;         // tools available to this agent (from plugin registry)
-  taskQueue;     // pending tasks assigned by orchestrator
+- Loads env via `config/`, installs CORS (allowlist + `chrome-extension://`),
+  `express.json({ limit: '35mb' })`.
+- Hooks `uncaughtException` / `unhandledRejection` and collapses Supabase
+  network noise so a transient DNS blip doesn't flood the log.
+- Dev-only per-minute route counter (silent in prod).
+- Calls `loadPlugins()` to register every plugin's actions in the tool
+  registry.
+- Mounts routes in a specific order (open webhooks first, then
+  requireAuth-protected `/api`, then token-protected `/api/browser` and
+  `/api/mcp`). See [api.md](api.md) for the full list.
+- Starts Express, then kicks off `scheduler.start()` inside the `listen`
+  callback.
 
-  async plan(task) { }      // break task into steps
-  async execute(step) { }   // run a step, calling tools/LLM as needed
-  async reflect(result) { } // self-critique, write to reflection memory
-  async log(event) { }      // structured logging
-}
-```
+### `backend/agents/registry.js`
 
-Agents communicate through the orchestrator's message bus (not directly), so any agent-to-agent call is logged and auditable:
+Instantiates every agent and exports `getAgent(key)`, `registerAgent()`,
+`unregisterAgent()` (the last two power the universal Skill Installer). All
+agents extend `BaseAgent`.
 
-```
-AgentA.requestHelp(taskId, "sales") → orchestrator routes → AgentB.receive(task)
-```
+### `backend/agents/base/BaseAgent.js`
 
----
+The common contract: `key`, `role`, `goals`, `tools`, `plan()`, `execute()`,
+`reflect()`, `run()`. Every meaningful step emits a structured
+`activityLog.record` entry — never raw prompts/completions, just tool names
+and metadata. Every log event carries `workspace_id` so the audit stays
+scoped.
 
-## 4. Plugin SDK
+`createApprovalTask()` is the pattern every agent uses to defer an irreversible
+action. It builds a UUID task with `status='pending_approval'`,
+`irreversible=true`, `toolCall={ tool, irreversible: true }`, and a payload the
+UI shows to the user.
 
-A plugin is a self-contained folder with a manifest; the backend auto-discovers plugins at startup by scanning `backend/plugins/*/manifest.json`.
+### `backend/core/orchestrator/index.js`
 
-```json
-// manifest.json
-{
-  "name": "gmail",
-  "version": "1.0.0",
-  "permissions": ["gmail.read", "gmail.send"],
-  "auth": { "type": "oauth2", "provider": "google" },
-  "actions": ["sendEmail", "readInbox", "searchMessages"],
-  "events": ["newEmailReceived"]
-}
-```
+Three functions:
 
-```js
-// actions/sendEmail.js
-module.exports = {
-  name: "sendEmail",
-  permission: "gmail.send",
-  async run({ to, subject, body }, context) {
-    // context.auth gives the plugin its OAuth client
-    // returns a result object logged by the orchestrator
-  }
-};
-```
+- `submitGoal(goal, options)` → calls `planner.decompose()` → iterates tasks →
+  saves each with `workspace_id` → either marks `pending_approval` (if
+  irreversible) or calls `agent.run(task)`.
+- `approveTask(taskId, options)` → verifies status, logs `human/task_approved`,
+  dispatches the originally-requested tool with `approvedTaskId` (what the
+  Gmail guard checks), flips to `done` or `failed`.
+- `rejectTask(taskId, options)` → logs the rejection, marks the task
+  `rejected`.
 
-**Loader behavior:** on startup, `pluginLoader.js` scans the plugins directory, validates each manifest, registers its actions into a global `ToolRegistry`, and checks declared permissions against the installing user's RBAC role before activating.
+### `backend/core/intentClassifier.js`
 
----
+Calls `selectProvider({}).complete(...)` with ~15 category labels and ~45
+few-shot examples. Returns `{ category }`. On any LLM failure it falls back to
+`fallbackViaKeywords()` which runs regex/keyword tests
+(`isComputerOperationGoal`, `isBriefingGoal`, etc.) and then a keyword
+classifier. **No** category is ever invented — a confused input lands in
+`conversational` or `research`, not in `email_send`.
 
-## 5. Skill SDK
+### `backend/core/scheduler.js`
 
-Skills are higher-level than plugins — they define *how* to solve a problem, often composing multiple tools/plugins.
+- Ticks every 60 seconds.
+- Each tick:
+  1. `memory.listWorkflows({ scope:'system', systemCaller:'scheduler-tick' })`
+     → filters by `isWorkflowDue()` → fires `runWorkflow(workflow)` for each.
+  2. `memory.listWorkflowDefinitions(...)` → same for graph workflows.
+  3. `tickOutreachAutomation()` → runs the response-detection and follow-up
+     jobs if their configured intervals are > 0.
+- Three schedule types: **interval**, **daily** (optional `daysOfWeek`), and
+  **folder_watch** (graph workflows only — scans a configured folder for new
+  video files).
+- `runWorkflow(workflow)` wraps `orchestrator.submitGoal(workflow.goal,
+  { workspaceId })`. `runGraphWorkflow(def, triggerOutput)` wraps
+  `workflowEngine.runWorkflow(def.id, triggerOutput, { workspaceId })`.
+- `runningIds` Set prevents overlapping runs of the same workflow.
 
-```json
-// skill.json
-{
-  "name": "lead-generation",
-  "version": "1.0.0",
-  "requires_tools": ["web.search", "gmail.sendEmail", "crm.saveLead"],
-  "agent": "research"
-}
-```
+### `backend/core/workflowEngine.js`
 
-Skills are installed independently and referenced by agents at runtime; installing one never requires editing agent or core code — the agent just gains access to a new entry in its skill registry.
+Graph-based workflow runner. Nodes: `trigger`, `agent`, `tool`, `condition`
+(LLM yes/no), `switch`, `decide` (LLM picks from a curated menu, or `NONE`),
+`approval` (pauses the run), `loop` (count or list, max 20 iterations), `parallel`
+(up to the number of branches configured), `sub_workflow` (max depth 5).
+Templates `{{nodeId.field}}` and loop vars `{{loop.item}}, {{loop.index}}` get
+resolved before each node runs.
 
----
+An `approval` node persists a `pending_approval` task with the paused
+`workflow_runs.id` attached. The UI's Approve button resumes it via
+`resumeWorkflow()`; Reject cancels it via `cancelWorkflow()`.
 
-## 6. Memory Architecture
+### `backend/core/pluginLoader.js`
 
-Layered, all backed by Supabase + pgvector:
+On server start, scans `backend/plugins/*/actions/*.js` and registers each
+action with the tool registry under `<plugin>.<action>`. Logs the loaded names.
 
-| Layer | Purpose | Storage |
-|---|---|---|
-| Short-term | current conversation/task context | in-memory / Redis (optional) |
-| Conversation | full chat history | `messages` table |
-| Long-term | durable facts about user/business | `long_term_memory` table |
-| Semantic/Vector | embeddings for RAG retrieval | `embeddings` table (pgvector) |
-| Knowledge graph | entity relationships | `kg_nodes` / `kg_edges` tables |
-| Agent memory | per-agent scratchpad | `agent_memory` table |
-| Task memory | task history/outcomes | `tasks` table |
-| Reflection | self-critique logs | `reflections` table |
+### `backend/memory/`
 
-Retrieval flow for RAG: `query → embed → pgvector similarity search (top-k) → rerank → inject into prompt context`.
+- `MemoryStore` (in-memory, used in tests and when `CC_FORCE_MEMORY_STORE=1`).
+- `SupabaseStore` (production — identical API, writes to Supabase).
+- `workspaceGuard` — a Proxy that watches every write/list method, logs or
+  throws on any call missing a workspace scope. See [workspaces.md](workspaces.md).
+- `workspaceContext` — resolves `req.user.workspaceId` for authenticated routes
+  (via `workspace_members`), and `getSoleWorkspaceId()` for webhook paths with
+  no logged-in user.
 
----
+### `backend/core/sendGuard.js`
 
-## 7. Database Schema (Supabase / PostgreSQL)
+Test-mode defence. If `CC_TESTING=1` and `ALLOW_REAL_SENDS!=1`, any Composio
+action whose slug matches `_(SEND|POST|REPLY|UPLOAD|SUBMIT|CREATE|DELETE|UPDATE|REMOVE)_`
+or is in the hard-coded `SEND_ACTION_SLUGS` list throws `SendGuardError` **before**
+the HTTP call. No-op in production.
 
-Core tables (abbreviated to essential columns):
+### `backend/plugins/gmail/guard.js`
 
-```sql
--- users & auth handled by Supabase Auth (auth.users)
+Primary approval gate for Gmail. Every send must either:
 
-create table agents (
-  id uuid primary key default gen_random_uuid(),
-  name text not null,
-  role text not null,
-  config jsonb default '{}',
-  created_at timestamptz default now()
-);
+- Carry `approvedTaskId` + match the stored task's `toolCall.tool` + match the
+  stored recipient, or
+- Be a system-digest (`systemDigest: true` + `to === config.applicant.email`
+  exactly — anything else is refused).
 
-create table tasks (
-  id uuid primary key default gen_random_uuid(),
-  agent_id uuid references agents(id),
-  parent_task_id uuid references tasks(id),
-  action text not null,
-  payload jsonb,
-  status text default 'pending', -- pending | running | pending_approval | done | failed
-  irreversible boolean default false,
-  result jsonb,
-  created_at timestamptz default now(),
-  updated_at timestamptz default now()
-);
+Also: dedup by `(to, subject, sha256(body))` within a 10-minute window; writes
+`memory.audit('gmail-guard', ...)` on every refusal (bodies hashed, never
+logged in full).
 
-create table conversations (
-  id uuid primary key default gen_random_uuid(),
-  user_id uuid references auth.users(id),
-  title text,
-  pinned boolean default false,
-  folder text,
-  created_at timestamptz default now()
-);
+### `backend/core/autoReplySafety.js`
 
-create table messages (
-  id uuid primary key default gen_random_uuid(),
-  conversation_id uuid references conversations(id),
-  role text not null, -- user | assistant | system | agent
-  content text,
-  metadata jsonb,
-  created_at timestamptz default now()
-);
+Gate for inbound-message auto-replies (WhatsApp/Telegram). Blocks on:
 
-create table embeddings (
-  id uuid primary key default gen_random_uuid(),
-  source_type text,        -- pdf | docx | url | youtube ...
-  source_id text,
-  chunk text,
-  embedding vector(1536),
-  metadata jsonb,
-  created_at timestamptz default now()
-);
+1. Risk keywords (refund, cancel, complaint, legal, medical, suicide, etc.)
+2. Placeholder patterns in the draft (literal `[bracket]`, `example.com`,
+   `yourbusiness.com`, "lorem ipsum", etc.)
+3. Daily per-channel send limit
+4. LLM-judged "is this grounded in actual business knowledge" check — fails
+   **closed** on any error.
 
-create table plugins (
-  id uuid primary key default gen_random_uuid(),
-  name text unique not null,
-  version text,
-  enabled boolean default false,
-  config jsonb default '{}'
-);
+### Inbox-triage filters
 
-create table workflows (
-  id uuid primary key default gen_random_uuid(),
-  name text,
-  definition jsonb,   -- DAG of steps
-  enabled boolean default true,
-  created_at timestamptz default now()
-);
+`PersonalAssistantAgent.filterMessages` drops:
 
-create table audit_log (
-  id uuid primary key default gen_random_uuid(),
-  actor text,          -- agent name or user id
-  action text,
-  target text,
-  metadata jsonb,
-  created_at timestamptz default now()
-);
-```
+- `fromEmail ∈ MY_EMAIL_ADDRESSES` (you're not replying to yourself)
+- Threads already in `outreach_threads` (don't double-send)
+- Subjects starting with `[CodeCraft` (system digests)
+- Automated senders (`no-reply@`, `noreply@`, `mailer-daemon@`, `bounce@`,
+  etc.)
 
-RBAC is modeled with a `roles` table + `user_roles` join table; every plugin action checks `permissions` against the caller's role before the `ToolRegistry` executes it.
+Surviving messages are grouped by thread id and only the latest is kept.
+
+### `backend/core/activityLog.js`
+
+The single entry point for every audit event. Takes `(actor, action, target,
+metadata)`. If `metadata.workspaceId` is present, scopes the write;
+otherwise, if `metadata.scope === 'system'`, uses the named-system-caller
+path; otherwise lets the shadow guard log the miss.
 
 ---
 
-## 8. REST API Surface (high level)
+## 4. Supabase tables
 
-```
-POST   /api/orchestrator/goal          # submit a new high-level goal
-GET    /api/tasks/:id                  # task status
-POST   /api/tasks/:id/approve          # approve pending_approval task
-GET    /api/agents                     # list agents + status
-POST   /api/conversations              # new chat
-POST   /api/conversations/:id/messages # send message (streamed response)
-POST   /api/plugins/install
-POST   /api/skills/install
-POST   /api/workflows                  # create/update workflow
-POST   /api/workflows/:id/run
-GET    /api/dashboard/summary          # active agents, cost, usage, logs
-```
+| Table | Purpose |
+|---|---|
+| `workspaces` | One row per tenant workspace |
+| `workspace_members` | `(workspace_id, user_id, role)` |
+| `workspace_connections` | Per-workspace integration creds (reserved for Phase 2.5) |
+| `business_profile` | Per-workspace business profile (reserved for Phase 2.4) |
+| `roles` / `user_roles` | Legacy role grants (`admin`, `client`) |
+| `tasks` | Agent tasks; status, payload, workspace_id |
+| `scheduled_workflows` | Simple interval/daily workflows (saveWorkflow API) |
+| `workflow_definitions` | Graph workflows |
+| `workflow_runs` | Execution history for `workflow_definitions` |
+| `chat_messages` | Ian chat history |
+| `audit_log` | Everything `activityLog.record` writes |
+| `agent_memory` | Per-agent scratchpad |
+| `reflections` | Per-task notes written by `agent.reflect()` |
+| `outreach_threads` | Thread registry for Gmail guard ownership + dedup |
+| `skills` | Universal Skill Installer registry |
+| `long_term_memory` | Facts the user asked Ian to remember |
+| `briefing_runs` | Snapshots of each briefing agent run |
+| `briefing_articles` | Normalized articles for the Intelligence dashboard |
+| `assistant_usage_daily` | Daily LLM cost accounting (for `ASSISTANT_DAILY_USD_CAP`) |
+| `whatsapp_messages` / `telegram_messages` | Dedup store for inbound webhook messages |
+| `rls_shadow_log` | Rows the Postgres trigger flagged for being out of workspace scope |
 
----
+> **TODO: confirm** — the `scheduled_workflows` table and the SupabaseStore
+> methods named `saveWorkflow` / `listWorkflows` map to each other. This is
+> intentional (shorter method names, more descriptive table name) but worth
+> renaming on a future cleanup.
 
-## Next steps
-
-This doc is the contract for the two remaining pieces:
-1. **Backend skeleton** — real Express server implementing the orchestrator, one agent, one plugin, this schema.
-2. **Frontend shell** — dashboard + chat UI matching this API surface.
-
-Say the word when you're ready to move to the backend skeleton.
+See `backend/database/schema.sql` for the full column list.

@@ -28,5 +28,8 @@
     "playwright": "^1.62.1",
     "uuid": "^9.0.1",
     "xlsx": "^0.18.5"
+  },
+  "devDependencies": {
+    "md-to-pdf": "^5.2.5"
   }
 }
