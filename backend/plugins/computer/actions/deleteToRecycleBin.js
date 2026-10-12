@@ -17,7 +17,8 @@ module.exports = {
    * @param {object} args
    * @param {string[]} args.paths - specific, already-resolved file/folder paths to recycle (not names to search for)
    */
-  async run({ paths } = {}) {
+  async run({ paths } = {}, context = {}) {
+    const workspaceId = context.workspaceId || null;
     const allowedRoots = getAllowedRoots();
     if (allowedRoots.length === 0) {
       throw new Error('No folders are configured for computer access yet. Set COMPUTER_ALLOWED_ROOTS in .env first.');
@@ -38,10 +39,10 @@ module.exports = {
       try {
         const result = await moveToRecycleBin(targetPath);
         results.push({ path: targetPath, status: 'recycled' });
-        await activityLog.record('Computer Operator Agent', 'file_recycled', targetPath, { wasDirectory: result.wasDirectory });
+        await activityLog.record('Computer Operator Agent', 'file_recycled', targetPath, { wasDirectory: result.wasDirectory, workspaceId });
       } catch (err) {
         results.push({ path: targetPath, status: 'failed', error: err.message });
-        await activityLog.record('Computer Operator Agent', 'file_recycle_failed', targetPath, { error: err.message });
+        await activityLog.record('Computer Operator Agent', 'file_recycle_failed', targetPath, { error: err.message, workspaceId });
       }
     }
 

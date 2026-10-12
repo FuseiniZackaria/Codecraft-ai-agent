@@ -116,6 +116,12 @@ function statusForStage(stage) {
  * columns the tasks table doesn't have.
  */
 async function persist(pipelineId, state, { isNew = false } = {}) {
+  // State carries its own workspace_id (seeded in processOpportunity from
+  // options.workspaceId or opportunity.workspace_id). Pass it through the
+  // task row, the saveTask/updateTask scope, and the activity-log metadata
+  // so the full pipeline chain stays stamped end to end instead of writing
+  // null-workspace rows the backfill then has to clean up.
+  const workspaceId = state.workspace_id || null;
   const task = {
     id: pipelineId,
     agent: 'outreach-pipeline',
@@ -124,9 +130,12 @@ async function persist(pipelineId, state, { isNew = false } = {}) {
     irreversible: false,
     payload: state,
     created_at: new Date().toISOString(),
+    workspace_id: workspaceId,
   };
-  const saved = isNew ? await memory.saveTask(task) : await memory.updateTask(pipelineId, { status: task.status, payload: state });
-  await activityLog.record('Outreach Pipeline', 'stage_changed', state.opportunity.company || '', { pipelineId, stage: state.stage });
+  const saved = isNew
+    ? await memory.saveTask(task, { workspaceId })
+    : await memory.updateTask(pipelineId, { status: task.status, payload: state }, { workspaceId });
+  await activityLog.record('Outreach Pipeline', 'stage_changed', state.opportunity.company || '', { pipelineId, stage: state.stage, workspaceId });
   return { id: pipelineId, ...(saved && saved.payload ? saved.payload : state) };
 }
 
@@ -152,11 +161,16 @@ async function processOpportunity(opportunity, options = {}) {
   // own id, if any, is preserved inside opportunity itself, untouched.
   const pipelineId = uuid();
 
+  // Resolve the workspace once up front; threaded into state so every
+  // persist() below stamps the right workspace onto the task row + its audit.
+  const workspaceId = options.workspaceId || opportunity.workspace_id || null;
+
   let state = {
     pipelineType: 'job_outreach_pipeline',
     stage: STAGES.DISCOVERED,
     mode,
     opportunity,
+    workspace_id: workspaceId,
   };
   let record = await persist(pipelineId, state, { isNew: true });
 
@@ -280,6 +294,7 @@ async function processOpportunity(opportunity, options = {}) {
       await activityLog.record('Outreach Pipeline', 'auto_send_blocked', opportunity.company || '', {
         pipelineId,
         reason: 'Automatic mode requested but OUTREACH_AUTOMATIC_ENABLED is not set - awaiting manual approval instead',
+        workspaceId,
       });
       return record;
     }
@@ -288,6 +303,7 @@ async function processOpportunity(opportunity, options = {}) {
       await activityLog.record('Outreach Pipeline', 'auto_send_blocked', opportunity.company || '', {
         pipelineId,
         reason: autoApprovalCheck.reason,
+        workspaceId,
       });
       return record;
     }
@@ -301,9 +317,10 @@ async function processOpportunity(opportunity, options = {}) {
       approvalTaskId: approvalTask.id,
       score: verification.score,
       reason: 'All automatic-send conditions met',
+      workspaceId,
     });
 
-    const sentTask = await require('./orchestrator').approveTask(approvalTask.id);
+    const sentTask = await require('./orchestrator').approveTask(approvalTask.id, { workspaceId });
     state = {
       ...state,
       stage: sentTask.status === 'done' ? STAGES.SENT : STAGES.AWAITING_APPROVAL,
@@ -333,7 +350,13 @@ async function processOpportunity(opportunity, options = {}) {
 async function markSent(pipelineId, sendResult) {
   const task = await memory.getTask(pipelineId);
   if (!task || !task.payload) return null;
-  const state = { ...task.payload, stage: STAGES.SENT, sendResult, sentAt: new Date().toISOString() };
+  const state = {
+    ...task.payload,
+    stage: STAGES.SENT,
+    sendResult,
+    sentAt: new Date().toISOString(),
+    workspace_id: task.payload.workspace_id || task.workspace_id || null,
+  };
   return persist(pipelineId, state);
 }
 
@@ -397,6 +420,7 @@ async function recordResponse(pipelineId, response) {
     ...task.payload,
     respondedMessageIds: [...respondedMessageIds],
     responses: [...(task.payload.responses || []), response],
+    workspace_id: task.payload.workspace_id || task.workspace_id || null,
     ...(isAutomated
       ? {}
       : {
@@ -461,6 +485,7 @@ async function checkFollowUps() {
       pipelineId: task.id,
       followUpIndex: nextIndex + 1,
       approvalTaskId: approvalTask.id,
+      workspaceId: state.workspace_id || task.workspace_id || null,
     });
     results.push({ pipelineId: task.id, followUpIndex: nextIndex + 1, approvalTaskId: approvalTask.id });
   }
@@ -513,7 +538,11 @@ async function draftFollowUp(opportunity, verification, followUpNumber) {
 async function updateState(pipelineId, patch) {
   const task = await memory.getTask(pipelineId);
   if (!task || !task.payload) return null;
-  const state = { ...task.payload, ...patch };
+  const state = {
+    ...task.payload,
+    ...patch,
+    workspace_id: patch.workspace_id || task.payload.workspace_id || task.workspace_id || null,
+  };
   return persist(pipelineId, state);
 }
 

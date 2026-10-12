@@ -289,7 +289,8 @@ router.get('/tasks', async (req, res) => {
 
 router.delete('/tasks/:id', async (req, res) => {
   try {
-    await memory.deleteTask(req.params.id);
+    const workspaceId = req.user?.workspaceId || null;
+    await memory.deleteTask(req.params.id, { workspaceId });
     res.json({ deleted: true });
   } catch (err) {
     res.status(500).json({ error: err.message });
@@ -302,11 +303,12 @@ router.post('/tasks/bulk-delete', async (req, res) => {
     return res.status(400).json({ error: 'ids must be a non-empty array' });
   }
   console.log(`[bulk-delete] Deleting ${ids.length} tasks`);
+  const workspaceId = req.user?.workspaceId || null;
   let deleted = 0;
   const errors = [];
   for (const id of ids) {
     try {
-      await memory.deleteTask(id);
+      await memory.deleteTask(id, { workspaceId });
       deleted++;
     } catch (err) {
       errors.push({ id, error: err.message });
@@ -318,7 +320,8 @@ router.post('/tasks/bulk-delete', async (req, res) => {
 
 router.post('/tasks/mark-all-read', async (req, res) => {
   try {
-    await memory.markAllTasksRead();
+    const workspaceId = req.user?.workspaceId || null;
+    await memory.markAllTasksRead({ workspaceId });
     res.json({ ok: true });
   } catch (err) {
     res.status(500).json({ error: err.message });
@@ -336,7 +339,7 @@ router.patch('/tasks/:id/payload', async (req, res) => {
     }
     const updated = await memory.updateTask(req.params.id, {
       payload: { ...task.payload, ...req.body.payload },
-    });
+    }, { workspaceId: req.user?.workspaceId || task.workspace_id || null });
     res.json(updated);
   } catch (err) {
     res.status(500).json({ error: err.message });

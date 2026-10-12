@@ -53,6 +53,48 @@ function invalidateUser(userId) {
   if (userId) cache.delete(userId);
 }
 
+// Short-lived cache for the "which workspace owns this server right now"
+// lookup used by webhook paths that don't carry an authenticated user
+// (Twilio/Meta WhatsApp callback, Telegram bot callback, scheduler-side
+// briefings/outreach). Refreshed every 5 minutes - long enough to spare the
+// DB on bursts, short enough that a brand-new workspace reaches webhooks
+// without a server restart.
+let soleWorkspaceCache = null;
+const SOLE_WORKSPACE_TTL_MS = 5 * 60 * 1000;
+
+/**
+ * Returns the sole workspace's id in a single-admin deployment, or null if
+ * there isn't exactly one. Webhook / scheduler callers that have no user
+ * identity use this to stamp rows onto the right workspace instead of
+ * leaving them legacy-null. Once Phase 2.5 introduces per-admin
+ * connections, each webhook URL will carry its own workspace token and
+ * callers can switch to that instead; until then, "there is one admin,
+ * stamp their workspace" is the right default.
+ */
+async function getSoleWorkspaceId() {
+  if (!supabase) return null;
+  if (soleWorkspaceCache && Date.now() - soleWorkspaceCache.at < SOLE_WORKSPACE_TTL_MS) {
+    return soleWorkspaceCache.workspaceId;
+  }
+  try {
+    const { data, error } = await supabase
+      .from('workspaces')
+      .select('id')
+      .order('created_at', { ascending: true })
+      .limit(2);
+    if (error) return null;
+    const workspaceId = Array.isArray(data) && data.length === 1 ? data[0].id : null;
+    soleWorkspaceCache = { workspaceId, at: Date.now() };
+    return workspaceId;
+  } catch {
+    return null;
+  }
+}
+
+function invalidateSoleWorkspace() {
+  soleWorkspaceCache = null;
+}
+
 function isMissingTable(error) {
   if (!error) return false;
   if (error.code === '42P01') return true;
@@ -145,4 +187,6 @@ module.exports = {
   resolveWorkspaceForUser,
   attachWorkspace,
   invalidateUser,
+  getSoleWorkspaceId,
+  invalidateSoleWorkspace,
 };

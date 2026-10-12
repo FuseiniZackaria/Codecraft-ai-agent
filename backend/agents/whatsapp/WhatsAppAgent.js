@@ -5,6 +5,7 @@ const { selectProvider } = require('../../core/router');
 const { businessContextLine } = require('../../core/businessContext');
 const { classifyReplySafety } = require('../../core/autoReplySafety');
 const notifications = require('../../core/notifications');
+const { getSoleWorkspaceId } = require('../../core/workspaceContext');
 
 /**
  * WhatsAppAgent - triggered by the webhook receiver on each incoming
@@ -32,6 +33,13 @@ class WhatsAppAgent extends BaseAgent {
   }
 
   async handleIncomingMessage({ from, body }) {
+    // Webhook path - no logged-in user to carry a workspace. In a single-
+    // admin deployment there's exactly one workspace, so resolve it here
+    // and thread it through so the approval task + its audit stamp the
+    // right workspace. Returns null in dev / unmigrated DBs; the chain
+    // then behaves as before and the row stays legacy-null.
+    const workspaceId = await getSoleWorkspaceId();
+
     const provider = selectProvider({});
     const result = await provider.complete({
       maxTokens: 400,
@@ -47,6 +55,7 @@ class WhatsAppAgent extends BaseAgent {
       instruction: `Reply on WhatsApp to ${from}`,
       tool: 'whatsapp.sendMessage',
       payload: { to: from, body: draft },
+      workspaceId,
     });
 
     let autoSent = false;
@@ -55,11 +64,12 @@ class WhatsAppAgent extends BaseAgent {
       await activityLog.record(this.role, safety.safe ? 'auto_reply_approved' : 'auto_reply_blocked', from, {
         approvalTaskId: approvalTask.id,
         reason: safety.reason,
+        workspaceId,
       });
       if (safety.safe) {
         // Lazy require - see TelegramAgent.js for why (circular dependency
         // via core/orchestrator -> agents/registry -> this file).
-        await require('../../core/orchestrator').approveTask(approvalTask.id);
+        await require('../../core/orchestrator').approveTask(approvalTask.id, { workspaceId });
         autoSent = true;
       }
     }

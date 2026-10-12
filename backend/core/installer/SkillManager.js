@@ -42,28 +42,31 @@ class SkillManager {
 
   async enable(id) {
     const skill = await this.info(id);
+    const workspaceId = skill.workspace_id || null;
     const activated = this.activator.activate(id, skill.sourcePath, skill.manifest);
     const updated = await memory.updateSkill(id, { status: 'enabled' });
-    await activityLog.record('skill-manager', 'skill.enabled', id, { toolsRegistered: activated.tools.length });
+    await activityLog.record('skill-manager', 'skill.enabled', id, { toolsRegistered: activated.tools.length, workspaceId });
     return updated;
   }
 
   async disable(id) {
-    await this.info(id);
+    const skill = await this.info(id);
+    const workspaceId = skill.workspace_id || null;
     this.activator.deactivate(id);
     const updated = await memory.updateSkill(id, { status: 'disabled' });
-    await activityLog.record('skill-manager', 'skill.disabled', id, {});
+    await activityLog.record('skill-manager', 'skill.disabled', id, { workspaceId });
     return updated;
   }
 
   async remove(id) {
     const skill = await this.info(id);
+    const workspaceId = skill.workspace_id || null;
     this.activator.deactivate(id);
     if (fs.existsSync(skill.sourcePath)) {
       fs.rmSync(skill.sourcePath, { recursive: true, force: true });
     }
     await memory.deleteSkill(id);
-    await activityLog.record('skill-manager', 'skill.removed', id, {});
+    await activityLog.record('skill-manager', 'skill.removed', id, { workspaceId });
     return { removed: true, id };
   }
 
@@ -75,6 +78,7 @@ class SkillManager {
 
   async repair(id) {
     const skill = await this.info(id);
+    const workspaceId = skill.workspace_id || null;
     const currentChecksum = this.verifier.computeChecksum(skill.sourcePath);
     const corrupted = currentChecksum !== skill.checksum;
 
@@ -86,11 +90,11 @@ class SkillManager {
     }
 
     if (!corrupted && activationOk) {
-      await activityLog.record('skill-manager', 'skill.repair_not_needed', id, {});
+      await activityLog.record('skill-manager', 'skill.repair_not_needed', id, { workspaceId });
       return { repaired: false, reason: 'no corruption detected' };
     }
 
-    await activityLog.record('skill-manager', 'skill.repairing', id, { corrupted, activationOk });
+    await activityLog.record('skill-manager', 'skill.repairing', id, { corrupted, activationOk, workspaceId });
     await this.reinstall(id, skill.permissions);
     return { repaired: true, corrupted, activationOk };
   }
@@ -116,7 +120,7 @@ class SkillManager {
       approvedPermissions: combinedPermissions,
       isUpdate: true,
     });
-    await activityLog.record('skill-manager', 'update.completed', id, { from: skill.version, to: latest });
+    await activityLog.record('skill-manager', 'update.completed', id, { from: skill.version, to: latest, workspaceId: skill.workspace_id || null });
     return { updated: true, from: skill.version, to: latest, result };
   }
 
@@ -127,19 +131,20 @@ class SkillManager {
     const zip = new AdmZip();
     zip.addLocalFolder(skill.sourcePath);
     zip.writeZip(backupPath);
-    await activityLog.record('skill-manager', 'skill.backed_up', id, { backupPath });
+    await activityLog.record('skill-manager', 'skill.backed_up', id, { backupPath, workspaceId: skill.workspace_id || null });
     return { backupPath };
   }
 
   async restore(id, backupPath) {
     if (!fs.existsSync(backupPath)) throw new Error(`Backup not found: ${backupPath}`);
     const skill = await this.info(id);
+    const workspaceId = skill.workspace_id || null;
     this.activator.deactivate(id);
     fs.rmSync(skill.sourcePath, { recursive: true, force: true });
     const zip = new AdmZip(backupPath);
     zip.extractAllTo(skill.sourcePath, true);
     this.activator.activate(id, skill.sourcePath, skill.manifest);
-    await activityLog.record('skill-manager', 'skill.restored', id, { backupPath });
+    await activityLog.record('skill-manager', 'skill.restored', id, { backupPath, workspaceId });
     return { restored: true };
   }
 

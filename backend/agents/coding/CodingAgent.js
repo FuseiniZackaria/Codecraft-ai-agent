@@ -280,11 +280,13 @@ class CodingAgent extends BaseAgent {
       task.plannedFiles.map((f) => `  - ${f}`).join('\n') +
       `\n\nDownload: ${downloadUrl}`;
 
-    await memory.addReflection(this.role, task.id, note);
-    await activityLog.record(this.role, 'skill.built', task.workspaceId, { taskId: task.id, fileCount: results.length });
+    const tenantWorkspaceId = task?.workspace_id || null;
+    await memory.addReflection(this.role, task.id, note, { workspaceId: tenantWorkspaceId });
+    await activityLog.record(this.role, 'skill.built', task.workspaceId, { taskId: task.id, fileCount: results.length, workspaceId: tenantWorkspaceId });
     await activityLog.record(this.role, 'narration', task.workspaceId, {
       taskId: task.id,
       text: `Done — all ${results.length} file${results.length === 1 ? '' : 's'} written and zipped. Ready to download.`,
+      workspaceId: tenantWorkspaceId,
     });
 
     // BaseAgent.run() returns the `results` array by reference, not

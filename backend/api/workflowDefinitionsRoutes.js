@@ -152,7 +152,8 @@ router.patch('/:id', async (req, res) => {
     for (const field of ['name', 'graph', 'enabled', 'scheduleType', 'intervalMinutes', 'dailyTime', 'daysOfWeek', 'watchFolder']) {
       if (req.body[field] !== undefined) patch[field] = req.body[field];
     }
-    res.json(await memory.updateWorkflowDefinition(req.params.id, patch));
+    const workspaceId = req.user?.workspaceId || existing.workspace_id || null;
+    res.json(await memory.updateWorkflowDefinition(req.params.id, patch, { workspaceId }));
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
@@ -162,7 +163,8 @@ router.delete('/:id', async (req, res) => {
   try {
     const existing = scopeOne(await memory.getWorkflowDefinition(req.params.id), req);
     if (!existing) return res.status(404).json({ error: 'Workflow definition not found' });
-    await memory.deleteWorkflowDefinition(req.params.id);
+    const workspaceId = req.user?.workspaceId || existing.workspace_id || null;
+    await memory.deleteWorkflowDefinition(req.params.id, { workspaceId });
     res.json({ deleted: true });
   } catch (err) {
     res.status(500).json({ error: err.message });

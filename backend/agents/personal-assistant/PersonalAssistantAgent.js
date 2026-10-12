@@ -276,7 +276,7 @@ class PersonalAssistantAgent extends BaseAgent {
       `(${toReply.length - created - dropped} already handled in a previous run). ` +
       `Skipped ${skippedTotal} before triage (my own emails: ${c.myOwn}, sales/job outreach: ${c.outreach}, ` +
       `app emails: ${c.app}, automated: ${c.automated}). Fetched ${inputCount} message(s) from Gmail.`;
-    await memory.addReflection(this.role, task.id, note);
+    await memory.addReflection(this.role, task.id, note, { workspaceId: task?.workspace_id || null });
     return note;
   }
 }

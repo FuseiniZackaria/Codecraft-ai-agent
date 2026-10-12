@@ -62,7 +62,7 @@ class SupportAgent extends BaseAgent {
       note = `Couldn't find a clear recipient email — mention the customer's email address and try again.`;
     }
 
-    await memory.addReflection(this.role, task.id, note);
+    await memory.addReflection(this.role, task.id, note, { workspaceId: task?.workspace_id || null });
     return note;
   }
 }

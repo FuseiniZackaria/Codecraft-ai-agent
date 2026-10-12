@@ -5,6 +5,7 @@ const { selectProvider } = require('../../core/router');
 const { businessContextLine } = require('../../core/businessContext');
 const { classifyReplySafety } = require('../../core/autoReplySafety');
 const notifications = require('../../core/notifications');
+const { getSoleWorkspaceId } = require('../../core/workspaceContext');
 
 /**
  * TelegramAgent - triggered by the webhook receiver on each incoming
@@ -35,6 +36,11 @@ class TelegramAgent extends BaseAgent {
   }
 
   async handleIncomingMessage({ from, body }) {
+    // Webhook path - no user auth to carry workspace. Resolve the sole
+    // workspace once per webhook so the approval task + its audit stamp
+    // the right account. See WhatsAppAgent for the same pattern + rationale.
+    const workspaceId = await getSoleWorkspaceId();
+
     const provider = selectProvider({});
     const result = await provider.complete({
       maxTokens: 400,
@@ -50,6 +56,7 @@ class TelegramAgent extends BaseAgent {
       instruction: `Reply on Telegram to ${from}`,
       tool: 'telegram.sendMessage',
       payload: { to: from, body: draft },
+      workspaceId,
     });
 
     let autoSent = false;
@@ -58,6 +65,7 @@ class TelegramAgent extends BaseAgent {
       await activityLog.record(this.role, safety.safe ? 'auto_reply_approved' : 'auto_reply_blocked', from, {
         approvalTaskId: approvalTask.id,
         reason: safety.reason,
+        workspaceId,
       });
       if (safety.safe) {
         // Lazy require - core/orchestrator requires agents/registry at its
@@ -66,7 +74,7 @@ class TelegramAgent extends BaseAgent {
         // core/outreachPipeline.js). Requiring it here instead of at the
         // top of this file defers evaluation until after the app has
         // fully started, once the cycle has already resolved.
-        await require('../../core/orchestrator').approveTask(approvalTask.id);
+        await require('../../core/orchestrator').approveTask(approvalTask.id, { workspaceId });
         autoSent = true;
       }
     }

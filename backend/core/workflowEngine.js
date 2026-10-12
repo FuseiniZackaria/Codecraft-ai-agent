@@ -87,7 +87,7 @@ async function runSubgraph(subgraph, parentContext, runId, runWorkspaceId = null
 /** Runs one node, returning its output string and (for branching nodes) which branch was taken. */
 async function executeNode(node, context, runId, runWorkspaceId = null) {
   const config = resolveConfig(node.config, context);
-  await activityLog.record('workflow', 'node_started', node.id, { runId, nodeType: node.type });
+  await activityLog.record('workflow', 'node_started', node.id, { runId, nodeType: node.type, workspaceId: runWorkspaceId });
 
   try {
     let output = '';
@@ -108,20 +108,21 @@ async function executeNode(node, context, runId, runWorkspaceId = null) {
         agent: config.agentKey,
         status: 'running',
         created_at: new Date().toISOString(),
+        workspace_id: runWorkspaceId,
       };
-      await memory.saveTask(task);
+      await memory.saveTask(task, { workspaceId: runWorkspaceId });
       try {
         const results = await agent.run(task);
-        await memory.updateTask(task.id, { status: 'done', result: results });
+        await memory.updateTask(task.id, { status: 'done', result: results }, { workspaceId: runWorkspaceId });
         output = toOutputString(results);
       } catch (err) {
-        await memory.updateTask(task.id, { status: 'failed', result: { error: err.message } });
+        await memory.updateTask(task.id, { status: 'failed', result: { error: err.message } }, { workspaceId: runWorkspaceId });
         throw err;
       }
     } else if (node.type === 'tool') {
       if (!toolRegistry.has(config.tool)) throw new Error(`Unknown tool "${config.tool}"`);
       const args = resolveConfig(config.args || {}, context);
-      const result = await toolRegistry.call(config.tool, args, { role: 'workflow' });
+      const result = await toolRegistry.call(config.tool, args, { role: 'workflow', workspaceId: runWorkspaceId });
       output = toOutputString(result);
     } else if (node.type === 'condition') {
       const provider = selectProvider({});
@@ -191,23 +192,23 @@ async function executeNode(node, context, runId, runWorkspaceId = null) {
 
       const iterationOutputs = [];
       for (let i = 0; i < items.length; i++) {
-        await activityLog.record('workflow', 'loop_iteration_started', node.id, { runId, index: i, of: items.length });
+        await activityLog.record('workflow', 'loop_iteration_started', node.id, { runId, index: i, of: items.length, workspaceId: runWorkspaceId });
         const iterContext = { ...context, loop: { item: String(items[i]), index: i } };
         const bodyContext = await runSubgraph(node.config.body, iterContext, runId, runWorkspaceId);
         iterationOutputs.push(bodyContext[node.config.resultNodeId]?.output || '');
-        await activityLog.record('workflow', 'loop_iteration_completed', node.id, { runId, index: i });
+        await activityLog.record('workflow', 'loop_iteration_completed', node.id, { runId, index: i, workspaceId: runWorkspaceId });
       }
       output = iterationOutputs.join('\n\n');
     } else if (node.type === 'parallel') {
       const branches = node.config.branches || [];
-      await activityLog.record('workflow', 'parallel_started', node.id, { runId, branchCount: branches.length });
+      await activityLog.record('workflow', 'parallel_started', node.id, { runId, branchCount: branches.length, workspaceId: runWorkspaceId });
       const branchOutputs = await Promise.all(
         branches.map(async (branch, i) => {
           const bodyContext = await runSubgraph(branch.body, context, runId, runWorkspaceId);
           return bodyContext[branch.resultNodeId]?.output || '';
         })
       );
-      await activityLog.record('workflow', 'parallel_completed', node.id, { runId });
+      await activityLog.record('workflow', 'parallel_completed', node.id, { runId, workspaceId: runWorkspaceId });
       output = branchOutputs.join('\n\n---\n\n');
     } else if (node.type === 'sub_workflow') {
       const depth = (context.__subworkflowDepth || 0) + 1;
@@ -246,10 +247,10 @@ async function executeNode(node, context, runId, runWorkspaceId = null) {
       throw new Error(`Unknown node type "${node.type}"`);
     }
 
-    await activityLog.record('workflow', 'node_completed', node.id, { runId, nodeType: node.type });
+    await activityLog.record('workflow', 'node_completed', node.id, { runId, nodeType: node.type, workspaceId: runWorkspaceId });
     return { output, branch };
   } catch (err) {
-    await activityLog.record('workflow', 'node_failed', node.id, { runId, nodeType: node.type, error: err.message });
+    await activityLog.record('workflow', 'node_failed', node.id, { runId, nodeType: node.type, error: err.message, workspaceId: runWorkspaceId });
     throw err;
   }
 }
@@ -301,20 +302,20 @@ async function walk(run, definition, startNodeId) {
         pausedTaskId: task.id,
         context: run.context,
       });
-      await activityLog.record('workflow', 'run_paused', node.id, { runId: run.id, taskId: task.id });
+      await activityLog.record('workflow', 'run_paused', node.id, { runId: run.id, taskId: task.id, workspaceId: run.workspace_id || null });
       return; // stop here - resume() picks up from node.id's next edge later
     }
 
     const { output, branch } = await executeNode(node, run.context, run.id, run.workspace_id || null);
     run.context[node.id] = { output };
-    await memory.updateWorkflowRun(run.id, { context: run.context, currentNodeId: node.id });
+    await memory.updateWorkflowRun(run.id, { context: run.context, currentNodeId: node.id }, { workspaceId: run.workspace_id || null });
 
     const nextEdge = pickNextEdge(graph, node.id, branch);
     currentId = nextEdge?.target || null;
   }
 
-  await memory.updateWorkflowRun(run.id, { status: 'done', completedAt: new Date().toISOString() });
-  await activityLog.record('workflow', 'run_completed', definition.id, { runId: run.id });
+  await memory.updateWorkflowRun(run.id, { status: 'done', completedAt: new Date().toISOString() }, { workspaceId: run.workspace_id || null });
+  await activityLog.record('workflow', 'run_completed', definition.id, { runId: run.id, workspaceId: run.workspace_id || null });
 }
 
 /** Starts a fresh run of a workflow definition from its trigger node. */
@@ -354,8 +355,8 @@ async function runWorkflow(definitionId, triggerOutput = null, options = {}) {
   try {
     await walk(run, definition, firstEdge?.target || null);
   } catch (err) {
-    await memory.updateWorkflowRun(run.id, { status: 'failed', error: err.message, completedAt: new Date().toISOString() });
-    await activityLog.record('workflow', 'run_failed', definitionId, { runId: run.id, error: err.message });
+    await memory.updateWorkflowRun(run.id, { status: 'failed', error: err.message, completedAt: new Date().toISOString() }, { workspaceId });
+    await activityLog.record('workflow', 'run_failed', definitionId, { runId: run.id, error: err.message, workspaceId });
   }
 
   return memory.getWorkflowRun(run.id);
@@ -370,15 +371,16 @@ async function resumeWorkflow(runId) {
   const definition = await memory.getWorkflowDefinition(run.workflowId);
   if (!definition) throw new Error(`Workflow definition "${run.workflowId}" not found`);
 
-  await memory.updateWorkflowRun(runId, { status: 'running' });
-  await activityLog.record('workflow', 'run_resumed', run.currentNodeId, { runId });
+  const resumeWorkspaceId = run.workspace_id || null;
+  await memory.updateWorkflowRun(runId, { status: 'running' }, { workspaceId: resumeWorkspaceId });
+  await activityLog.record('workflow', 'run_resumed', run.currentNodeId, { runId, workspaceId: resumeWorkspaceId });
 
   const nextEdge = pickNextEdge(definition.graph, run.currentNodeId, null);
   try {
     await walk(run, definition, nextEdge?.target || null);
   } catch (err) {
-    await memory.updateWorkflowRun(runId, { status: 'failed', error: err.message, completedAt: new Date().toISOString() });
-    await activityLog.record('workflow', 'run_failed', definition.id, { runId, error: err.message });
+    await memory.updateWorkflowRun(runId, { status: 'failed', error: err.message, completedAt: new Date().toISOString() }, { workspaceId: resumeWorkspaceId });
+    await activityLog.record('workflow', 'run_failed', definition.id, { runId, error: err.message, workspaceId: resumeWorkspaceId });
   }
 
   return memory.getWorkflowRun(runId);
@@ -388,8 +390,9 @@ async function resumeWorkflow(runId) {
 async function cancelWorkflow(runId) {
   const run = await memory.getWorkflowRun(runId);
   if (!run) throw new Error(`Workflow run "${runId}" not found`);
-  await memory.updateWorkflowRun(runId, { status: 'failed', error: 'Cancelled by user', completedAt: new Date().toISOString() });
-  await activityLog.record('workflow', 'run_cancelled', run.currentNodeId, { runId });
+  const cancelWorkspaceId = run.workspace_id || null;
+  await memory.updateWorkflowRun(runId, { status: 'failed', error: 'Cancelled by user', completedAt: new Date().toISOString() }, { workspaceId: cancelWorkspaceId });
+  await activityLog.record('workflow', 'run_cancelled', run.currentNodeId, { runId, workspaceId: cancelWorkspaceId });
   return memory.getWorkflowRun(runId);
 }
 

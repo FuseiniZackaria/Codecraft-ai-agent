@@ -183,11 +183,12 @@ router.post('/', teamMutationLimiter, async (req, res) => {
     }
 
     try {
+      const workspaceId = req.user?.workspaceId || null;
       await memory.audit(req.user.email || req.user.id, 'admin_granted', userEmail || userId, {
         targetUserId: userId,
         existingAccount,
-        workspaceId: req.user?.workspaceId || null,
-      }, { workspaceId: req.user?.workspaceId || null });
+        workspaceId,
+      }, { workspaceId });
     } catch {
       // Audit log failures must not leak the password or prevent success.
     }

@@ -55,10 +55,12 @@ class JobVerificationAgent extends BaseAgent {
    */
   async verify(opportunity = {}) {
     const taskId = opportunity.id || `verify-${Date.now()}`;
+    const workspaceId = opportunity.workspace_id || opportunity.workspaceId || null;
     await activityLog.record(this.role, 'task_started', 'verify', {
       taskId,
       company: opportunity.company,
       jobTitle: opportunity.jobTitle,
+      workspaceId,
     });
 
     const reasons = [];
@@ -67,7 +69,7 @@ class JobVerificationAgent extends BaseAgent {
 
     // --- 1. Freshness (deterministic, no network) ---
     const freshness = checkFreshness(opportunity.postedDate);
-    await activityLog.record(this.role, 'freshness_checked', opportunity.company || '', { taskId, ...freshness });
+    await activityLog.record(this.role, 'freshness_checked', opportunity.company || '', { taskId, ...freshness, workspaceId });
 
     let freshnessPoints;
     if (freshness.status === 'FRESH') freshnessPoints = MAX_POINTS.freshness;
@@ -103,7 +105,7 @@ class JobVerificationAgent extends BaseAgent {
           { query: `"${opportunity.company}" official website careers`, maxResults: 5 },
           { role: this.role }
         );
-        await activityLog.record(this.role, 'tool_call', 'websearch.search', { taskId, target: 'company', status: 'done' });
+        await activityLog.record(this.role, 'tool_call', 'websearch.search', { taskId, target: 'company', status: 'done', workspaceId });
 
         const results = companySearchResults.results || [];
         const matchesDomain = companyDomain && results.some((r) => domainsMatch(extractDomainFromUrl(r.url), companyDomain));
@@ -262,6 +264,7 @@ class JobVerificationAgent extends BaseAgent {
       taskId,
       score: record.score,
       status: record.status,
+      workspaceId,
     });
 
     return record;

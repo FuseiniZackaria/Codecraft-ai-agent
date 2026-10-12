@@ -70,7 +70,8 @@ router.patch('/:id', async (req, res) => {
     for (const field of ['name', 'goal', 'scheduleType', 'intervalMinutes', 'dailyTime', 'daysOfWeek', 'enabled', 'deliverWhatsappEnabled', 'deliverWhatsappTo']) {
       if (req.body[field] !== undefined) patch[field] = req.body[field];
     }
-    const updated = await memory.updateWorkflow(req.params.id, patch);
+    const workspaceId = req.user?.workspaceId || existing.workspace_id || null;
+    const updated = await memory.updateWorkflow(req.params.id, patch, { workspaceId });
     res.json(updated);
   } catch (err) {
     res.status(500).json({ error: err.message });
@@ -79,7 +80,9 @@ router.patch('/:id', async (req, res) => {
 
 router.delete('/:id', async (req, res) => {
   try {
-    await memory.deleteWorkflow(req.params.id);
+    const existing = await memory.getWorkflow(req.params.id);
+    const workspaceId = req.user?.workspaceId || existing?.workspace_id || null;
+    await memory.deleteWorkflow(req.params.id, { workspaceId });
     res.json({ deleted: true });
   } catch (err) {
     res.status(500).json({ error: err.message });

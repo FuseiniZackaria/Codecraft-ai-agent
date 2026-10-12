@@ -12,6 +12,7 @@ module.exports = [
   'tests/workspace-tables-phase2c.test.js',
   'tests/workspace-system-scope.test.js',
   'tests/workspace-enforce-isolation.test.js',
+  'tests/workspace-shadow-leaks.test.js',
   'tests/orchestrator.test.js',
   'tests/installer.test.js',
   'tests/coding.test.js',

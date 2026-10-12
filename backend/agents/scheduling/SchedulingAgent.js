@@ -77,6 +77,7 @@ class SchedulingAgent extends BaseAgent {
       throw new Error(`No pipeline found for id "${pipelineId}"`);
     }
     const state = task.payload;
+    const workspaceId = state.workspace_id || task.workspace_id || null;
 
     const responses = state.responses || [];
     const schedulingResponse = [...responses].reverse().find((r) => r.schedulingRequestDetected);
@@ -86,7 +87,7 @@ class SchedulingAgent extends BaseAgent {
 
     const { freeSlots } = await this.checkAvailability();
     if (freeSlots.length === 0) {
-      await activityLog.record(this.role, 'no_availability', state.opportunity?.company || '', { pipelineId });
+      await activityLog.record(this.role, 'no_availability', state.opportunity?.company || '', { pipelineId, workspaceId });
       return { proposed: false, reason: 'No free slots found in the configured availability window' };
     }
 
@@ -102,6 +103,7 @@ class SchedulingAgent extends BaseAgent {
         recipientEmail: state.opportunity.contactEmail,
         body: draft.body,
       },
+      workspaceId,
     });
 
     await outreachPipeline.updateState(pipelineId, {
@@ -114,6 +116,7 @@ class SchedulingAgent extends BaseAgent {
       pipelineId,
       slotsOffered: slotsToOffer.length,
       approvalTaskId: approvalTask.id,
+      workspaceId,
     });
 
     return { proposed: true, slots: slotsToOffer, approvalTaskId: approvalTask.id };
@@ -132,6 +135,7 @@ class SchedulingAgent extends BaseAgent {
       throw new Error(`No pipeline found for id "${pipelineId}"`);
     }
     const state = task.payload;
+    const workspaceId = state.workspace_id || task.workspace_id || null;
 
     const proposedSlots = state.proposedSlots || [];
     const matchesProposed = proposedSlots.some((s) => s.start === chosenSlot.start && s.end === chosenSlot.end);
@@ -144,7 +148,7 @@ class SchedulingAgent extends BaseAgent {
     const { busyPeriods } = await this.checkAvailability();
     if (!isSlotFree(chosenSlot.start, chosenSlot.end, busyPeriods)) {
       await outreachPipeline.updateState(pipelineId, { bookingConflict: true, conflictDetectedAt: new Date().toISOString() });
-      await activityLog.record(this.role, 'booking_conflict', state.opportunity?.company || '', { pipelineId, chosenSlot });
+      await activityLog.record(this.role, 'booking_conflict', state.opportunity?.company || '', { pipelineId, chosenSlot, workspaceId });
       return { booked: false, reason: 'That slot is no longer free - it was booked elsewhere since it was proposed' };
     }
 
@@ -161,6 +165,7 @@ class SchedulingAgent extends BaseAgent {
         attendeeEmails: [state.opportunity.contactEmail],
         reminderMinutesBefore: config.scheduling.reminderMinutesBefore,
       },
+      workspaceId,
     });
 
     await outreachPipeline.updateState(pipelineId, {
@@ -172,6 +177,7 @@ class SchedulingAgent extends BaseAgent {
       pipelineId,
       chosenSlot,
       approvalTaskId: approvalTask.id,
+      workspaceId,
     });
 
     return { booked: false, pendingApproval: true, approvalTaskId: approvalTask.id };

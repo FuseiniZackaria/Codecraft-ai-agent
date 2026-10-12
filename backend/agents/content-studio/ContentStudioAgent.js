@@ -164,7 +164,7 @@ class ContentStudioAgent extends BaseAgent {
       note += ` Includes a generated cover image.`;
     }
 
-    await memory.addReflection(this.role, task.id, note);
+    await memory.addReflection(this.role, task.id, note, { workspaceId: task?.workspace_id || null });
 
     // BaseAgent.run() returns `results` by reference, not reflect()'s return
     // value - push the combined document as the final text-bearing entry so

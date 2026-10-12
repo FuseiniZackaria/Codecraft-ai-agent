@@ -91,7 +91,10 @@ class ResponseDetectionAgent extends BaseAgent {
       if (email && !byContactEmail.has(email)) byContactEmail.set(email, task); // keep first = most recent
     }
 
-    await activityLog.record(this.role, 'task_started', 'detectResponses', { trackedContacts: byContactEmail.size });
+    // System-scope: this scheduler sweep crosses every workspace by design.
+    // The per-pipeline response_classified events below carry the pipeline's
+    // own workspace, so the activity feed stays correctly scoped per account.
+    await activityLog.record(this.role, 'task_started', 'detectResponses', { trackedContacts: byContactEmail.size, scope: 'system', systemCaller: 'response-detection' });
 
     const inboxResult = await toolRegistry.call('gmail.readInbox', { limit }, { role: this.role });
     const messages = inboxResult?.messages || [];
@@ -130,6 +133,7 @@ class ResponseDetectionAgent extends BaseAgent {
         pipelineId: task.id,
         classification: response.classification,
         schedulingRequestDetected: response.schedulingRequestDetected,
+        workspaceId: task.payload?.workspace_id || task.workspace_id || null,
       });
 
       classifications.push({ pipelineId: task.id, ...response });

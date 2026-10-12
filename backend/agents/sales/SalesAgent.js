@@ -747,7 +747,7 @@ class SalesAgent extends BaseAgent {
       if (socialDrafted) note += `${(emailDrafted || whatsappDrafted) ? ',' : ''} ${socialDrafted} social DM draft(s)`;
       if (totalDrafted) note += ' — awaiting your approval.';
       if (noContactLeads.length) note += ` ${noContactLeads.length} lead(s) need manual outreach (no contact info found).`;
-      await memory.addReflection(this.role, task.id, note);
+      await memory.addReflection(this.role, task.id, note, { workspaceId: task?.workspace_id || this._currentTask?.workspace_id || null });
 
       results.push({
         type: 'lead_cards',
@@ -808,7 +808,7 @@ class SalesAgent extends BaseAgent {
     } else {
       note = `Couldn't find a clear recipient email for this outreach — mention the email address explicitly and try again.`;
     }
-    await memory.addReflection(this.role, task.id, note);
+    await memory.addReflection(this.role, task.id, note, { workspaceId: task?.workspace_id || this._currentTask?.workspace_id || null });
     return note;
   }
 
