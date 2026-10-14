@@ -8,6 +8,13 @@ const router = express.Router();
 const COMPOSIO_PROVIDERS = new Set(['gmail', 'googlecalendar', 'github']);
 const ALL_PROVIDERS = new Set(['gmail', 'googlecalendar', 'github', 'telegram', 'whatsapp']);
 
+const COMPOSIO_UPGRADE_MSG = 'Coming soon — Google and GitHub connections are being upgraded.';
+
+function isAppOwnerWorkspace(req) {
+  const ownerEmail = (process.env.APP_OWNER_EMAIL || config.applicant?.email || '').toLowerCase();
+  return !!(ownerEmail && req.user?.email?.toLowerCase() === ownerEmail);
+}
+
 // ---------- helpers ----------
 
 function callTelegram(method, body, botToken) {
@@ -52,8 +59,13 @@ router.get('/', async (req, res) => {
     const wsId = req.user?.workspaceId;
     if (!wsId) return res.status(400).json({ error: 'No workspace resolved for your account.' });
     const rows = await connections.listConnections(wsId);
+    const ownerWs = isAppOwnerWorkspace(req);
     const result = {};
     for (const p of ALL_PROVIDERS) {
+      if (COMPOSIO_PROVIDERS.has(p) && !ownerWs) {
+        result[p] = { provider: p, status: 'not_connected', upgradeNotice: COMPOSIO_UPGRADE_MSG };
+        continue;
+      }
       const match = rows.find((r) => r.provider === p);
       result[p] = match ? connections.safeConnectionView(match) : { provider: p, status: 'not_connected' };
     }
@@ -69,6 +81,9 @@ router.get('/:provider/status', async (req, res) => {
   try {
     const { provider } = req.params;
     if (!ALL_PROVIDERS.has(provider)) return res.status(400).json({ error: `Unknown provider: ${provider}` });
+    if (COMPOSIO_PROVIDERS.has(provider) && !isAppOwnerWorkspace(req)) {
+      return res.json({ provider, status: 'not_connected', upgradeNotice: COMPOSIO_UPGRADE_MSG });
+    }
     const wsId = req.user?.workspaceId;
     if (!wsId) return res.status(400).json({ error: 'No workspace resolved.' });
     const conn = await connections.getConnection(wsId, provider);
@@ -329,6 +344,9 @@ router.post('/:provider/connect', async (req, res) => {
     if (!COMPOSIO_PROVIDERS.has(provider)) {
       return res.status(400).json({ error: `Use the provider-specific connect route for ${provider}.` });
     }
+    if (!isAppOwnerWorkspace(req)) {
+      return res.status(403).json({ error: COMPOSIO_UPGRADE_MSG });
+    }
     const wsId = req.user?.workspaceId;
     if (!wsId) return res.status(400).json({ error: 'No workspace resolved.' });
 
@@ -397,6 +415,9 @@ router.post('/:provider/check', async (req, res) => {
     const { provider } = req.params;
     if (!COMPOSIO_PROVIDERS.has(provider)) {
       return res.status(400).json({ error: `Unknown Composio provider: ${provider}` });
+    }
+    if (!isAppOwnerWorkspace(req)) {
+      return res.status(403).json({ error: COMPOSIO_UPGRADE_MSG });
     }
     const wsId = req.user?.workspaceId;
     if (!wsId) return res.status(400).json({ error: 'No workspace resolved.' });

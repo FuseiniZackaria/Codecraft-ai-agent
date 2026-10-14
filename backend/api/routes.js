@@ -26,7 +26,16 @@ function resolveConfigPath(dotPath) {
 let gmailStatusCache = { at: 0, value: null };
 const GMAIL_STATUS_TTL_MS = 60_000;
 
+function isAppOwnerReq(req) {
+  const ownerEmail = (process.env.APP_OWNER_EMAIL || config.applicant?.email || '').toLowerCase();
+  return !!(ownerEmail && req.user?.email?.toLowerCase() === ownerEmail);
+}
+const COMPOSIO_UPGRADE_MSG = 'Coming soon — Google and GitHub connections are being upgraded.';
+
 router.get('/composio/gmail/status', async (req, res) => {
+  if (!isAppOwnerReq(req)) {
+    return res.json({ connected: false, upgradeNotice: COMPOSIO_UPGRADE_MSG });
+  }
   if (Date.now() - gmailStatusCache.at < GMAIL_STATUS_TTL_MS && gmailStatusCache.value) {
     return res.json(gmailStatusCache.value);
   }
@@ -203,6 +212,9 @@ router.get('/composio/reddit/status', async (req, res) => {
 let githubStatusCache = { at: 0, value: null };
 
 router.get('/composio/github/status', async (req, res) => {
+  if (!isAppOwnerReq(req)) {
+    return res.json({ connected: false, upgradeNotice: COMPOSIO_UPGRADE_MSG });
+  }
   if (Date.now() - githubStatusCache.at < GMAIL_STATUS_TTL_MS && githubStatusCache.value) {
     return res.json(githubStatusCache.value);
   }
@@ -214,6 +226,9 @@ router.get('/composio/github/status', async (req, res) => {
 let googlecalendarStatusCache = { at: 0, value: null };
 
 router.get('/composio/googlecalendar/status', async (req, res) => {
+  if (!isAppOwnerReq(req)) {
+    return res.json({ connected: false, upgradeNotice: COMPOSIO_UPGRADE_MSG });
+  }
   if (Date.now() - googlecalendarStatusCache.at < GMAIL_STATUS_TTL_MS && googlecalendarStatusCache.value) {
     return res.json(googlecalendarStatusCache.value);
   }

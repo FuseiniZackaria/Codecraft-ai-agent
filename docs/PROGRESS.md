@@ -8,6 +8,7 @@
 - **App-owner super-admin:** The app owner (APP_OWNER_EMAIL or APPLICANT_EMAIL) can see all admins across all workspaces, remove members from any workspace with typed-confirmation safety, and cancel pending invites.
 - **Rate-limit handling:** Supabase email rate-limit errors return a friendly "Too many invites right now. Try again in an hour." message. An expandable SMTP setup guide is shown on the Team page.
 - **listTasks guard fix:** Routes now return empty results when workspaceId is null instead of calling the workspace guard with an unscoped query — eliminates the `list_without_workspace` shadow-log noise.
+- **Composio lockdown:** Gmail, Google Calendar, and GitHub (Composio) connect/status/check blocked for non-owner workspaces. TODO: per-workspace Composio entity ids (security fix pending).
 
 ## Phase 2.6: Team invites & workspace isolation
 
