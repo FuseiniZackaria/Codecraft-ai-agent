@@ -2,6 +2,23 @@
 
 Short bullets per date. See `git log` for the full history.
 
+**2026-10-21**
+- Phase 2.7: per-workspace Composio connections. Gmail / Calendar / GitHub
+  calls now run on the calling workspace's own connected account; a workspace
+  with no connection is refused instead of falling back to the owner's
+  account. YouTube / Reddit are owner-only. Connect flow moved to
+  `connectedAccounts.link()` (the old REST initiate endpoint is retired) and
+  `/check` only accepts accounts owned by the workspace's own Composio user.
+  Non-owner access stays off until `COMPOSIO_PER_WORKSPACE=1`.
+- Fixed two workspace-health leaks: assistant department tasks were saved
+  without a workspace, and the daily usage counter write was refused in
+  enforce mode (it is now an allowlisted system call).
+- Tests: repaired six stale/flaky tests (workflow-engine parallel timing,
+  youtube `/tmp` path, job-verification, outreach-pipeline, job-lead-gen,
+  business-profile-chat); fixed the keyword fallback so "if someone asks for
+  our website, send them <url>" routes to business_profile, not browse_web.
+  Added two Composio test files. Full suite: 69/69.
+
 **2026-10-12**
 - Phase 2.3d follow-up: close every post-backfill workspace-stamping leak
   across agent reflects, outreach pipeline, webhooks, workflow engine, and

@@ -192,7 +192,7 @@ async function persistTurn(userMessage, attachments, assistantReply, taskId, wor
 
 router.get('/assistant/usage', async (req, res) => {
   try {
-    res.json(await assistantUsage.getDaily(memory));
+    res.json(await assistantUsage.getDaily(memory, req.user?.workspaceId || null));
   } catch (err) {
     res.status(500).json({ error: err.message });
   }

@@ -54,7 +54,9 @@ async function main() {
     companyWebsite: 'https://www.acmecorp.com',
     jobTitle: 'Senior Backend Engineer',
     jobDescription: 'Backend engineer skilled in Node.js and distributed systems.',
-    applicationUrl: 'https://www.acmecorp.com/careers/senior-backend-engineer',
+    // No applicationUrl on purpose: a direct URL also triggers the separate
+    // auto-apply path (which moves the stage on to application_*). This test
+    // covers the email-outreach stages only.
     postedDate: new Date().toISOString(),
     source: 'company careers page',
     contactEmail: 'hiring@acmecorp.com',

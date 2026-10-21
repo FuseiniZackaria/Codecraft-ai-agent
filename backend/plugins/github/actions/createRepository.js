@@ -5,14 +5,15 @@ module.exports = {
   permission: 'github.write',
   irreversible: true, // creates a real, publicly-visible (unless private) repo
 
-  async run({ name, description, private: isPrivate = false }) {
+  async run({ name, description, private: isPrivate = false }, context = {}) {
     if (!name) {
       throw new Error('createRepository requires "name"');
     }
     const result = await composio.execute(
       'GITHUB_CREATE_A_REPOSITORY_FOR_THE_AUTHENTICATED_USER',
       { name, description: description || '', private: !!isPrivate },
-      'github'
+      'github',
+      { workspaceId: context.workspaceId }
     );
     return { status: 'created', name, ...result };
   },

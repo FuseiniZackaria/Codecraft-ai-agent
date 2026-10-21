@@ -59,8 +59,8 @@ async function buildSystemBlocks({ voice, workspaceId = null }) {
  * @returns {Promise<{reply: string, taskIds: string[], usage: object, iterations: number}>}
  */
 async function runAssistant({ message, scope = null, voice = false, workspaceId = null, onEvent = () => {} }) {
-  if (await usage.isOverCap(memory)) {
-    const daily = await usage.getDaily(memory);
+  if (await usage.isOverCap(memory, workspaceId)) {
+    const daily = await usage.getDaily(memory, workspaceId);
     const err = new Error(`daily_cap_reached: $${daily.usd.toFixed(2)} today`);
     err.code = 'DAILY_CAP_REACHED';
     throw err;
@@ -140,7 +140,7 @@ async function runAssistant({ message, scope = null, voice = false, workspaceId 
     break;
   }
 
-  await usage.record(memory, config.assistant.model, totalUsage);
+  await usage.record(memory, config.assistant.model, totalUsage, workspaceId);
 
   return {
     reply: fullReply || "I didn't get a response - try again?",

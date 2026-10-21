@@ -18,11 +18,11 @@ module.exports = {
   permission: 'youtube.comment',
   irreversible: true, // a public comment on someone else's video, hard to undo -> approval gate applies
 
-  async run({ videoId, text }) {
+  async run({ videoId, text }, context = {}) {
     if (!videoId || !text) {
       throw new Error('postComment requires "videoId" and "text"');
     }
-    const result = await composio.execute(ACTION_SLUG, { videoId, text }, 'youtube');
+    const result = await composio.execute(ACTION_SLUG, { videoId, text }, 'youtube', { workspaceId: context.workspaceId });
     return { status: 'commented', videoId, ...result };
   },
 };

@@ -11,7 +11,7 @@ const composio = require('../core/composio');
 async function main() {
   loadPlugins();
 
-  const testFilePath = '/tmp/upload-test.mp4';
+  const testFilePath = require('path').join(require('os').tmpdir(), 'upload-test.mp4');
   fs.writeFileSync(testFilePath, 'fake video bytes');
 
   const originalExecute = composio.execute;

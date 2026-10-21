@@ -5,7 +5,7 @@ module.exports = {
   permission: 'github.write',
   irreversible: true, // creates a real commit on the target repo/branch
 
-  async run({ owner, repo, path, message, content, branch, sha }) {
+  async run({ owner, repo, path, message, content, branch, sha }, context = {}) {
     const fields = { owner, repo, path, message, content };
     const missing = Object.entries(fields)
       .filter(([, v]) => !v)
@@ -29,7 +29,8 @@ module.exports = {
         ...(branch ? { branch } : {}),
         ...(sha ? { sha } : {}), // required only when updating an existing file
       },
-      'github'
+      'github',
+      { workspaceId: context.workspaceId }
     );
     return { status: 'committed', path, ...result };
   },

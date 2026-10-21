@@ -88,12 +88,22 @@ async function main() {
     ],
     edges: [{ id: 'e1', source: 't1', target: 'p1' }],
   };
+  // Per-run fixed overhead (activity log, memory writes) varies by machine, so
+  // compare 3 branches against a measured 1-branch baseline instead of a hard
+  // wall-clock number. Sequential would be ~3x the baseline; concurrent is ~1x.
+  const singleGraph = JSON.parse(JSON.stringify(parallelGraph));
+  singleGraph.nodes[1].config.branches = singleGraph.nodes[1].config.branches.slice(0, 1);
+  await memory.saveWorkflowDefinition({ id: 'wf-parallel-single', name: 'Parallel single', graph: singleGraph, enabled: true });
+  const baselineStart = Date.now();
+  await workflowEngine.runWorkflow('wf-parallel-single');
+  const baseline = Date.now() - baselineStart;
+
   await memory.saveWorkflowDefinition({ id: 'wf-parallel', name: 'Parallel', graph: parallelGraph, enabled: true });
   const start = Date.now();
   const parallelRun = await workflowEngine.runWorkflow('wf-parallel');
   const elapsed = Date.now() - start;
   assert.strictEqual(parallelRun.context.p1.output.split('---').length, 3, 'all 3 branches should complete and join');
-  assert(elapsed < 200, `branches should run concurrently (~80ms), took ${elapsed}ms - looks sequential`);
+  assert(elapsed < baseline * 2, `branches should run concurrently (1 branch took ${baseline}ms), 3 took ${elapsed}ms - looks sequential`);
   restore();
   console.log('✓ parallel branches run genuinely concurrently and all results join correctly');
 

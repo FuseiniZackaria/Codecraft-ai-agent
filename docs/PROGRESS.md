@@ -1,6 +1,17 @@
 # CodeCraft AI — Progress
 
-## Phase 2.6b: Team invite fixes & app-owner controls (current)
+## Phase 2.7: Per-workspace Composio connections (current)
+
+- **Own account per workspace:** `core/composio.js` resolves the Composio user and connected account from the calling workspace's `workspace_connections` row. A workspace with no connection gets a clear "not connected" error — it never falls back to the owner's `.env` account. YouTube / Reddit (single server account) are owner-only.
+- **Connect flow:** uses `connectedAccounts.link()` under the workspace id as the Composio user (the old REST initiate endpoint is retired for managed OAuth). `/check` only accepts accounts owned by that user; a guessed or foreign connection id is rejected.
+- **Owner workspace unchanged:** it keeps using the server's legacy account (adopted on connect) and system callers with no workspace behave as before.
+- **Off by default for other workspaces:** set `COMPOSIO_PER_WORKSPACE=1` on Render to let non-owner workspaces connect. Not yet exercised against live Composio — try it with a second account first.
+- **Shadow-log leaks closed:** assistant (Ian) department tasks now carry the workspace. A path audit also fixed writes that enforce mode would have refused: pausing a workflow run for approval, enabling/disabling a skill, the legacy Gmail-triage migration (now a named system call), and the Coding agent's audit events.
+- **Per-workspace Ian usage & cap:** `assistant_usage_daily` is now one row per (day, workspace). **Run `backend/database/migrations/0003_assistant_usage_per_workspace.sql` in Supabase BEFORE deploying** — until then usage isn't persisted (it keeps counting in memory; nothing else breaks).
+- **Cross-workspace access closed:** "Run now", workflow-definition run/resume/cancel, and Ian's `check_task_result` report another workspace's row as not found.
+- **Tests:** new `assistant-workspace-scope` (Ian task + usage stamped, enforce mode), `composio-per-workspace`, `composio-connection-routes`; six stale/flaky tests repaired.
+
+## Phase 2.6b: Team invite fixes & app-owner controls
 
 - **Email typo detection:** Common domain misspellings (gmail.co, gmial.com, outlok.com, etc.) trigger a "Did you mean...?" prompt before sending, both client-side and server-side.
 - **Confirmation dialog:** Every invite now requires an explicit confirmation step before the email is sent.
@@ -8,7 +19,7 @@
 - **App-owner super-admin:** The app owner (APP_OWNER_EMAIL or APPLICANT_EMAIL) can see all admins across all workspaces, remove members from any workspace with typed-confirmation safety, and cancel pending invites.
 - **Rate-limit handling:** Supabase email rate-limit errors return a friendly "Too many invites right now. Try again in an hour." message. An expandable SMTP setup guide is shown on the Team page.
 - **listTasks guard fix:** Routes now return empty results when workspaceId is null instead of calling the workspace guard with an unscoped query — eliminates the `list_without_workspace` shadow-log noise.
-- **Composio lockdown:** Gmail, Google Calendar, and GitHub (Composio) connect/status/check blocked for non-owner workspaces. TODO: per-workspace Composio entity ids (security fix pending).
+- **Composio lockdown:** Gmail, Google Calendar, and GitHub (Composio) connect/status/check blocked for non-owner workspaces. (Per-workspace entity ids landed in Phase 2.7.)
 
 ## Phase 2.6: Team invites & workspace isolation
 

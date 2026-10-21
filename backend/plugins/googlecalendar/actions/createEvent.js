@@ -36,7 +36,7 @@ module.exports = {
     attendeeEmails = [],
     reminderMinutesBefore = [1440, 60, 15],
     calendarId = 'primary',
-  } = {}) {
+  } = {}, context = {}) {
     const missing = [];
     if (!title) missing.push('title');
     if (!startTime) missing.push('startTime');
@@ -63,7 +63,7 @@ module.exports = {
       // Some Composio calendar actions want explicit end time instead of
       // duration - passing both is harmless if only one is actually used.
       end_datetime: endTime,
-    }, 'googlecalendar');
+    }, 'googlecalendar', { workspaceId: context.workspaceId });
 
     // Field names confirmed via live testing against a real Composio
     // account (2026-08-25): the calendar link comes back as display_url,

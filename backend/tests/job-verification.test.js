@@ -170,7 +170,9 @@ async function main() {
   restoreProvider();
 
   assert.strictEqual(record.canProceedToOutreach, false, 'weak/unverifiable opportunity must never be allowed to proceed to outreach');
-  assert.strictEqual(record.contactStatus, 'UNKNOWN');
+  // A bare applicationUrl counts as the contact mechanism (APPLICATION_URL), but it
+  // is never a VERIFIED contact - the weak listing must not be treated as verified.
+  assert.notStrictEqual(record.contactStatus, 'VERIFIED');
   console.log(`✓ JobVerificationAgent: weak/stale opportunity with no verified contact blocked from outreach (status: ${record.status})`);
 
   // Case 3: expired deadline hard-overrides everything else, even if the

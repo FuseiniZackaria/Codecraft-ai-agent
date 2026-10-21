@@ -25,7 +25,7 @@ module.exports = {
       thread_id: threadId,
       message_body: body,
       recipient_email: recipientEmail,
-    }, 'gmail');
+    }, 'gmail', { workspaceId: context.workspaceId || verdict?.task?.workspace_id });
 
     // Keep the outreach_threads row warm: last_message_id, status flip to
     // whichever makes sense (sent). Does nothing if the thread isn't

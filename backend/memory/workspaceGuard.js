@@ -44,7 +44,7 @@ const ALLOWED_SYSTEM_CALLERS = new Set([
   'workflow-engine-system',     // workflowEngine 'decide' node reads global recent activity
   'webhook-telegram',           // telegram inbound webhook, no user session
   'webhook-whatsapp',           // whatsapp inbound webhook, no user session
-  'test',                       // test fixtures
+  'test',                      // test fixtures
 ]);
 
 function isNamedSystemCall(opts) {

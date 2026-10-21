@@ -86,11 +86,14 @@ function fallbackViaKeywords(goal) {
   if (isBriefingGoal(goal)) {
     return { category: 'briefing', isActionable: true, usedFallback: true };
   }
-  if (isBrowseWebGoal(goal)) {
-    return { category: 'browse_web', isActionable: true, usedFallback: true };
-  }
+  // Business-profile statements are checked before browse_web: they often
+  // contain a URL ("if someone asks for our website, send them https://...")
+  // which would otherwise match the bare-URL browse_web rule.
   if (isBusinessProfileGoal(goal)) {
     return { category: 'business_profile', isActionable: true, usedFallback: true };
+  }
+  if (isBrowseWebGoal(goal)) {
+    return { category: 'browse_web', isActionable: true, usedFallback: true };
   }
   const k = classifyKeywords(goal);
   let category = 'conversational';

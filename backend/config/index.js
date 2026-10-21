@@ -54,6 +54,10 @@ module.exports = {
     apiKey: process.env.COMPOSIO_API_KEY || null,
     // Fallback user ID for tools with no specific connected account pinned below.
     userId: process.env.COMPOSIO_USER_ID || 'default',
+    // Per-workspace Gmail/Calendar/GitHub connections for NON-owner workspaces.
+    // Off by default: set COMPOSIO_PER_WORKSPACE=1 once the connect flow has
+    // been tried live. The owner workspace is never affected by this flag.
+    perWorkspace: process.env.COMPOSIO_PER_WORKSPACE === '1',
     // Pin specific connected accounts (from the Composio dashboard) per toolkit,
     // so we never have to guess which userId a given connection belongs to.
     connectedAccountIds: {

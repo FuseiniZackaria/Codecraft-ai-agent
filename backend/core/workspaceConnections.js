@@ -71,7 +71,7 @@ function safeConnectionView(conn) {
   if (meta.type) safe.type = meta.type;
   if (meta.display_phone) safe.display_phone = meta.display_phone;
   if (meta.whatsapp_from) safe.whatsapp_from = meta.whatsapp_from;
-  if (meta.composio_account_id) safe.composio_account_id = meta.composio_account_id;
+  if (conn.composio_account_id) safe.composio_account_id = conn.composio_account_id;
   if (meta.webhook_token) {
     const baseUrl = (process.env.RENDER_EXTERNAL_URL || process.env.BASE_URL || `http://localhost:${config.port}`).replace(/\/$/, '');
     if (conn.provider === 'telegram') {

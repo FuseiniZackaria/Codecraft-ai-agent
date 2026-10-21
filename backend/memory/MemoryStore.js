@@ -206,14 +206,16 @@ class MemoryStore {
   }
 
   // --- Assistant daily usage (soft cost cap) ---
-  async getAssistantUsage(day) {
+  // One row per (day, workspace); a null workspace is the legacy single-tenant row.
+  async getAssistantUsage(day, opts = {}) {
     if (!this.assistantUsage) this.assistantUsage = new Map();
-    return this.assistantUsage.get(day) || null;
+    return this.assistantUsage.get(`${day}:${opts.workspaceId || 'legacy'}`) || null;
   }
 
-  async upsertAssistantUsage(day, row) {
+  async upsertAssistantUsage(day, row, opts = {}) {
     if (!this.assistantUsage) this.assistantUsage = new Map();
-    this.assistantUsage.set(day, { day, ...row });
+    const workspaceId = opts.workspaceId || row.workspace_id || null;
+    this.assistantUsage.set(`${day}:${workspaceId || 'legacy'}`, { day, ...row, workspace_id: workspaceId });
     return true;
   }
 

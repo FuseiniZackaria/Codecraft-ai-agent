@@ -186,8 +186,18 @@ router.get('/:id/runs', async (req, res) => {
   }
 });
 
+// A row stamped with another workspace is reported as not found, so one admin
+// can't run, resume or cancel another workspace's workflow by guessing its id.
+// Legacy rows (no workspace_id) stay reachable, as in the list routes.
+function isForeign(row, req) {
+  const ws = req.user?.workspaceId;
+  return !!(row && ws && row.workspace_id && row.workspace_id !== ws);
+}
+
 router.post('/:id/run', async (req, res) => {
   try {
+    const definition = await memory.getWorkflowDefinition(req.params.id);
+    if (!definition || isForeign(definition, req)) return res.status(404).json({ error: 'Workflow not found' });
     const run = await workflowEngine.runWorkflow(req.params.id);
     res.json(run);
   } catch (err) {
@@ -197,6 +207,8 @@ router.post('/:id/run', async (req, res) => {
 
 router.post('/runs/:runId/resume', async (req, res) => {
   try {
+    const run = await memory.getWorkflowRun(req.params.runId);
+    if (!run || isForeign(run, req)) return res.status(404).json({ error: 'Run not found' });
     res.json(await workflowEngine.resumeWorkflow(req.params.runId));
   } catch (err) {
     res.status(500).json({ error: err.message });
@@ -205,6 +217,8 @@ router.post('/runs/:runId/resume', async (req, res) => {
 
 router.post('/runs/:runId/cancel', async (req, res) => {
   try {
+    const run = await memory.getWorkflowRun(req.params.runId);
+    if (!run || isForeign(run, req)) return res.status(404).json({ error: 'Run not found' });
     res.json(await workflowEngine.cancelWorkflow(req.params.runId));
   } catch (err) {
     res.status(500).json({ error: err.message });

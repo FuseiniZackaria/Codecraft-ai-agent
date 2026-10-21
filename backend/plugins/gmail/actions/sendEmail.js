@@ -28,7 +28,7 @@ module.exports = {
       recipient_email: to,
       subject,
       body: body || '',
-    }, 'gmail');
+    }, 'gmail', { workspaceId: context.workspaceId || verdict?.task?.workspace_id });
 
     // Register / update the outreach_threads row so later replies in this
     // thread pass the ownership check. threadId / messageId come back from

@@ -28,7 +28,8 @@ class BaseAgent {
   }
 
   async log(event, data = {}) {
-    await activityLog.record(this.role, event, data.target || '', data);
+    const workspaceId = this._currentTask?.workspace_id || null;
+    await activityLog.record(this.role, event, data.target || '', workspaceId ? { workspaceId, ...data } : data);
   }
 
   /**

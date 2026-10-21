@@ -93,8 +93,9 @@ async function main() {
     },
   ]);
 
+  // Job search uses fixed JOB_FAMILY_QUERIES (no LLM query-generation call), so
+  // the first LLM call is the extraction step.
   const restoreProvider = stubProvider([
-    '["backend engineer job opening", "hiring backend engineer", "backend engineer position"]',
     extractedList,
     '13',
     '{"subject": "Quick note", "body": "Hi there, reaching out about the role."}',

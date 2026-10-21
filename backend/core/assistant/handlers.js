@@ -86,6 +86,7 @@ async function runDepartmentTask(toolName, input, context) {
   const results = await orchestrator.submitGoal(instruction, {
     departmentKey: department,
     history: context?.history || [],
+    workspaceId: context?.workspaceId || null,
   });
 
   const first = results[0];
@@ -102,9 +103,11 @@ async function listPendingApprovals(context = {}) {
   return { count: pending.length, pending };
 }
 
-async function checkTaskResult(input) {
+async function checkTaskResult(input, context = {}) {
   const task = await memory.getTask(input?.task_id);
-  if (!task) return { ok: false, error: `task not found: ${input?.task_id}` };
+  // A task from another workspace is reported as not found, never leaked.
+  const foreign = task && context.workspaceId && task.workspace_id && task.workspace_id !== context.workspaceId;
+  if (!task || foreign) return { ok: false, error: `task not found: ${input?.task_id}` };
   return summariseTask(task);
 }
 
@@ -115,7 +118,7 @@ const HANDLERS = {
   run_strategy_task: runDepartmentTask,
   run_development_task: runDepartmentTask,
   list_pending_approvals: (_name, _input, context) => listPendingApprovals(context),
-  check_task_result: (name, input) => checkTaskResult(input),
+  check_task_result: (_name, input, context) => checkTaskResult(input, context),
 };
 
 async function invoke(toolName, input, context) {

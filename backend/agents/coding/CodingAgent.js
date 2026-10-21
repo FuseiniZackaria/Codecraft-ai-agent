@@ -235,9 +235,10 @@ class CodingAgent extends BaseAgent {
       return super.execute(step, task);
     }
 
-    await activityLog.record(this.role, 'step_started', step.path, { taskId: task.id, stepType: 'generate_and_write' });
+    await activityLog.record(this.role, 'step_started', step.path, { taskId: task.id, stepType: 'generate_and_write', workspaceId: task.workspace_id || null });
     await activityLog.record(this.role, 'narration', step.path, {
       taskId: task.id,
+      workspaceId: task.workspace_id || null,
       text: `Writing ${step.path} — ${step.description}`,
     });
 
@@ -268,6 +269,7 @@ class CodingAgent extends BaseAgent {
       path: step.path,
       bytes: writeResult.bytes,
       status: 'done',
+      workspaceId: task.workspace_id || null,
     });
 
     return { path: step.path, bytes: writeResult.bytes };

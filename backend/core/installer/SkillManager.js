@@ -44,7 +44,7 @@ class SkillManager {
     const skill = await this.info(id);
     const workspaceId = skill.workspace_id || null;
     const activated = this.activator.activate(id, skill.sourcePath, skill.manifest);
-    const updated = await memory.updateSkill(id, { status: 'enabled' });
+    const updated = await memory.updateSkill(id, { status: 'enabled' }, { workspaceId });
     await activityLog.record('skill-manager', 'skill.enabled', id, { toolsRegistered: activated.tools.length, workspaceId });
     return updated;
   }
@@ -53,7 +53,7 @@ class SkillManager {
     const skill = await this.info(id);
     const workspaceId = skill.workspace_id || null;
     this.activator.deactivate(id);
-    const updated = await memory.updateSkill(id, { status: 'disabled' });
+    const updated = await memory.updateSkill(id, { status: 'disabled' }, { workspaceId });
     await activityLog.record('skill-manager', 'skill.disabled', id, { workspaceId });
     return updated;
   }

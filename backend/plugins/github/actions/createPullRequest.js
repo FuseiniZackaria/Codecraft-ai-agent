@@ -5,7 +5,7 @@ module.exports = {
   permission: 'github.write',
   irreversible: true, // opens a real, publicly-visible pull request
 
-  async run({ owner, repo, head, base, title, body, draft }) {
+  async run({ owner, repo, head, base, title, body, draft }, context = {}) {
     const fields = { owner, repo, head, base };
     const missing = Object.entries(fields)
       .filter(([, v]) => !v)
@@ -25,7 +25,8 @@ module.exports = {
         body: body || '',
         draft: !!draft,
       },
-      'github'
+      'github',
+      { workspaceId: context.workspaceId }
     );
     return { status: 'opened', head, base, ...result };
   },

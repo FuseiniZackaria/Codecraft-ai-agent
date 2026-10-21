@@ -95,6 +95,41 @@ function invalidateSoleWorkspace() {
   soleWorkspaceCache = null;
 }
 
+// "Which workspace belongs to the app owner" - used by core/composio.js to
+// decide who may fall back to the server's legacy .env Composio account.
+// Resolved by APP_OWNER_EMAIL / APPLICANT_EMAIL -> auth user -> the workspace
+// that user owns. Fails closed (null) on any lookup problem.
+let ownerWorkspaceCache = null;
+const OWNER_WORKSPACE_TTL_MS = 10 * 60 * 1000;
+
+async function getAppOwnerWorkspaceId() {
+  if (!supabase) return null;
+  if (ownerWorkspaceCache && Date.now() - ownerWorkspaceCache.at < OWNER_WORKSPACE_TTL_MS) {
+    return ownerWorkspaceCache.workspaceId;
+  }
+  const ownerEmail = (process.env.APP_OWNER_EMAIL || config.applicant?.email || '').toLowerCase();
+  if (!ownerEmail) return null;
+  try {
+    const { data: userList, error: userErr } = await supabase.auth.admin.listUsers({ perPage: 1000 });
+    if (userErr) return null;
+    const owner = (userList?.users || []).find((u) => u.email?.toLowerCase() === ownerEmail);
+    if (!owner) return null;
+    const { data, error } = await supabase
+      .from('workspaces')
+      .select('id')
+      .eq('owner_user_id', owner.id)
+      .order('created_at', { ascending: true })
+      .limit(1)
+      .maybeSingle();
+    if (error) return null;
+    const workspaceId = data?.id || null;
+    ownerWorkspaceCache = { workspaceId, at: Date.now() };
+    return workspaceId;
+  } catch {
+    return null;
+  }
+}
+
 function isMissingTable(error) {
   if (!error) return false;
   if (error.code === '42P01') return true;
@@ -189,4 +224,5 @@ module.exports = {
   invalidateUser,
   getSoleWorkspaceId,
   invalidateSoleWorkspace,
+  getAppOwnerWorkspaceId,
 };

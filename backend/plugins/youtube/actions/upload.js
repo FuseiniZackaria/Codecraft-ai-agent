@@ -34,7 +34,7 @@ module.exports = {
   permission: 'youtube.upload',
   irreversible: true, // publishing a real, public-facing video - hard to undo -> approval gate applies
 
-  async run({ filePath, title, description, privacyStatus = 'unlisted', tags }) {
+  async run({ filePath, title, description, privacyStatus = 'unlisted', tags }, context = {}) {
     if (!filePath) throw new Error('upload requires "filePath"');
     if (!title) throw new Error('upload requires "title"');
     if (!fs.existsSync(filePath)) throw new Error(`File not found: ${filePath}`);
@@ -54,7 +54,8 @@ module.exports = {
         privacyStatus,
         tags: tags || [],
       },
-      'youtube'
+      'youtube',
+      { workspaceId: context.workspaceId }
     );
 
     return { status: 'uploaded', title, privacyStatus, ...result };

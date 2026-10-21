@@ -291,7 +291,7 @@ async function migrateLegacyGmailTriage() {
     enabled: true,
     lastRunAt: null,
     createdAt: new Date().toISOString(),
-  });
+  }, { scope: 'system', systemCaller: 'scheduler-migrate' });
   console.log(`[scheduler] migrated GMAIL_TRIAGE_INTERVAL_MINUTES (${minutes}min) into a real workflow - manage it from the Workflows page now`);
 }
 

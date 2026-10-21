@@ -10,8 +10,6 @@ Open items the docs refer to. Each is a small cleanup, not a blocker.
   table is `scheduled_workflows`; the SupabaseStore methods are
   `saveWorkflow` / `listWorkflows` / etc. Intentional but worth renaming
   on a future cleanup for consistency.
-- **`docx` listed as a dependency in the root `package.json`** (`^9.7.1`)
-  and in `backend/package.json` (`^9.9.0`). Harmless duplicate.
 - **`MANUAL_TASKS_EMAIL`** env variable: not read by the current code. The
   system-digest path reads `APPLICANT_EMAIL`. If a separate owner-notification
   address is wanted, add a new config entry.

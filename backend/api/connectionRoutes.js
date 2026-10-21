@@ -2,6 +2,7 @@ const express = require('express');
 const https = require('https');
 const config = require('../config');
 const connections = require('../core/workspaceConnections');
+const composio = require('../core/composio');
 
 const router = express.Router();
 
@@ -9,6 +10,11 @@ const COMPOSIO_PROVIDERS = new Set(['gmail', 'googlecalendar', 'github']);
 const ALL_PROVIDERS = new Set(['gmail', 'googlecalendar', 'github', 'telegram', 'whatsapp']);
 
 const COMPOSIO_UPGRADE_MSG = 'Coming soon — Google and GitHub connections are being upgraded.';
+
+// Non-owner workspaces may use Composio only when COMPOSIO_PER_WORKSPACE=1.
+function composioAllowed(req) {
+  return config.composio.perWorkspace || isAppOwnerWorkspace(req);
+}
 
 function isAppOwnerWorkspace(req) {
   const ownerEmail = (process.env.APP_OWNER_EMAIL || config.applicant?.email || '').toLowerCase();
@@ -59,10 +65,9 @@ router.get('/', async (req, res) => {
     const wsId = req.user?.workspaceId;
     if (!wsId) return res.status(400).json({ error: 'No workspace resolved for your account.' });
     const rows = await connections.listConnections(wsId);
-    const ownerWs = isAppOwnerWorkspace(req);
     const result = {};
     for (const p of ALL_PROVIDERS) {
-      if (COMPOSIO_PROVIDERS.has(p) && !ownerWs) {
+      if (COMPOSIO_PROVIDERS.has(p) && !composioAllowed(req)) {
         result[p] = { provider: p, status: 'not_connected', upgradeNotice: COMPOSIO_UPGRADE_MSG };
         continue;
       }
@@ -81,7 +86,7 @@ router.get('/:provider/status', async (req, res) => {
   try {
     const { provider } = req.params;
     if (!ALL_PROVIDERS.has(provider)) return res.status(400).json({ error: `Unknown provider: ${provider}` });
-    if (COMPOSIO_PROVIDERS.has(provider) && !isAppOwnerWorkspace(req)) {
+    if (COMPOSIO_PROVIDERS.has(provider) && !composioAllowed(req)) {
       return res.json({ provider, status: 'not_connected', upgradeNotice: COMPOSIO_UPGRADE_MSG });
     }
     const wsId = req.user?.workspaceId;
@@ -337,6 +342,20 @@ router.delete('/whatsapp', async (req, res) => {
 });
 
 // ========================= COMPOSIO (Gmail, Calendar, GitHub) =========================
+//
+// Each workspace connects its OWN account: the hosted sign-in is started under
+// the workspace id as the Composio user, and /check only accepts accounts that
+// belong to that user. The owner workspace may additionally adopt the server's
+// legacy (.env) account. Nobody can claim another workspace's account.
+
+function connectionRow(acct) {
+  return {
+    composio_account_id: acct.id,
+    provider_meta: { composio_user_id: acct.userId },
+    status: 'connected',
+    connected_email: acct.email || null,
+  };
+}
 
 router.post('/:provider/connect', async (req, res) => {
   try {
@@ -344,7 +363,7 @@ router.post('/:provider/connect', async (req, res) => {
     if (!COMPOSIO_PROVIDERS.has(provider)) {
       return res.status(400).json({ error: `Use the provider-specific connect route for ${provider}.` });
     }
-    if (!isAppOwnerWorkspace(req)) {
+    if (!composioAllowed(req)) {
       return res.status(403).json({ error: COMPOSIO_UPGRADE_MSG });
     }
     const wsId = req.user?.workspaceId;
@@ -354,59 +373,24 @@ router.post('/:provider/connect', async (req, res) => {
       return res.status(400).json({ error: 'COMPOSIO_API_KEY is not configured on this server.' });
     }
 
-    const { redirectUrl } = req.body;
-    const callbackUrl = redirectUrl || `${baseUrl()}/api/connections/${provider}/callback`;
-
-    // Initiate connection via Composio REST API
-    const initRes = await fetch('https://backend.composio.dev/api/v3/connected_accounts', {
-      method: 'POST',
-      headers: {
-        'x-api-key': config.composio.apiKey,
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({
-        toolkit_slug: provider,
-        entity_id: wsId,
-        redirect_url: callbackUrl,
-      }),
-    });
-
-    if (initRes.ok) {
-      const initData = await initRes.json();
-      res.json({
-        ok: true,
-        redirectUrl: initData.redirectUrl || initData.redirect_url || null,
-        connectionId: initData.id || initData.connectedAccountId || null,
-      });
-      return;
-    }
-
-    // Fallback: check if there's already a connection we can adopt
-    const checkRes = await fetch(`https://backend.composio.dev/api/v3/connected_accounts?toolkit_slug=${provider}`, {
-      headers: { 'x-api-key': config.composio.apiKey },
-    });
-    if (checkRes.ok) {
-      const checkData = await checkRes.json();
-      const active = (checkData.items || []).filter(
-        (a) => a.status === 'ACTIVE' && a.toolkit?.slug?.toLowerCase() === provider.toLowerCase()
-      );
-      if (active.length > 0) {
-        const acct = active[0];
-        await connections.upsertConnection(wsId, provider, {
-          composio_account_id: acct.id,
-          status: 'connected',
-          connected_email: acct.metadata?.email || null,
-        });
-        return res.json({ ok: true, adopted: true, connectionId: acct.id });
+    // The owner already has the server's own connection - adopt it instead of
+    // making them sign in again.
+    if (isAppOwnerWorkspace(req)) {
+      const legacy = await composio.findLegacyAccount(provider);
+      if (legacy) {
+        await connections.upsertConnection(wsId, provider, connectionRow(legacy));
+        return res.json({ ok: true, adopted: true, connectionId: legacy.id });
       }
     }
 
-    res.status(400).json({
-      error: 'Could not initiate Composio connection. Connect the service in the Composio dashboard and then click "Check Connection".',
-      dashboardUrl: 'https://app.composio.dev',
-    });
+    const { redirectUrl } = req.body || {};
+    const callbackUrl = redirectUrl || `${baseUrl()}/api/connections/${provider}/callback`;
+    const started = await composio.startWorkspaceConnection(wsId, provider, callbackUrl);
+    res.json({ ok: true, redirectUrl: started.redirectUrl, connectionId: started.connectionId });
   } catch (err) {
-    res.status(400).json({ error: err.message });
+    res.status(400).json({
+      error: `Could not start the ${provider} connection: ${err.message}`,
+    });
   }
 });
 
@@ -416,7 +400,7 @@ router.post('/:provider/check', async (req, res) => {
     if (!COMPOSIO_PROVIDERS.has(provider)) {
       return res.status(400).json({ error: `Unknown Composio provider: ${provider}` });
     }
-    if (!isAppOwnerWorkspace(req)) {
+    if (!composioAllowed(req)) {
       return res.status(403).json({ error: COMPOSIO_UPGRADE_MSG });
     }
     const wsId = req.user?.workspaceId;
@@ -426,54 +410,27 @@ router.post('/:provider/check', async (req, res) => {
       return res.status(400).json({ error: 'COMPOSIO_API_KEY not configured.' });
     }
 
-    const { connectionId } = req.body;
+    const { connectionId } = req.body || {};
 
-    // If a specific connectionId was given (from the initiation flow), check it
-    if (connectionId) {
-      const detailRes = await fetch(`https://backend.composio.dev/api/v3/connected_accounts/${connectionId}`, {
-        headers: { 'x-api-key': config.composio.apiKey },
-      });
-      if (detailRes.ok) {
-        const detail = await detailRes.json();
-        if (detail.status === 'ACTIVE') {
-          await connections.upsertConnection(wsId, provider, {
-            composio_account_id: connectionId,
-            status: 'connected',
-            connected_email: detail.metadata?.email || null,
-          });
-          return res.json({ ok: true, status: 'connected', connectionId });
-        }
-        return res.json({ ok: false, status: detail.status || 'pending' });
-      }
+    // Only accounts owned by this workspace's own Composio user count; a
+    // connectionId from the request is honoured only if it is one of them.
+    let acct = await composio.findWorkspaceAccount(wsId, provider, connectionId || null);
+
+    // Owner only, and only when no sign-in is in flight: fall back to the
+    // server's legacy account.
+    if (!acct && !connectionId && isAppOwnerWorkspace(req)) {
+      acct = await composio.findLegacyAccount(provider);
     }
 
-    // Fall back to scanning all connections for this toolkit
-    const checkRes = await fetch(`https://backend.composio.dev/api/v3/connected_accounts?toolkit_slug=${provider}`, {
-      headers: { 'x-api-key': config.composio.apiKey },
-    });
-    if (!checkRes.ok) {
-      return res.status(400).json({ error: 'Could not query Composio.' });
-    }
-    const checkData = await checkRes.json();
-    const active = (checkData.items || []).filter(
-      (a) => a.status === 'ACTIVE' && a.toolkit?.slug?.toLowerCase() === provider.toLowerCase()
-    );
-    if (active.length > 0) {
-      const acct = active[0];
-      await connections.upsertConnection(wsId, provider, {
-        composio_account_id: acct.id,
-        status: 'connected',
-        connected_email: acct.metadata?.email || null,
-      });
+    if (acct) {
+      await connections.upsertConnection(wsId, provider, connectionRow(acct));
       return res.json({ ok: true, status: 'connected', connectionId: acct.id });
     }
-
-    res.json({ ok: false, status: 'not_connected' });
+    res.json({ ok: false, status: connectionId ? 'pending' : 'not_connected' });
   } catch (err) {
     res.status(400).json({ error: err.message });
   }
 });
-
 // Disconnect any provider
 router.delete('/:provider', async (req, res) => {
   try {

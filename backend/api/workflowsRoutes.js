@@ -93,7 +93,11 @@ router.delete('/:id', async (req, res) => {
 router.post('/:id/run-now', async (req, res) => {
   try {
     const workflow = await memory.getWorkflow(req.params.id);
-    if (!workflow) return res.status(404).json({ error: 'Workflow not found' });
+    const ws = req.user?.workspaceId;
+    // Another workspace's workflow is reported as not found (legacy rows stay reachable).
+    if (!workflow || (ws && workflow.workspace_id && workflow.workspace_id !== ws)) {
+      return res.status(404).json({ error: 'Workflow not found' });
+    }
     await scheduler.runWorkflow(workflow);
     const updated = await memory.getWorkflow(req.params.id);
     res.json(updated);

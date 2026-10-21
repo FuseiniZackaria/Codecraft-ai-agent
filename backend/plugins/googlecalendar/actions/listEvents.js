@@ -16,7 +16,7 @@ module.exports = {
    * @param {string} args.timeMax - ISO datetime, end of range to check
    * @param {string} [args.calendarId] - defaults to 'primary'
    */
-  async run({ timeMin, timeMax, calendarId = 'primary' } = {}) {
+  async run({ timeMin, timeMax, calendarId = 'primary' } = {}, context = {}) {
     if (!timeMin || !timeMax) {
       throw new Error('listEvents requires "timeMin" and "timeMax"');
     }
@@ -26,7 +26,7 @@ module.exports = {
       time_min: timeMin,
       time_max: timeMax,
       single_events: true,
-    }, 'googlecalendar');
+    }, 'googlecalendar', { workspaceId: context.workspaceId });
 
     // Normalize whatever shape Composio returns into a flat busy-periods
     // list - the one thing core/scheduling/availability.js actually needs.

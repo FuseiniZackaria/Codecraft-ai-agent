@@ -301,7 +301,7 @@ async function walk(run, definition, startNodeId) {
         currentNodeId: node.id,
         pausedTaskId: task.id,
         context: run.context,
-      });
+      }, { workspaceId: run.workspace_id || null });
       await activityLog.record('workflow', 'run_paused', node.id, { runId: run.id, taskId: task.id, workspaceId: run.workspace_id || null });
       return; // stop here - resume() picks up from node.id's next edge later
     }

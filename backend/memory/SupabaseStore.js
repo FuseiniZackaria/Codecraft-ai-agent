@@ -413,11 +413,13 @@ class SupabaseStore {
   }
 
   // --- Assistant daily usage (soft cost cap) ---
-  async getAssistantUsage(day) {
+  // One row per (day, workspace), keyed by usage_key = "<day>:<workspaceId|legacy>"
+  // (migration 0003). A null workspace is the legacy single-tenant row.
+  async getAssistantUsage(day, opts = {}) {
     const { data, error } = await this.client
       .from('assistant_usage_daily')
       .select('day, usd, input_tokens, output_tokens')
-      .eq('day', day)
+      .eq('usage_key', `${day}:${opts.workspaceId || 'legacy'}`)
       .maybeSingle();
     if (error) {
       // table may not exist yet - treat as empty rather than throwing
@@ -427,10 +429,14 @@ class SupabaseStore {
     return data || null;
   }
 
-  async upsertAssistantUsage(day, row) {
+  async upsertAssistantUsage(day, row, opts = {}) {
+    const workspaceId = opts.workspaceId || row.workspace_id || null;
     const { error } = await this.client
       .from('assistant_usage_daily')
-      .upsert({ day, ...row, updated_at: new Date().toISOString() }, { onConflict: 'day' });
+      .upsert(
+        { day, ...row, workspace_id: workspaceId, usage_key: `${day}:${workspaceId || 'legacy'}`, updated_at: new Date().toISOString() },
+        { onConflict: 'usage_key' }
+      );
     if (error && !/relation.*does not exist/i.test(error.message)) {
       throw new Error(`SupabaseStore.upsertAssistantUsage: ${error.message}`);
     }
