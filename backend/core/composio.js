@@ -103,15 +103,35 @@ async function isOwnerWorkspace(workspaceId) {
   return !!ownerWs && ownerWs === workspaceId;
 }
 
+/** The Composio user ("entity") that owns a workspace's own connections. Unique per workspace. */
+function entityFor(workspaceId) {
+  return `ws_${workspaceId}`;
+}
+
+/**
+ * A stored connection row is trusted only if it provably belongs to this
+ * workspace: its Composio user is the workspace's own entity. The owner
+ * workspace may also hold the server's legacy account (its pre-workspace
+ * connection, mapped to the owner workspace only). Anything else - e.g. a row
+ * the old connect flow "adopted" from another workspace's account - is stale.
+ */
+function isVerifiedConnection(workspaceId, conn, { owner = false } = {}) {
+  if (!conn || conn.status !== 'connected' || !conn.composio_account_id) return false;
+  const user = conn.provider_meta?.composio_user_id;
+  if (user === entityFor(workspaceId)) return true;
+  return owner && user === config.composio.userId;
+}
+
 /**
  * Decides which Composio user + connected account a call runs as.
  *
- * - No workspaceId (scheduler / webhook / legacy callers): the server's legacy
- *   account, exactly as before.
- * - A workspace with its own connected row: that account, never anyone else's.
- * - The app owner's workspace without a row yet: the legacy .env account.
- * - Any other workspace: refuse. It must NEVER fall back to the owner's
- *   account (this is the cross-workspace leak the Composio lockdown covered).
+ * - No workspaceId (scheduler / webhook background jobs of the single-tenant
+ *   install): the server's legacy account, as before.
+ * - A workspace with a verified connection of its own: that account only.
+ * - The app owner's workspace with no row yet: the legacy account, which is
+ *   mapped to the owner workspace only.
+ * - Any other workspace: refuse ("Connect Gmail first"). Never the .env ids,
+ *   never another workspace's connection.
  */
 async function resolveTarget(workspaceId, toolkitSlug) {
   const legacy = async () => ({
@@ -124,14 +144,8 @@ async function resolveTarget(workspaceId, toolkitSlug) {
 
   if (PER_WORKSPACE_TOOLKITS.has(toolkitSlug)) {
     const conn = await require('./workspaceConnections').getConnection(workspaceId, toolkitSlug);
-    if (conn && conn.status === 'connected' && conn.composio_account_id) {
-      return {
-        connectedAccountId: conn.composio_account_id,
-        // Accounts the owner adopted from the old dashboard flow live under the
-        // server's legacy user id; accounts made by the link flow live under
-        // the workspace id.
-        userId: conn.provider_meta?.composio_user_id || (owner ? config.composio.userId : workspaceId),
-      };
+    if (isVerifiedConnection(workspaceId, conn, { owner })) {
+      return { connectedAccountId: conn.composio_account_id, userId: conn.provider_meta.composio_user_id };
     }
   }
 
@@ -140,7 +154,7 @@ async function resolveTarget(workspaceId, toolkitSlug) {
   const label = TOOLKIT_LABELS[toolkitSlug] || toolkitSlug;
   throw new WorkspaceConnectionError(
     PER_WORKSPACE_TOOLKITS.has(toolkitSlug)
-      ? `${label} is not connected for this workspace. Connect it on the Connections page.`
+      ? `Connect ${label} first - this workspace has no ${label} connection of its own.`
       : `${label} is not available for this workspace.`
   );
 }
@@ -162,7 +176,7 @@ async function execute(actionSlug, args = {}, toolkitSlug, opts = {}) {
   try {
     // Resolved before the version lookup so a missing workspace connection
     // fails fast with its own clear message.
-    const { userId, connectedAccountId } = await resolveTarget(opts.workspaceId || null, toolkitSlug);
+    const { userId, connectedAccountId } = opts.target || await resolveTarget(opts.workspaceId || null, toolkitSlug);
     const version = toolkitSlug ? await resolveLatestVersion(toolkitSlug) : undefined;
 
     const result = await composio.tools.execute(actionSlug, {
@@ -245,10 +259,11 @@ async function getManagedAuthConfigId(toolkitSlug) {
 }
 
 /**
- * Starts the hosted sign-in flow for one workspace. The connected account is
- * created under the workspace id as its Composio user, so it can never be
- * confused with any other workspace's account. (Uses connectedAccounts.link();
- * the older REST initiate endpoint is retired for Composio-managed OAuth.)
+ * Starts a fresh hosted sign-in (OAuth) for one workspace. The connected
+ * account is created under that workspace's own entity ("ws_<id>"), so it can
+ * never be confused with any other workspace's account. Never adopts an
+ * existing account. (Uses connectedAccounts.link(); the older REST initiate
+ * endpoint is retired for Composio-managed OAuth.)
  */
 async function startWorkspaceConnection(workspaceId, toolkitSlug, callbackUrl) {
   if (!workspaceId) throw new Error('workspaceId is required');
@@ -256,7 +271,7 @@ async function startWorkspaceConnection(workspaceId, toolkitSlug, callbackUrl) {
   const composio = getClient();
   const authConfigId = await getManagedAuthConfigId(toolkitSlug);
   const request = await composio.connectedAccounts.link(
-    workspaceId,
+    entityFor(workspaceId),
     authConfigId,
     callbackUrl ? { callbackUrl } : undefined
   );
@@ -264,16 +279,17 @@ async function startWorkspaceConnection(workspaceId, toolkitSlug, callbackUrl) {
 }
 
 /**
- * Finds an ACTIVE connected account that belongs to this workspace's own
- * Composio user. Never scans accounts owned by other users, and a caller-
- * supplied connectionId is only accepted if it is one of those accounts - a
- * workspace cannot claim somebody else's connection by guessing its id.
+ * Finds an ACTIVE connected account owned by this workspace's own entity.
+ * Never looks at accounts of any other Composio user, and a caller-supplied
+ * connectionId is only accepted if it is one of those accounts - a workspace
+ * cannot claim somebody else's connection by guessing its id.
  */
 async function findWorkspaceAccount(workspaceId, toolkitSlug, connectionId = null) {
   if (!workspaceId) throw new Error('workspaceId is required');
+  const entity = entityFor(workspaceId);
   const composio = getClient();
   const res = await composio.connectedAccounts.list({
-    userIds: [workspaceId],
+    userIds: [entity],
     toolkitSlugs: [toolkitSlug],
     statuses: ['ACTIVE'],
   });
@@ -284,18 +300,14 @@ async function findWorkspaceAccount(workspaceId, toolkitSlug, connectionId = nul
     if (a.status !== 'ACTIVE') return false;
     if (a.toolkit?.slug?.toLowerCase() !== toolkitSlug.toLowerCase()) return false;
     const owner = a.userId ?? a.user_id;
-    return !owner || owner === workspaceId;
+    return !owner || owner === entity;
   });
   const match = connectionId ? mine.find((a) => a.id === connectionId) : mine[0];
   if (!match) return null;
-  return {
-    id: match.id,
-    userId: workspaceId,
-    email: match.data?.email || match.params?.email || match.metadata?.email || null,
-  };
+  return { id: match.id, userId: entity };
 }
 
-/** The server's legacy (.env / single-account) Composio connection, for the owner workspace to adopt. */
+/** The server's legacy (.env / single-account) connection. Mapped to the owner workspace only. */
 async function findLegacyAccount(toolkitSlug) {
   try {
     const id = await resolveConnectedAccountId(toolkitSlug);
@@ -305,6 +317,43 @@ async function findLegacyAccount(toolkitSlug) {
   }
 }
 
+// Read-only "who is this account" actions, used to show the address/username
+// on the Connections card. Best effort: an unknown slug or shape just yields null.
+const IDENTITY_ACTIONS = {
+  gmail: { slug: 'GMAIL_GET_PROFILE', args: { user_id: 'me' }, pick: (d) => d?.emailAddress || d?.response_data?.emailAddress },
+  googlecalendar: { slug: 'GOOGLECALENDAR_GET_CALENDAR', args: { calendar_id: 'primary' }, pick: (d) => d?.id || d?.calendar_data?.id },
+  github: { slug: 'GITHUB_GET_THE_AUTHENTICATED_USER', args: {}, pick: (d) => d?.login || d?.details?.login },
+};
+
+async function fetchAccountIdentity(toolkitSlug, account) {
+  const spec = IDENTITY_ACTIONS[toolkitSlug];
+  if (!spec || !account?.id) return null;
+  try {
+    const data = await execute(spec.slug, spec.args, toolkitSlug, {
+      target: { userId: account.userId, connectedAccountId: account.id },
+    });
+    return spec.pick(data) || null;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Revokes a workspace's own connected account at Composio. Only ever touches
+ * an account under that workspace's entity - never the legacy/owner account
+ * and never another workspace's.
+ */
+async function revokeWorkspaceAccount(workspaceId, conn) {
+  if (!conn?.composio_account_id) return false;
+  if (conn.provider_meta?.composio_user_id !== entityFor(workspaceId)) return false;
+  try {
+    await getClient().connectedAccounts.delete(conn.composio_account_id);
+    return true;
+  } catch (err) {
+    console.warn(`[composio] could not revoke ${conn.composio_account_id}: ${err.message}`);
+    return false;
+  }
+}
 /** Test hook: swap the SDK client and clear caches. */
 function _resetForTests(fakeClient = null) {
   client = fakeClient;
@@ -320,6 +369,11 @@ module.exports = {
   startWorkspaceConnection,
   findWorkspaceAccount,
   findLegacyAccount,
+  fetchAccountIdentity,
+  revokeWorkspaceAccount,
+  isVerifiedConnection,
+  isOwnerWorkspace,
+  entityFor,
   WorkspaceConnectionError,
   PER_WORKSPACE_TOOLKITS,
   _resetForTests,

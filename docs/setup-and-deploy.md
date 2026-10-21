@@ -58,7 +58,7 @@ falls back to a mock provider and every agent returns canned text.
 
 | Group | Env vars | Lives on |
 |---|---|---|
-| Composio (Gmail, Google Calendar, Reddit, GitHub) | `COMPOSIO_API_KEY`, `COMPOSIO_USER_ID`, `COMPOSIO_GMAIL_CONNECTED_ACCOUNT_ID`, `COMPOSIO_REDDIT_CONNECTED_ACCOUNT_ID`, `COMPOSIO_GITHUB_CONNECTED_ACCOUNT_ID`, `COMPOSIO_PER_WORKSPACE` (set to `1` to let non-owner workspaces connect their own Gmail / Calendar / GitHub; default off) | Render |
+| Composio (Gmail, Google Calendar, Reddit, GitHub) | `COMPOSIO_API_KEY`, `COMPOSIO_USER_ID`, `COMPOSIO_GMAIL_CONNECTED_ACCOUNT_ID`, `COMPOSIO_REDDIT_CONNECTED_ACCOUNT_ID`, `COMPOSIO_GITHUB_CONNECTED_ACCOUNT_ID` (the pinned ids are used only by the app owner's workspace; every other workspace connects its own account) | Render |
 | WhatsApp (Meta) | `WHATSAPP_PHONE_NUMBER_ID`, `WHATSAPP_ACCESS_TOKEN`, `WHATSAPP_WEBHOOK_VERIFY_TOKEN` | Render |
 | WhatsApp (Twilio) | `TWILIO_ACCOUNT_SID`, `TWILIO_AUTH_TOKEN`, `TWILIO_WHATSAPP_FROM` | Render |
 | Telegram | `TELEGRAM_BOT_TOKEN`, `TELEGRAM_WEBHOOK_SECRET` | Render |

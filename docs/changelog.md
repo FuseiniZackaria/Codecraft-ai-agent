@@ -9,7 +9,11 @@ Short bullets per date. See `git log` for the full history.
   account. YouTube / Reddit are owner-only. Connect flow moved to
   `connectedAccounts.link()` (the old REST initiate endpoint is retired) and
   `/check` only accepts accounts owned by the workspace's own Composio user.
-  Non-owner access stays off until `COMPOSIO_PER_WORKSPACE=1`.
+- Security fix (2.7b): a second workspace could be "connected" to the owner's
+  Gmail / Calendar / GitHub without signing in. Each workspace now has its own
+  Composio entity (`ws_<id>`), connect always runs OAuth, unverified rows are
+  never used and are removed, `.env` ids are owner-only, Disconnect never
+  revokes another workspace's account.
 - Fixed two workspace-health leaks: assistant department tasks were saved
   without a workspace, and the daily usage counter write was refused in
   enforce mode (it is now an allowlisted system call).

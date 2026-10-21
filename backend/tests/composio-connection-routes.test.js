@@ -1,44 +1,38 @@
 const assert = require('assert');
 const express = require('express');
 
-process.env.APP_OWNER_EMAIL = 'owner@example.com';
-
 const config = require('../config');
 const composio = require('../core/composio');
 const connections = require('../core/workspaceConnections');
+const workspaceContext = require('../core/workspaceContext');
 const connectionRoutes = require('../api/connectionRoutes');
 
 const WS_OWNER = '00000000-0000-0000-0000-00000000000a';
-const WS_ALICE = '00000000-0000-0000-0000-0000000000a1';
+const WS_B = '00000000-0000-0000-0000-0000000000b2';
 
-// Records every call so each case can assert what the route did (and did not) ask Composio for.
-const calls = { start: [], findWs: [], findLegacy: [] };
-let wsAccount = null; // what findWorkspaceAccount returns
-let legacyAccount = { id: 'ca_legacy', userId: 'legacy-user' };
+workspaceContext.getAppOwnerWorkspaceId = async () => WS_OWNER;
+
+// Stub the Composio calls the routes make, recording each one.
+const calls = { start: [], findWs: [], findLegacy: [], identity: [], revoke: [] };
+let wsAccount = null;
+const LEGACY = { id: 'ca_owner_gmail', userId: 'legacy-user' };
 
 composio.startWorkspaceConnection = async (ws, toolkit, cb) => {
-  calls.start.push({ ws, toolkit, cb });
+  calls.start.push({ ws, toolkit, entity: composio.entityFor(ws) });
   return { redirectUrl: 'https://connect.example/r', connectionId: 'ca_pending' };
 };
-composio.findWorkspaceAccount = async (ws, toolkit, connectionId) => {
-  calls.findWs.push({ ws, toolkit, connectionId });
-  return wsAccount;
-};
-composio.findLegacyAccount = async (toolkit) => {
-  calls.findLegacy.push(toolkit);
-  return legacyAccount;
-};
+composio.findWorkspaceAccount = async (ws, toolkit, connectionId) => { calls.findWs.push({ ws, connectionId }); return wsAccount; };
+composio.findLegacyAccount = async (toolkit) => { calls.findLegacy.push(toolkit); return LEGACY; };
+composio.fetchAccountIdentity = async (toolkit, acct) => { calls.identity.push(acct.id); return acct.id === LEGACY.id ? 'owner@gmail.com' : 'b-user@gmail.com'; };
+const realRevoke = composio.revokeWorkspaceAccount;
+composio.revokeWorkspaceAccount = async (ws, conn) => { calls.revoke.push(conn?.composio_account_id); return realRevoke.call(composio, ws, conn).catch(() => false); };
+composio._resetForTests({ connectedAccounts: { delete: async () => ({}) } });
 
-function reset() {
-  calls.start.length = 0;
-  calls.findWs.length = 0;
-  calls.findLegacy.length = 0;
-  wsAccount = null;
-  legacyAccount = { id: 'ca_legacy', userId: 'legacy-user' };
-}
+function reset() { for (const k of Object.keys(calls)) calls[k].length = 0; wsAccount = null; }
 
 async function main() {
   config.composio.apiKey = 'test-composio-key';
+  config.composio.userId = 'legacy-user';
 
   let user = null;
   const app = express();
@@ -47,93 +41,89 @@ async function main() {
   app.use('/api/connections', connectionRoutes);
   const server = await new Promise((resolve) => { const s = app.listen(0, () => resolve(s)); });
   const base = `http://127.0.0.1:${server.address().port}/api/connections`;
-
-  const post = async (path, body = {}) => {
-    const res = await fetch(`${base}${path}`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
-    return { status: res.status, body: await res.json() };
-  };
-  const get = async (path) => {
-    const res = await fetch(`${base}${path}`);
+  const call = async (method, path, body) => {
+    const res = await fetch(`${base}${path}`, { method, headers: { 'Content-Type': 'application/json' }, body: body ? JSON.stringify(body) : undefined });
     return { status: res.status, body: await res.json() };
   };
 
   try {
-    const alice = { id: 'u-alice', email: 'alice@example.com', workspaceId: WS_ALICE };
+    const userB = { id: 'u-b', email: 'dumenuian123@gmail.com', workspaceId: WS_B };
     const owner = { id: 'u-owner', email: 'owner@example.com', workspaceId: WS_OWNER };
 
-    // --- Flag OFF (default): non-owner stays locked out ---
-    config.composio.perWorkspace = false;
-    user = alice;
-    let r = await post('/gmail/connect');
-    assert.strictEqual(r.status, 403);
-    r = await post('/gmail/check', { connectionId: 'ca_x' });
-    assert.strictEqual(r.status, 403);
-    r = await get('/');
-    assert.ok(r.body.connections.gmail.upgradeNotice, 'locked workspaces still see the coming-soon notice');
-    assert.strictEqual(calls.start.length + calls.findWs.length + calls.findLegacy.length, 0, 'a locked workspace must not reach Composio at all');
-    console.log('✓ flag off: non-owner connect/check are 403 and never reach Composio');
-
-    // --- Flag ON: non-owner connects their own account ---
-    config.composio.perWorkspace = true;
+    // --- The reported bug: B has a stale row pointing at the owner's account ---
+    await connections.upsertConnection(WS_B, 'gmail', { composio_account_id: LEGACY.id, status: 'connected', connected_email: 'owner@gmail.com' });
+    user = userB;
     reset();
-    r = await post('/gmail/connect', {});
+    let r = await call('GET', '/');
+    assert.strictEqual(r.body.connections.gmail.status, 'not_connected', 'B must not see the owner\'s connection');
+    assert.strictEqual(await connections.getConnection(WS_B, 'gmail'), null, 'the stale row is removed');
+    assert.strictEqual(calls.findLegacy.length, 0, 'B never looks at the legacy (.env) account');
+    assert.strictEqual(calls.revoke.length, 0, 'cleanup never revokes anything at Composio');
+    console.log('✓ B\'s stale row pointing at the owner\'s account is reported not connected and removed (nothing revoked)');
+
+    r = await call('GET', '/gmail/status');
+    assert.strictEqual(r.body.status, 'not_connected');
+    console.log('✓ status check for B is not connected');
+
+    // --- B clicking Connect must start OAuth, never say connected instantly ---
+    reset();
+    r = await call('POST', '/gmail/connect', {});
     assert.strictEqual(r.status, 200);
-    assert.strictEqual(r.body.redirectUrl, 'https://connect.example/r');
-    assert.strictEqual(r.body.connectionId, 'ca_pending');
-    assert.strictEqual(calls.start[0].ws, WS_ALICE, 'sign-in is started under the caller\'s own workspace');
-    assert.strictEqual(calls.findLegacy.length, 0, 'a non-owner must never be offered the legacy account');
-    console.log('✓ flag on: non-owner starts a sign-in under their own workspace, legacy account never touched');
-
-    // Not signed in yet -> pending, and the legacy account must not be adopted instead.
-    reset();
-    r = await post('/gmail/check', { connectionId: 'ca_pending' });
-    assert.deepStrictEqual(r.body, { ok: false, status: 'pending' });
-    assert.strictEqual(calls.findLegacy.length, 0, 'a non-owner must never adopt the legacy account');
-    assert.strictEqual(await connections.getConnection(WS_ALICE, 'gmail'), null, 'nothing is stored until the account is verified');
-    console.log('✓ check: unverified connection id stores nothing and never adopts the legacy account');
-
-    // Signed in -> stored with the workspace as Composio user.
-    reset();
-    wsAccount = { id: 'ca_alice', userId: WS_ALICE, email: 'alice@gmail.com' };
-    r = await post('/gmail/check', { connectionId: 'ca_alice' });
-    assert.strictEqual(r.body.ok, true);
-    assert.strictEqual(calls.findWs[0].connectionId, 'ca_alice');
-    const row = await connections.getConnection(WS_ALICE, 'gmail');
-    assert.strictEqual(row.composio_account_id, 'ca_alice');
-    assert.strictEqual(row.provider_meta.composio_user_id, WS_ALICE);
-    assert.strictEqual(row.status, 'connected');
-    assert.strictEqual(row.connected_email, 'alice@gmail.com');
-    console.log('✓ check: a verified workspace account is stored with its Composio user id');
-
-    // --- Owner adopts the server's existing connection instead of signing in again ---
-    reset();
-    user = owner;
-    r = await post('/gmail/connect', {});
-    assert.strictEqual(r.body.adopted, true);
-    assert.strictEqual(calls.start.length, 0);
-    const ownerRow = await connections.getConnection(WS_OWNER, 'gmail');
-    assert.strictEqual(ownerRow.composio_account_id, 'ca_legacy');
-    assert.strictEqual(ownerRow.provider_meta.composio_user_id, 'legacy-user');
-    console.log('✓ owner: existing server connection is adopted with its legacy user id');
-
-    // Owner with nothing legacy -> normal sign-in under their workspace.
-    reset();
-    legacyAccount = null;
-    await connections.deleteConnection(WS_OWNER, 'gmail');
-    r = await post('/gmail/connect', {});
-    assert.strictEqual(r.body.redirectUrl, 'https://connect.example/r');
-    assert.strictEqual(calls.start[0].ws, WS_OWNER);
-    console.log('✓ owner without a legacy connection signs in under their own workspace');
-
-    // Owner check with a sign-in in flight must not swap in the legacy account.
-    reset();
-    legacyAccount = { id: 'ca_legacy', userId: 'legacy-user' };
-    r = await post('/gmail/check', { connectionId: 'ca_pending' });
-    assert.deepStrictEqual(r.body, { ok: false, status: 'pending' });
+    assert.ok(!r.body.adopted, 'connect must never adopt an existing account');
+    assert.strictEqual(r.body.redirectUrl, 'https://connect.example/r', 'connect must hand back an OAuth redirect');
+    assert.strictEqual(calls.start[0].entity, `ws_${WS_B}`);
     assert.strictEqual(calls.findLegacy.length, 0);
-    console.log('✓ owner: a pending sign-in is not replaced by the legacy account');
+    console.log('✓ B clicking Connect starts a fresh OAuth flow under ws_<B>');
+
+    // Before sign-in completes: pending, nothing stored, no legacy fallback.
+    reset();
+    r = await call('POST', '/gmail/check', { connectionId: 'ca_pending' });
+    assert.deepStrictEqual(r.body, { ok: false, status: 'pending' });
+    assert.strictEqual(await connections.getConnection(WS_B, 'gmail'), null);
+    assert.strictEqual(calls.findLegacy.length, 0);
+    console.log('✓ check before sign-in stays pending and stores nothing');
+
+    // After sign-in: stored under B's entity, with B's own address on the card.
+    reset();
+    wsAccount = { id: 'ca_b_gmail', userId: `ws_${WS_B}` };
+    r = await call('POST', '/gmail/check', { connectionId: 'ca_b_gmail' });
+    assert.strictEqual(r.body.ok, true);
+    assert.strictEqual(r.body.connected_email, 'b-user@gmail.com');
+    r = await call('GET', '/');
+    assert.strictEqual(r.body.connections.gmail.status, 'connected');
+    assert.strictEqual(r.body.connections.gmail.connected_email, 'b-user@gmail.com', 'the card shows B\'s own account');
+    assert.strictEqual(r.body.connections.gmail.composio_account_id, 'ca_b_gmail');
+    console.log('✓ after sign-in B is connected to its own account, and the card shows its address');
+
+    // --- Owner: existing connection mapped to the owner workspace, no reconnect ---
+    user = owner;
+    reset();
+    r = await call('GET', '/');
+    assert.strictEqual(r.body.connections.gmail.status, 'connected');
+    assert.strictEqual(r.body.connections.gmail.connected_email, 'owner@gmail.com');
+    const ownerRow = await connections.getConnection(WS_OWNER, 'gmail');
+    assert.strictEqual(ownerRow.provider_meta.composio_user_id, 'legacy-user');
+    console.log('✓ owner keeps the existing Gmail without reconnecting (mapped to the owner workspace)');
+
+    // B still only sees its own.
+    user = userB;
+    r = await call('GET', '/');
+    assert.strictEqual(r.body.connections.gmail.connected_email, 'b-user@gmail.com');
+    assert.strictEqual(r.body.connections.googlecalendar.status, 'not_connected', 'B never inherits the owner\'s calendar');
+    console.log('✓ B never sees the owner\'s connections');
+
+    // --- Disconnect: only the caller's own row; owner's account never revoked ---
+    reset();
+    r = await call('DELETE', '/gmail');
+    assert.strictEqual(r.body.revoked, true, 'B\'s own account is revoked');
+    assert.strictEqual(await connections.getConnection(WS_B, 'gmail'), null);
+    assert.ok(await connections.getConnection(WS_OWNER, 'gmail'), 'the owner\'s connection is untouched');
+
+    user = owner;
+    r = await call('DELETE', '/gmail');
+    assert.strictEqual(r.body.revoked, false, 'the owner\'s legacy account is never revoked by Disconnect');
+    console.log('✓ Disconnect removes only the caller\'s own connection; the legacy account is never revoked');
   } finally {
-    config.composio.perWorkspace = false;
     server.close();
   }
 

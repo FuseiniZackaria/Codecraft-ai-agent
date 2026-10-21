@@ -1,11 +1,18 @@
 # CodeCraft AI — Progress
 
-## Phase 2.7: Per-workspace Composio connections (current)
+## Phase 2.7b: Composio cross-workspace security fix (current)
+
+- **Bug:** a second workspace showed Gmail / Calendar / GitHub as "Connected" with no sign-in. The old connect route fell back to adopting the first ACTIVE account in the whole Composio project (the owner's) and saved it on that workspace; before 2.7 every action also ran as the shared `COMPOSIO_USER_ID` + `.env` pinned ids, so any workspace's Gmail/Calendar/GitHub actions ran on the owner's account.
+- **Fix:** each workspace has its own Composio entity `ws_<workspace_id>`. Connect always starts a fresh OAuth flow for that entity (never adopts). A stored connection is trusted only if it belongs to that entity; otherwise the workspace is blocked with "Connect Gmail first". `.env` ids are used only by the owner's workspace (its existing connection is mapped to it, no reconnect needed) and by background jobs with no workspace.
+- **Cards** show the connected account's email / username. **Disconnect** removes only that workspace's row and revokes only an account under its own entity — never the owner's.
+- **Cleanup:** stale rows are removed automatically the next time the Connections page loads (database only — nothing is revoked at Composio). `COMPOSIO_PER_WORKSPACE` flag removed.
+- **Tests:** `composio-per-workspace`, `composio-connection-routes` (B must go through OAuth, never sees A's connection, `.env` ids never used for user workspaces).
+
+## Phase 2.7: Per-workspace Composio connections
 
 - **Own account per workspace:** `core/composio.js` resolves the Composio user and connected account from the calling workspace's `workspace_connections` row. A workspace with no connection gets a clear "not connected" error — it never falls back to the owner's `.env` account. YouTube / Reddit (single server account) are owner-only.
 - **Connect flow:** uses `connectedAccounts.link()` under the workspace id as the Composio user (the old REST initiate endpoint is retired for managed OAuth). `/check` only accepts accounts owned by that user; a guessed or foreign connection id is rejected.
 - **Owner workspace unchanged:** it keeps using the server's legacy account (adopted on connect) and system callers with no workspace behave as before.
-- **Off by default for other workspaces:** set `COMPOSIO_PER_WORKSPACE=1` on Render to let non-owner workspaces connect. Not yet exercised against live Composio — try it with a second account first.
 - **Shadow-log leaks closed:** assistant (Ian) department tasks now carry the workspace. A path audit also fixed writes that enforce mode would have refused: pausing a workflow run for approval, enabling/disabling a skill, the legacy Gmail-triage migration (now a named system call), and the Coding agent's audit events.
 - **Per-workspace Ian usage & cap:** `assistant_usage_daily` is now one row per (day, workspace). **Run `backend/database/migrations/0003_assistant_usage_per_workspace.sql` in Supabase BEFORE deploying** — until then usage isn't persisted (it keeps counting in memory; nothing else breaks).
 - **Cross-workspace access closed:** "Run now", workflow-definition run/resume/cancel, and Ian's `check_task_result` report another workspace's row as not found.

@@ -489,6 +489,11 @@ export default function Connections() {
               </div>
               <p className="text-xs text-[var(--color-text-muted)] flex-1">{p.desc}</p>
 
+              {isConnected && p.composio && (
+                <p className="text-xs text-[var(--color-text-muted)]">
+                  Account: <strong>{conn.connected_email || 'connected (address unavailable)'}</strong>
+                </p>
+              )}
               {isConnected && conn.bot_username && (
                 <p className="text-xs text-[var(--color-text-muted)]">Bot: <strong>@{conn.bot_username}</strong></p>
               )}

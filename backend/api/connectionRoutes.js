@@ -9,16 +9,41 @@ const router = express.Router();
 const COMPOSIO_PROVIDERS = new Set(['gmail', 'googlecalendar', 'github']);
 const ALL_PROVIDERS = new Set(['gmail', 'googlecalendar', 'github', 'telegram', 'whatsapp']);
 
-const COMPOSIO_UPGRADE_MSG = 'Coming soon — Google and GitHub connections are being upgraded.';
+// ---------- Composio (Gmail, Calendar, GitHub) helpers ----------
+//
+// Every workspace has its own Composio entity ("ws_<workspace_id>"). A stored
+// row counts as connected only if it belongs to that entity (or, for the app
+// owner's workspace only, the server's legacy account). Anything else is a
+// stale row - e.g. one the old connect flow "adopted" from another workspace's
+// account - and is removed from the database (nothing is revoked at Composio).
 
-// Non-owner workspaces may use Composio only when COMPOSIO_PER_WORKSPACE=1.
-function composioAllowed(req) {
-  return config.composio.perWorkspace || isAppOwnerWorkspace(req);
+function connectionRow(acct, identity) {
+  return {
+    composio_account_id: acct.id,
+    provider_meta: { composio_user_id: acct.userId },
+    status: 'connected',
+    connected_email: identity || null,
+  };
 }
 
-function isAppOwnerWorkspace(req) {
-  const ownerEmail = (process.env.APP_OWNER_EMAIL || config.applicant?.email || '').toLowerCase();
-  return !!(ownerEmail && req.user?.email?.toLowerCase() === ownerEmail);
+async function composioConnection(wsId, provider) {
+  const owner = await composio.isOwnerWorkspace(wsId);
+  let conn = await connections.getConnection(wsId, provider);
+  if (conn && !composio.isVerifiedConnection(wsId, conn, { owner })) {
+    console.warn(`[connections] removing unverified ${provider} row for workspace ${wsId} (not owned by its entity)`);
+    await connections.deleteConnection(wsId, provider);
+    conn = null;
+  }
+  // The owner's pre-workspace connection is mapped to the owner workspace only,
+  // so it keeps working without reconnecting.
+  if (!conn && owner && config.composio.apiKey) {
+    const legacy = await composio.findLegacyAccount(provider);
+    if (legacy) {
+      const identity = await composio.fetchAccountIdentity(provider, legacy);
+      conn = await connections.upsertConnection(wsId, provider, connectionRow(legacy, identity));
+    }
+  }
+  return conn;
 }
 
 // ---------- helpers ----------
@@ -67,8 +92,9 @@ router.get('/', async (req, res) => {
     const rows = await connections.listConnections(wsId);
     const result = {};
     for (const p of ALL_PROVIDERS) {
-      if (COMPOSIO_PROVIDERS.has(p) && !composioAllowed(req)) {
-        result[p] = { provider: p, status: 'not_connected', upgradeNotice: COMPOSIO_UPGRADE_MSG };
+      if (COMPOSIO_PROVIDERS.has(p)) {
+        const conn = await composioConnection(wsId, p);
+        result[p] = conn ? connections.safeConnectionView(conn) : { provider: p, status: 'not_connected' };
         continue;
       }
       const match = rows.find((r) => r.provider === p);
@@ -86,12 +112,11 @@ router.get('/:provider/status', async (req, res) => {
   try {
     const { provider } = req.params;
     if (!ALL_PROVIDERS.has(provider)) return res.status(400).json({ error: `Unknown provider: ${provider}` });
-    if (COMPOSIO_PROVIDERS.has(provider) && !composioAllowed(req)) {
-      return res.json({ provider, status: 'not_connected', upgradeNotice: COMPOSIO_UPGRADE_MSG });
-    }
     const wsId = req.user?.workspaceId;
     if (!wsId) return res.status(400).json({ error: 'No workspace resolved.' });
-    const conn = await connections.getConnection(wsId, provider);
+    const conn = COMPOSIO_PROVIDERS.has(provider)
+      ? await composioConnection(wsId, provider)
+      : await connections.getConnection(wsId, provider);
     res.json(conn ? connections.safeConnectionView(conn) : { provider, status: 'not_connected' });
   } catch (err) {
     res.status(500).json({ error: err.message });
@@ -342,45 +367,20 @@ router.delete('/whatsapp', async (req, res) => {
 });
 
 // ========================= COMPOSIO (Gmail, Calendar, GitHub) =========================
-//
-// Each workspace connects its OWN account: the hosted sign-in is started under
-// the workspace id as the Composio user, and /check only accepts accounts that
-// belong to that user. The owner workspace may additionally adopt the server's
-// legacy (.env) account. Nobody can claim another workspace's account.
 
-function connectionRow(acct) {
-  return {
-    composio_account_id: acct.id,
-    provider_meta: { composio_user_id: acct.userId },
-    status: 'connected',
-    connected_email: acct.email || null,
-  };
-}
-
+// Connect ALWAYS starts a fresh sign-in under this workspace's own entity. It
+// never adopts an existing account (that is how a second workspace used to end
+// up "connected" to the owner's Gmail instantly).
 router.post('/:provider/connect', async (req, res) => {
+  const { provider } = req.params;
   try {
-    const { provider } = req.params;
     if (!COMPOSIO_PROVIDERS.has(provider)) {
       return res.status(400).json({ error: `Use the provider-specific connect route for ${provider}.` });
     }
-    if (!composioAllowed(req)) {
-      return res.status(403).json({ error: COMPOSIO_UPGRADE_MSG });
-    }
     const wsId = req.user?.workspaceId;
     if (!wsId) return res.status(400).json({ error: 'No workspace resolved.' });
-
     if (!config.composio.apiKey) {
       return res.status(400).json({ error: 'COMPOSIO_API_KEY is not configured on this server.' });
-    }
-
-    // The owner already has the server's own connection - adopt it instead of
-    // making them sign in again.
-    if (isAppOwnerWorkspace(req)) {
-      const legacy = await composio.findLegacyAccount(provider);
-      if (legacy) {
-        await connections.upsertConnection(wsId, provider, connectionRow(legacy));
-        return res.json({ ok: true, adopted: true, connectionId: legacy.id });
-      }
     }
 
     const { redirectUrl } = req.body || {};
@@ -388,50 +388,40 @@ router.post('/:provider/connect', async (req, res) => {
     const started = await composio.startWorkspaceConnection(wsId, provider, callbackUrl);
     res.json({ ok: true, redirectUrl: started.redirectUrl, connectionId: started.connectionId });
   } catch (err) {
-    res.status(400).json({
-      error: `Could not start the ${provider} connection: ${err.message}`,
-    });
+    res.status(400).json({ error: `Could not start the ${provider} connection: ${err.message}` });
   }
 });
 
+// Marks the connection as connected only once an ACTIVE account exists under
+// this workspace's own entity. A connectionId from the request is honoured
+// only if it is one of those accounts.
 router.post('/:provider/check', async (req, res) => {
   try {
     const { provider } = req.params;
     if (!COMPOSIO_PROVIDERS.has(provider)) {
       return res.status(400).json({ error: `Unknown Composio provider: ${provider}` });
     }
-    if (!composioAllowed(req)) {
-      return res.status(403).json({ error: COMPOSIO_UPGRADE_MSG });
-    }
     const wsId = req.user?.workspaceId;
     if (!wsId) return res.status(400).json({ error: 'No workspace resolved.' });
-
     if (!config.composio.apiKey) {
       return res.status(400).json({ error: 'COMPOSIO_API_KEY not configured.' });
     }
 
     const { connectionId } = req.body || {};
+    const acct = await composio.findWorkspaceAccount(wsId, provider, connectionId || null);
+    if (!acct) return res.json({ ok: false, status: connectionId ? 'pending' : 'not_connected' });
 
-    // Only accounts owned by this workspace's own Composio user count; a
-    // connectionId from the request is honoured only if it is one of them.
-    let acct = await composio.findWorkspaceAccount(wsId, provider, connectionId || null);
-
-    // Owner only, and only when no sign-in is in flight: fall back to the
-    // server's legacy account.
-    if (!acct && !connectionId && isAppOwnerWorkspace(req)) {
-      acct = await composio.findLegacyAccount(provider);
-    }
-
-    if (acct) {
-      await connections.upsertConnection(wsId, provider, connectionRow(acct));
-      return res.json({ ok: true, status: 'connected', connectionId: acct.id });
-    }
-    res.json({ ok: false, status: connectionId ? 'pending' : 'not_connected' });
+    const identity = await composio.fetchAccountIdentity(provider, acct);
+    const row = await connections.upsertConnection(wsId, provider, connectionRow(acct, identity));
+    res.json({ ok: true, status: 'connected', connectionId: acct.id, connected_email: row?.connected_email || identity || null });
   } catch (err) {
     res.status(400).json({ error: err.message });
   }
 });
-// Disconnect any provider
+// Disconnect any provider. Only ever removes THIS workspace's own row; for
+// Composio it also revokes the account at Composio, but only when that account
+// belongs to this workspace's entity (never the owner's legacy account, never
+// another workspace's).
 router.delete('/:provider', async (req, res) => {
   try {
     const { provider } = req.params;
@@ -439,22 +429,25 @@ router.delete('/:provider', async (req, res) => {
     const wsId = req.user?.workspaceId;
     if (!wsId) return res.status(400).json({ error: 'No workspace resolved.' });
 
+    const conn = await connections.getConnection(wsId, provider);
+
     // For Telegram, also unregister the webhook
-    if (provider === 'telegram') {
-      const conn = await connections.getConnection(wsId, 'telegram');
-      if (conn?.provider_meta?.encrypted_token) {
-        try {
-          const botToken = connections.decrypt(conn.provider_meta.encrypted_token);
-          await callTelegram('deleteWebhook', {}, botToken);
-        } catch { /* best effort */ }
-      }
+    if (provider === 'telegram' && conn?.provider_meta?.encrypted_token) {
+      try {
+        const botToken = connections.decrypt(conn.provider_meta.encrypted_token);
+        await callTelegram('deleteWebhook', {}, botToken);
+      } catch { /* best effort */ }
+    }
+
+    let revoked = false;
+    if (COMPOSIO_PROVIDERS.has(provider) && config.composio.apiKey) {
+      revoked = await composio.revokeWorkspaceAccount(wsId, conn);
     }
 
     await connections.deleteConnection(wsId, provider);
-    res.json({ ok: true });
+    res.json({ ok: true, revoked });
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
 });
-
 module.exports = router;
