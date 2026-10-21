@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { Users, Plus, Trash2, ShieldAlert, Activity, RefreshCw, Trash, Mail, Building, UserPlus, Clock, RotateCw, XCircle, AlertTriangle } from 'lucide-react';
+import { Users, Plus, Trash2, ShieldAlert, Activity, RefreshCw, Trash, Mail, Building, UserPlus, Clock, RotateCw, XCircle, AlertTriangle, Ban, UserCheck } from 'lucide-react';
 import { api } from '../services/api';
 import { useStore } from '../store/useStore';
 
@@ -88,6 +88,83 @@ function TypedConfirmDialog({ title, message, confirmText, onConfirm, onCancel }
             className="text-xs font-medium px-3 py-1.5 rounded-md bg-[var(--color-danger)] text-white hover:brightness-110 disabled:opacity-40 disabled:cursor-not-allowed"
           >
             Remove
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// App owner only: close another workspace's account. Disable (default) keeps
+// everything and can be undone; Delete downloads a JSON backup first.
+function CloseAccountDialog({ admin, onDone, onCancel }) {
+  const [action, setAction] = useState('disable');
+  const [typed, setTyped] = useState('');
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState(null);
+  const matches = typed.trim().toLowerCase() === (admin.email || '').toLowerCase();
+
+  async function submit() {
+    setBusy(true);
+    setError(null);
+    try {
+      const res = await api.closeAccount(admin.id, action, typed.trim());
+      if (res.backup) {
+        const blob = new Blob([JSON.stringify(res.backup, null, 2)], { type: 'application/json' });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = `backup-${(admin.email || admin.id).replace(/[^a-z0-9@._-]/gi, '_')}-${new Date().toISOString().slice(0, 10)}.json`;
+        a.click();
+        URL.revokeObjectURL(url);
+      }
+      onDone();
+    } catch (err) {
+      setError(err.message);
+      setBusy(false);
+    }
+  }
+
+  const option = (value, title, desc) => (
+    <label className={`flex gap-2 items-start rounded-md border p-2.5 cursor-pointer ${action === value ? 'border-[var(--color-accent)]/50 bg-[var(--color-accent)]/5' : 'border-[var(--color-border)]'}`}>
+      <input type="radio" name="close-action" checked={action === value} onChange={() => setAction(value)} className="mt-0.5" />
+      <span>
+        <span className="block text-xs font-medium">{title}</span>
+        <span className="block text-[11px] text-[var(--color-text-muted)]">{desc}</span>
+      </span>
+    </label>
+  );
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40">
+      <div className="bg-[var(--color-surface)] border border-[var(--color-border)] rounded-lg p-5 max-w-md mx-4 shadow-lg">
+        <div className="text-sm font-medium mb-1">Close account: {admin.email}</div>
+        <div className="text-xs text-[var(--color-text-muted)] mb-3">
+          {admin.workspaceName ? `Workspace "${admin.workspaceName}". ` : ''}Your own workspace is never affected.
+        </div>
+        <div className="space-y-2 mb-3">
+          {option('disable', 'Disable account (recommended)', "They can't sign in. All their data is kept. You can re-enable it any time.")}
+          {option('delete', 'Delete account and workspace', 'Downloads a JSON backup of their workspace first, then permanently deletes their connections, workspace data, membership, profile and login. This cannot be undone.')}
+        </div>
+        <div className="text-xs text-[var(--color-text-muted)] mb-2">
+          Type <span className="font-[var(--font-mono)] text-[var(--color-danger)]">{admin.email}</span> to confirm:
+        </div>
+        <input
+          type="text"
+          value={typed}
+          onChange={(e) => setTyped(e.target.value)}
+          autoFocus
+          className="w-full px-3 py-2 rounded-md border border-[var(--color-border)] bg-[var(--color-bg)] text-sm outline-none focus:border-[var(--color-danger)]/50 mb-3"
+        />
+        {error && <div className="text-[11px] text-[var(--color-danger)] mb-2">{error}</div>}
+        <div className="flex justify-end gap-2">
+          <button type="button" onClick={onCancel} disabled={busy}
+            className="text-xs px-3 py-1.5 rounded-md border border-[var(--color-border)] text-[var(--color-text-muted)] hover:text-[var(--color-text)]">
+            Cancel
+          </button>
+          <button type="button" disabled={!matches || busy} onClick={submit}
+            className="text-xs font-medium px-3 py-1.5 rounded-md bg-[var(--color-danger)] text-white hover:brightness-110 disabled:opacity-40 disabled:cursor-not-allowed">
+            {busy ? 'Working...' : action === 'delete' ? 'Back up and delete' : 'Disable account'}
           </button>
         </div>
       </div>
@@ -327,10 +404,27 @@ function AdminRow({ admin, onRemoved, showAppOwnerControls }) {
   const [error, setError] = useState(null);
   const [resending, setResending] = useState(false);
   const [confirmRemove, setConfirmRemove] = useState(false);
+  const [closeOpen, setCloseOpen] = useState(false);
+  const [enabling, setEnabling] = useState(false);
   const user = useStore((s) => s.user);
   const isOwner = user?.workspaceRole === 'owner';
   const canManage = isOwner && admin.inMyWorkspace;
   const canManageAsAppOwner = showAppOwnerControls && !admin.isYou;
+  // "Close account" is for the app owner, on accounts outside their own workspace.
+  const canClose = showAppOwnerControls && !admin.isYou && !admin.inMyWorkspace;
+
+  async function handleEnable() {
+    setEnabling(true);
+    setError(null);
+    try {
+      await api.enableAccount(admin.id);
+      onRemoved();
+    } catch (err) {
+      setError(err.message);
+    } finally {
+      setEnabling(false);
+    }
+  }
 
   async function handleRemove() {
     if (canManageAsAppOwner && !admin.inMyWorkspace) {
@@ -406,6 +500,12 @@ function AdminRow({ admin, onRemoved, showAppOwnerControls }) {
                 {admin.workspaceRole}
               </span>
             )}
+            {admin.disabled && (
+              <span className="text-[10px] px-1.5 py-0.5 rounded-full border border-[var(--color-danger)]/30 bg-[var(--color-danger)]/10 text-[var(--color-danger)] shrink-0 flex items-center gap-1">
+                <Ban size={10} />
+                Disabled
+              </span>
+            )}
             {!admin.inMyWorkspace && !admin.isYou && (
               <span className="text-[10px] px-1.5 py-0.5 rounded-full border border-[var(--color-border)] text-[var(--color-text-muted)] shrink-0">
                 other workspace
@@ -445,7 +545,30 @@ function AdminRow({ admin, onRemoved, showAppOwnerControls }) {
               </button>
             </>
           )}
-          {!admin.isYou && !admin.pending && (canManage || canManageAsAppOwner) && (
+          {canClose && admin.disabled && (
+            <button
+              type="button"
+              disabled={enabling}
+              onClick={handleEnable}
+              title="Let this account sign in again"
+              className="flex items-center gap-1.5 text-xs font-medium px-2.5 py-1.5 rounded-md border border-[var(--color-border)] text-[var(--color-text-muted)] hover:text-[var(--color-success)] hover:border-[var(--color-success)]/40 disabled:opacity-40"
+            >
+              <UserCheck size={12} />
+              {enabling ? 'Re-enabling...' : 'Re-enable'}
+            </button>
+          )}
+          {canClose && !admin.disabled && !admin.pending && (
+            <button
+              type="button"
+              onClick={() => setCloseOpen(true)}
+              title="Disable or delete this account"
+              className="flex items-center gap-1.5 text-xs font-medium px-2.5 py-1.5 rounded-md border border-[var(--color-border)] text-[var(--color-text-muted)] hover:text-[var(--color-danger)] hover:border-[var(--color-danger)]/40"
+            >
+              <Ban size={12} />
+              Close account
+            </button>
+          )}
+          {!admin.isYou && !admin.pending && admin.workspaceRole !== 'owner' && (canManage || canManageAsAppOwner) && (
             <button
               type="button"
               disabled={busy}
@@ -459,6 +582,14 @@ function AdminRow({ admin, onRemoved, showAppOwnerControls }) {
           )}
         </div>
       </div>
+
+      {closeOpen && (
+        <CloseAccountDialog
+          admin={admin}
+          onDone={() => { setCloseOpen(false); onRemoved(); }}
+          onCancel={() => setCloseOpen(false)}
+        />
+      )}
 
       {confirmRemove && (
         <TypedConfirmDialog
@@ -618,28 +749,45 @@ function WorkspaceHealth() {
 }
 
 function SmtpNote() {
+  const steps = [
+    <>Open your <strong>Supabase</strong> project and go to <strong>Authentication &rarr; Emails &rarr; SMTP Settings</strong>. Turn on <strong>Enable custom SMTP</strong>.</>,
+    <>
+      Pick a sender and get its login details:
+      <ul className="list-disc ml-5 mt-1 space-y-1">
+        <li>
+          <strong>Gmail:</strong> turn on 2-Step Verification for the Google account, then create an <strong>App password</strong> at
+          {' '}myaccount.google.com &rarr; Security &rarr; App passwords. Host <code>smtp.gmail.com</code>, port <code>465</code>,
+          username = your full Gmail address, password = the 16-character app password (not your normal password).
+        </li>
+        <li>
+          <strong>Resend (free tier, 3,000 emails/month):</strong> sign up at resend.com, add and verify your domain, then create an API key.
+          Host <code>smtp.resend.com</code>, port <code>465</code>, username <code>resend</code>, password = the API key.
+        </li>
+      </ul>
+    </>,
+    <>Back in Supabase, fill in <strong>Sender email</strong> (the Gmail address, or an address on your verified Resend domain) and a <strong>Sender name</strong> such as "CodeCraft", then paste the host, port, username and password. Click <strong>Save</strong>.</>,
+    <>Under <strong>Authentication &rarr; Rate Limits</strong>, raise <strong>Rate limit for sending emails</strong> (for example to 30 per hour). Then send a test invite from this page.</>,
+  ];
   return (
     <details className="rounded-lg border border-[var(--color-border)] bg-[var(--color-surface)] p-4 mb-4 text-xs">
       <summary className="cursor-pointer text-sm font-medium text-[var(--color-text-muted)] hover:text-[var(--color-text)] flex items-center gap-2">
         <AlertTriangle size={14} className="text-[var(--color-warning)]" />
         Getting rate-limited on invites?
       </summary>
-      <div className="mt-3 space-y-2 text-[var(--color-text-muted)]">
+      <div className="mt-3 space-y-3 text-[var(--color-text-muted)]">
         <p>
-          Supabase's built-in email sender has strict rate limits (about 3-4 emails per hour on the free plan).
-          To send more invites, set up a custom SMTP provider:
+          Supabase's built-in email sender only allows a few emails per hour. Connect your own email sender to send more invites:
         </p>
-        <ol className="list-decimal list-inside space-y-1 ml-1">
-          <li>Go to your Supabase project dashboard</li>
-          <li>Navigate to <strong>Settings &rarr; Authentication &rarr; SMTP Settings</strong></li>
-          <li>Enable custom SMTP and enter your provider's credentials (Resend, SendGrid, Mailgun, etc.)</li>
-          <li>Save and test — invite emails will now go through your provider with much higher limits</li>
-        </ol>
+        {steps.map((step, i) => (
+          <div key={i} className="flex gap-2">
+            <span className="shrink-0 w-5 h-5 rounded-full bg-[var(--color-accent)]/10 text-[var(--color-accent)] text-[11px] font-medium flex items-center justify-center">{i + 1}</span>
+            <div className="text-[var(--color-text)] leading-relaxed">{step}</div>
+          </div>
+        ))}
       </div>
     </details>
   );
 }
-
 export default function Team() {
   const [admins, setAdmins] = useState([]);
   const [loaded, setLoaded] = useState(false);

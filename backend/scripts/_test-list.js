@@ -20,6 +20,7 @@ module.exports = [
   'tests/composio-connection-routes.test.js',
   'tests/team-invite-isolation.test.js',
   'tests/team-phase2-6b.test.js',
+  'tests/team-close-account.test.js',
   'tests/orchestrator.test.js',
   'tests/installer.test.js',
   'tests/coding.test.js',

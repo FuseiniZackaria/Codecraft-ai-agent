@@ -235,6 +235,9 @@ export const api = {
   resendInvite: (userId) => request(`/team/resend/${userId}`, { method: 'POST' }),
   cancelInvite: (userId) => request(`/team/cancel/${userId}`, { method: 'POST' }),
   removeAdmin: (userId) => request(`/team/${userId}`, { method: 'DELETE' }),
+  closeAccount: (userId, action, confirmEmail) =>
+    request(`/team/close/${userId}`, { method: 'POST', body: JSON.stringify({ action, confirmEmail }) }),
+  enableAccount: (userId) => request(`/team/enable/${userId}`, { method: 'POST' }),
 
   // --- Workspace (admin-only observability) ---
   getWorkspaceShadowLog: (limit = 200) => request(`/workspace/shadow-log?limit=${limit}`),

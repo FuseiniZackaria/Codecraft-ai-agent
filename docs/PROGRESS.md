@@ -1,6 +1,15 @@
 # CodeCraft AI — Progress
 
-## Phase 2.7b: Composio cross-workspace security fix (current)
+## Phase 2.7c: App-owner "Close account" + SMTP guide (current)
+
+- **Close account (app owner only, other workspaces):** on the Team page, "Close account" opens a dialog where you type the account's email and choose:
+  - **Disable account** (default) — Supabase ban; they can't sign in (existing sessions are refused too); all data kept; **Re-enable** button undoes it. Disabled accounts show a "Disabled" badge.
+  - **Delete account and workspace** — downloads a JSON backup of every workspace they own first (encrypted tokens stripped; also saved under `backend/data/backups/` on the server, which Render wipes on redeploy — keep the downloaded copy), then deletes workspace data, connections, profile, membership, roles and the auth user in foreign-key order. If the backup fails, nothing is deleted.
+  - Never touches your own account or any account in your own workspace. Normal admins still get "You can't remove a workspace owner."
+- **SMTP guide:** "Getting rate-limited on invites?" now has real steps (Supabase → Authentication → Emails → SMTP Settings, Gmail app password or Resend free tier, then raise the email rate limit).
+- **Tests:** `team-close-account` (disable, re-enable, delete with backup, FK order, owner untouched).
+
+## Phase 2.7b: Composio cross-workspace security fix
 
 - **Bug:** a second workspace showed Gmail / Calendar / GitHub as "Connected" with no sign-in. The old connect route fell back to adopting the first ACTIVE account in the whole Composio project (the owner's) and saved it on that workspace; before 2.7 every action also ran as the shared `COMPOSIO_USER_ID` + `.env` pinned ids, so any workspace's Gmail/Calendar/GitHub actions ran on the owner's account.
 - **Fix:** each workspace has its own Composio entity `ws_<workspace_id>`. Connect always starts a fresh OAuth flow for that entity (never adopts). A stored connection is trusted only if it belongs to that entity; otherwise the workspace is blocked with "Connect Gmail first". `.env` ids are used only by the owner's workspace (its existing connection is mapped to it, no reconnect needed) and by background jobs with no workspace.

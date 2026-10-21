@@ -61,6 +61,13 @@ async function requireAuth(req, res, next) {
     return res.status(401).json({ error: 'Invalid or expired session' });
   }
 
+  // Disabled by the app owner ("Close account" -> Disable): refuse even a
+  // session token that was issued before the ban.
+  const bannedUntil = userData.user.banned_until;
+  if (bannedUntil && new Date(bannedUntil).getTime() > Date.now()) {
+    return res.status(403).json({ error: 'This account has been disabled.' });
+  }
+
   let roleRows, roleError;
   try {
     ({ data: roleRows, error: roleError } = await supabase

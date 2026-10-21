@@ -4,10 +4,13 @@ const config = require('../config');
 const memory = require('../memory');
 const { teamMutationLimiter } = require('../core/rateLimits');
 const { invalidateUser, invalidateSoleWorkspace } = require('../core/workspaceContext');
+const accountClosure = require('../core/accountClosure');
+const fs = require('fs');
+const path = require('path');
 
 const router = express.Router();
 
-const supabase = config.supabase.url && config.supabase.serviceKey
+let supabase = config.supabase.url && config.supabase.serviceKey
   ? createClient(config.supabase.url, config.supabase.serviceKey)
   : null;
 
@@ -132,6 +135,7 @@ router.get('/', async (req, res) => {
             inMyWorkspace: appOwner ? inCaller : !!membership,
             workspaceName: appOwner && membership ? workspaceNames[membership.workspace_id] || null : undefined,
             workspaceId: appOwner && membership ? membership.workspace_id : undefined,
+            disabled: accountClosure.isDisabled(u),
           });
           remaining.delete(u.id);
         }
@@ -463,7 +467,7 @@ router.delete('/:userId', teamMutationLimiter, async (req, res) => {
     } else {
       // App owner can remove from any workspace
       if (targetMember && targetMember.role === 'owner') {
-        return res.status(400).json({ error: "You can't remove a workspace owner. Transfer ownership first or cancel the invite." });
+        return res.status(400).json({ error: "You can't remove a workspace owner. Use \"Close account\" to disable or delete their account." });
       }
       if (targetMember) {
         await supabase
@@ -522,5 +526,126 @@ router.delete('/:userId', teamMutationLimiter, async (req, res) => {
     res.status(500).json({ error: err.message });
   }
 });
+
+// ---------- App owner: close another workspace's account ----------
+//
+// POST /team/close/:userId  { action: 'disable' | 'delete', confirmEmail }
+//   disable (default): the user can't sign in; all data is kept; reversible.
+//   delete: JSON backup of every workspace they own, then deletes those
+//           workspaces' data, the workspaces, their membership/roles and the
+//           auth user, in foreign-key order. The backup is returned and saved.
+// Never touches the app owner's own workspace or account.
+
+async function loadCloseTarget(req, res) {
+  if (!requireSupabase(res)) return null;
+  if (!isAppOwner(req)) {
+    res.status(403).json({ error: 'Only the app owner can close or re-enable accounts.' });
+    return null;
+  }
+  const { data: userData, error: userError } = await supabase.auth.admin.getUserById(req.params.userId);
+  if (userError || !userData?.user) {
+    res.status(404).json({ error: 'User not found.' });
+    return null;
+  }
+  const target = userData.user;
+  if (target.id === req.user.id) {
+    res.status(400).json({ error: "You can't close your own account." });
+    return null;
+  }
+
+  const { data: ownedRows, error: ownedError } = await supabase
+    .from('workspaces').select('id').eq('owner_user_id', target.id);
+  if (ownedError) throw new Error(`Failed to look up workspaces: ${ownedError.message}`);
+  const { data: memberRows, error: memberError } = await supabase
+    .from('workspace_members').select('workspace_id').eq('user_id', target.id);
+  if (memberError) throw new Error(`Failed to look up membership: ${memberError.message}`);
+
+  const ownedWorkspaceIds = (ownedRows || []).map((w) => w.id);
+  const touched = new Set([...ownedWorkspaceIds, ...(memberRows || []).map((m) => m.workspace_id)]);
+  if (req.user.workspaceId && touched.has(req.user.workspaceId)) {
+    res.status(400).json({ error: 'This account belongs to your own workspace - use Remove instead. Your workspace is never closed.' });
+    return null;
+  }
+  return { target, ownedWorkspaceIds };
+}
+
+const BACKUP_DIR = path.join(__dirname, '..', 'data', 'backups');
+
+router.post('/close/:userId', teamMutationLimiter, async (req, res) => {
+  try {
+    const loaded = await loadCloseTarget(req, res);
+    if (!loaded) return;
+    const { target, ownedWorkspaceIds } = loaded;
+
+    const { action = 'disable', confirmEmail } = req.body || {};
+    if (!['disable', 'delete'].includes(action)) {
+      return res.status(400).json({ error: 'action must be "disable" or "delete".' });
+    }
+    if (!confirmEmail || confirmEmail.trim().toLowerCase() !== (target.email || '').toLowerCase()) {
+      return res.status(400).json({ error: "Type the account's email exactly to confirm." });
+    }
+
+    const auditMeta = { targetUserId: target.id, workspaceIds: ownedWorkspaceIds, workspaceId: req.user.workspaceId };
+
+    if (action === 'disable') {
+      await accountClosure.disableAccount(supabase, target.id);
+      invalidateUser(target.id);
+      try {
+        await memory.audit(req.user.email || req.user.id, 'account_disabled', target.email || target.id, auditMeta, { workspaceId: req.user.workspaceId });
+      } catch { /* non-fatal */ }
+      return res.json({ ok: true, action: 'disabled', email: target.email });
+    }
+
+    // delete: back up first; if the backup fails nothing is deleted.
+    const backup = {
+      closedBy: req.user.email || req.user.id,
+      account: { id: target.id, email: target.email, created_at: target.created_at },
+      workspaces: [],
+    };
+    for (const wsId of ownedWorkspaceIds) {
+      backup.workspaces.push(await accountClosure.exportWorkspace(supabase, wsId, { user: target }));
+    }
+    let backupFile = null;
+    try {
+      fs.mkdirSync(BACKUP_DIR, { recursive: true });
+      backupFile = path.join(BACKUP_DIR, `account-${target.id}-${Date.now()}.json`);
+      fs.writeFileSync(backupFile, JSON.stringify(backup, null, 2));
+    } catch (err) {
+      // The backup is also returned in the response for the browser to save.
+      console.warn(`[team] could not write backup file: ${err.message}`);
+      backupFile = null;
+    }
+
+    await accountClosure.deleteAccountAndWorkspace(supabase, { userId: target.id, workspaceIds: ownedWorkspaceIds });
+    invalidateUser(target.id);
+    invalidateSoleWorkspace();
+    try {
+      await memory.audit(req.user.email || req.user.id, 'account_deleted', target.email || target.id, auditMeta, { workspaceId: req.user.workspaceId });
+    } catch { /* non-fatal */ }
+
+    res.json({ ok: true, action: 'deleted', email: target.email, backup, backupFile: backupFile ? path.basename(backupFile) : null });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+router.post('/enable/:userId', teamMutationLimiter, async (req, res) => {
+  try {
+    const loaded = await loadCloseTarget(req, res);
+    if (!loaded) return;
+    await accountClosure.enableAccount(supabase, loaded.target.id);
+    invalidateUser(loaded.target.id);
+    try {
+      await memory.audit(req.user.email || req.user.id, 'account_enabled', loaded.target.email || loaded.target.id,
+        { targetUserId: loaded.target.id, workspaceId: req.user.workspaceId }, { workspaceId: req.user.workspaceId });
+    } catch { /* non-fatal */ }
+    res.json({ ok: true, action: 'enabled', email: loaded.target.email });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+/** Test hook: swap the Supabase service client. */
+router._setSupabaseForTests = (client) => { supabase = client; };
 
 module.exports = router;
