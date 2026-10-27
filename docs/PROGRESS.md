@@ -1,6 +1,11 @@
 # CodeCraft AI — Progress
 
-## Phase 2.7c: App-owner "Close account" + SMTP guide (current)
+## Fix: owner can reconnect an expired Gmail / Calendar / GitHub
+
+- If the server's legacy (.env) account's token expires (Composio 401 "invalid or expired"), the owner clicks **Disconnect** then **Connect**: the legacy account is remembered as dismissed (never revoked, never re-attached), and the new sign-in is stored under `ws_<owner workspace>`. Previously the card re-attached the expired account on every load, so Connect never appeared.
+- The legacy account is also skipped automatically when Composio reports it as not ACTIVE.
+
+## Phase 2.7c: App-owner "Close account" + SMTP guide
 
 - **Close account (app owner only, other workspaces):** on the Team page, "Close account" opens a dialog where you type the account's email and choose:
   - **Disable account** (default) — Supabase ban; they can't sign in (existing sessions are refused too); all data kept; **Re-enable** button undoes it. Disabled accounts show a "Disabled" badge.

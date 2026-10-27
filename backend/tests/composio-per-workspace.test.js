@@ -93,6 +93,16 @@ async function main() {
   assert.strictEqual(client.calls.execute[1].params.connectedAccountId, 'ca_legacy_gmail');
   console.log('✓ owner workspace keeps its existing connection (legacy account mapped to the owner only)');
 
+  // Owner disconnected the (expired) legacy account: no silent fallback to it.
+  await connections.upsertConnection(OWNER_WS, 'gmail', {
+    composio_account_id: null, provider_meta: { legacy_dismissed: true }, status: 'disconnected',
+  });
+  await assert.rejects(
+    () => composio.execute('GMAIL_FETCH_EMAILS', {}, 'gmail', { workspaceId: OWNER_WS }),
+    (err) => /Connect Gmail first/.test(err.message)
+  );
+  console.log('✓ after the owner disconnects the legacy account it is not used again until they reconnect');
+
   // --- YouTube / Reddit have one server account: owner only ---
   await assert.rejects(
     () => composio.execute('YOUTUBE_SEARCH_YOU_TUBE', {}, 'youtube', { workspaceId: WS_ALICE }),

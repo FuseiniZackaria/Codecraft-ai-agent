@@ -29,6 +29,9 @@ function connectionRow(acct, identity) {
 async function composioConnection(wsId, provider) {
   const owner = await composio.isOwnerWorkspace(wsId);
   let conn = await connections.getConnection(wsId, provider);
+  // The owner disconnected the server's legacy account (e.g. its token expired):
+  // show "not connected" so they can sign in again, and never re-attach it.
+  if (conn && conn.status !== 'connected' && conn.provider_meta?.legacy_dismissed) return null;
   if (conn && !composio.isVerifiedConnection(wsId, conn, { owner })) {
     console.warn(`[connections] removing unverified ${provider} row for workspace ${wsId} (not owned by its entity)`);
     await connections.deleteConnection(wsId, provider);
@@ -442,6 +445,19 @@ router.delete('/:provider', async (req, res) => {
     let revoked = false;
     if (COMPOSIO_PROVIDERS.has(provider) && config.composio.apiKey) {
       revoked = await composio.revokeWorkspaceAccount(wsId, conn);
+    }
+
+    // The owner's legacy (.env) account is never revoked, but it must not be
+    // re-attached on the next page load either - remember the disconnect so the
+    // card offers "Connect" and the next sign-in replaces it.
+    if (COMPOSIO_PROVIDERS.has(provider) && await composio.isOwnerWorkspace(wsId)) {
+      await connections.upsertConnection(wsId, provider, {
+        composio_account_id: null,
+        provider_meta: { legacy_dismissed: true },
+        status: 'disconnected',
+        connected_email: null,
+      });
+      return res.json({ ok: true, revoked });
     }
 
     await connections.deleteConnection(wsId, provider);

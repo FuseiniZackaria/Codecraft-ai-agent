@@ -140,13 +140,16 @@ async function resolveTarget(workspaceId, toolkitSlug) {
   });
   if (!workspaceId || !toolkitSlug) return legacy();
 
-  const owner = await isOwnerWorkspace(workspaceId);
+  let owner = await isOwnerWorkspace(workspaceId);
 
   if (PER_WORKSPACE_TOOLKITS.has(toolkitSlug)) {
     const conn = await require('./workspaceConnections').getConnection(workspaceId, toolkitSlug);
     if (isVerifiedConnection(workspaceId, conn, { owner })) {
       return { connectedAccountId: conn.composio_account_id, userId: conn.provider_meta.composio_user_id };
     }
+    // The owner disconnected the legacy account (e.g. its token expired) and
+    // must reconnect - don't silently fall back to it again.
+    if (conn?.provider_meta?.legacy_dismissed) owner = false;
   }
 
   if (owner) return legacy();
@@ -311,6 +314,10 @@ async function findWorkspaceAccount(workspaceId, toolkitSlug, connectionId = nul
 async function findLegacyAccount(toolkitSlug) {
   try {
     const id = await resolveConnectedAccountId(toolkitSlug);
+    // A pinned .env id is returned without a status check; skip it if Composio
+    // reports it as no longer ACTIVE (expired / revoked).
+    const detail = await getClient().connectedAccounts?.get?.(id);
+    if (detail && detail.status && detail.status !== 'ACTIVE') return null;
     return { id, userId: config.composio.userId };
   } catch {
     return null;

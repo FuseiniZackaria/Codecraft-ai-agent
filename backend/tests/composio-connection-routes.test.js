@@ -123,6 +123,25 @@ async function main() {
     r = await call('DELETE', '/gmail');
     assert.strictEqual(r.body.revoked, false, 'the owner\'s legacy account is never revoked by Disconnect');
     console.log('✓ Disconnect removes only the caller\'s own connection; the legacy account is never revoked');
+
+    // --- Owner reconnect (expired legacy token): after Disconnect the legacy
+    // account is NOT re-attached, so the card offers Connect and OAuth runs. ---
+    reset();
+    r = await call('GET', '/');
+    assert.strictEqual(r.body.connections.gmail.status, 'not_connected', 'disconnected legacy account must not come back');
+    assert.strictEqual(calls.findLegacy.length, 0, 'the legacy account is not looked up again');
+    r = await call('POST', '/gmail/connect', {});
+    assert.strictEqual(calls.start[0].entity, `ws_${WS_OWNER}`, 'owner reconnects under their own workspace entity');
+    wsAccount = { id: 'ca_owner_new', userId: `ws_${WS_OWNER}` };
+    r = await call('POST', '/gmail/check', { connectionId: 'ca_owner_new' });
+    assert.strictEqual(r.body.ok, true);
+    const fresh = await connections.getConnection(WS_OWNER, 'gmail');
+    assert.strictEqual(fresh.composio_account_id, 'ca_owner_new');
+    assert.strictEqual(fresh.provider_meta.composio_user_id, `ws_${WS_OWNER}`);
+    assert.ok(!fresh.provider_meta.legacy_dismissed);
+    r = await call('GET', '/');
+    assert.strictEqual(r.body.connections.gmail.status, 'connected');
+    console.log('✓ owner can reconnect after an expired token: Disconnect -> Connect -> new account under ws_<owner>');
   } finally {
     server.close();
   }
