@@ -44,6 +44,13 @@ function isAppOwner(req) {
   return !!(ownerEmail && req.user?.email?.toLowerCase() === ownerEmail.toLowerCase());
 }
 
+// Invite links land on the app's set-password page. The origin is the admin's
+// own browser origin (the app), and must also be in Supabase -> Authentication
+// -> URL Configuration -> Redirect URLs, otherwise Supabase uses the Site URL.
+function inviteRedirectUrl(req) {
+  return `${req.headers.origin || ''}/set-password`;
+}
+
 async function getAdminRoleId() {
   const { data, error } = await supabase.from('roles').select('id').eq('name', 'admin').maybeSingle();
   if (error) throw new Error(`Failed to look up admin role: ${error.message}`);
@@ -200,10 +207,11 @@ router.post('/', teamMutationLimiter, async (req, res) => {
       userEmail = existing.email;
       existingAccount = true;
     } else {
-      const redirectUrl = `${req.headers.origin || ''}/`;
+      // needs_password: the invite link signs them in without a password, so the
+      // app shows "Create your password" until they set one (see frontend App.jsx).
       const { data: invited, error: inviteError } = await supabase.auth.admin.inviteUserByEmail(
         trimmedEmail,
-        { redirectTo: redirectUrl },
+        { redirectTo: inviteRedirectUrl(req), data: { needs_password: true } },
       );
       if (inviteError) {
         const msg = inviteError.message || '';
@@ -345,10 +353,14 @@ router.post('/resend/:userId', teamMutationLimiter, async (req, res) => {
       return res.status(400).json({ error: 'This user has already signed in — no invite to resend.' });
     }
 
-    const redirectUrl = `${req.headers.origin || ''}/`;
+    // Older invites were sent before the needs_password flag existed - set it so
+    // this resent link also ends on "Create your password".
+    await supabase.auth.admin.updateUserById(target.id, {
+      user_metadata: { ...(target.user_metadata || {}), needs_password: true },
+    });
     const { error: inviteError } = await supabase.auth.admin.inviteUserByEmail(
       target.email,
-      { redirectTo: redirectUrl },
+      { redirectTo: inviteRedirectUrl(req), data: { needs_password: true } },
     );
     if (inviteError) {
       const msg = inviteError.message || '';

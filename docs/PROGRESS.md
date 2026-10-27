@@ -1,5 +1,11 @@
 # CodeCraft AI — Progress
 
+## Fix: invited users create a password
+
+- Invite links signed people straight into the app with no password, so after logging out they couldn't sign in. Invites (and resends) now mark the account `user_metadata.needs_password` and link to `/set-password`; while the flag is set the app only shows **Create your password**, and saving it clears the flag and opens the app.
+- Add `https://<your frontend>/set-password` to **Supabase → Authentication → URL Configuration → Redirect URLs** (otherwise Supabase sends people to the Site URL; the flag still forces the form).
+- People who already accepted an old invite use **Forgot password** on the sign-in page.
+
 ## Fix: Composio sign-in finishes by itself
 
 - After the Google / GitHub sign-in, Composio now returns the browser to the app's **Connections** page (it used to go to a non-existent `/api/connections/<provider>/callback`), which completes the connection and shows "Gmail connected as …". The Connect dialog also checks every few seconds, so the original tab updates too. Only the app's own origins (`CORS_ALLOWED_ORIGINS`) are accepted as the return address.

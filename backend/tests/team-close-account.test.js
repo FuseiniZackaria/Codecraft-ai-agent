@@ -83,8 +83,9 @@ function makeFakeSupabase() {
     return q;
   }
 
+  const invites = [];
   return {
-    db, users, deletes,
+    db, users, deletes, invites,
     from: query,
     auth: {
       admin: {
@@ -94,7 +95,12 @@ function makeFakeSupabase() {
           if (!u) return { error: { message: 'not found' } };
           if (attrs.ban_duration === 'none') u.banned_until = null;
           else if (attrs.ban_duration) u.banned_until = new Date(Date.now() + 876000 * 3600 * 1000).toISOString();
+          if (attrs.user_metadata) u.user_metadata = attrs.user_metadata;
           return { data: { user: u }, error: null };
+        },
+        async inviteUserByEmail(email, options) {
+          invites.push({ email, options });
+          return { data: { user: { id: `u-${email}`, email } }, error: null };
         },
         async deleteUser(id) {
           if (db.workspaces.some((w) => w.owner_user_id === id)) return { error: { message: 'workspaces.owner_user_id restricts delete' } };
@@ -129,6 +135,17 @@ async function main() {
   };
 
   try {
+    // --- Invites end on "Create your password" ---
+    sb.users.set('u-p', { id: 'u-p', email: 'pending@example.com', last_sign_in_at: null, user_metadata: { invited: true } });
+    const res = await fetch(`${base}/resend/u-p`, { method: 'POST', headers: { 'Content-Type': 'application/json', Origin: 'https://app.example' } });
+    assert.strictEqual(res.status, 200);
+    assert.strictEqual(sb.invites[0].options.redirectTo, 'https://app.example/set-password', 'invite link lands on the set-password page');
+    assert.strictEqual(sb.invites[0].options.data.needs_password, true, 'invite marks the account as needing a password');
+    assert.strictEqual(sb.users.get('u-p').user_metadata.needs_password, true, 'older invitees get the flag on resend');
+    assert.strictEqual(sb.users.get('u-p').user_metadata.invited, true, 'existing metadata is kept');
+    sb.users.delete('u-p');
+    console.log('✓ invites mark the account "needs password" and link to the set-password page');
+
     // --- Guards ---
     let r = await post(`/close/${B.id}`, { action: 'disable', confirmEmail: 'wrong@example.com' });
     assert.strictEqual(r.status, 400, 'the typed email must match');

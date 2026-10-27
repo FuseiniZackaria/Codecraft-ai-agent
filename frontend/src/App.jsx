@@ -146,6 +146,13 @@ export default function App() {
     return <ResetPassword />;
   }
 
+  // Invited users arrive signed in by the invite link but without a password.
+  // Until they create one they only see this screen, so they can sign in
+  // again after logging out.
+  if (session?.user?.user_metadata?.needs_password) {
+    return <ResetPassword mode="invite" />;
+  }
+
   if (session === undefined || (session && authLoading)) {
     return (
       <div className="min-h-dvh flex items-center justify-center bg-[var(--color-bg)] text-[var(--color-text-muted)] text-sm">
@@ -161,6 +168,10 @@ export default function App() {
     // no explanation.
     if (window.location.pathname === '/reset-password') {
       return <ResetPassword />;
+    }
+    // Expired / already-used invite link.
+    if (window.location.pathname === '/set-password') {
+      return <ResetPassword mode="invite" />;
     }
     return <Login />;
   }

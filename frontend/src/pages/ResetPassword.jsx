@@ -11,8 +11,12 @@ import { supabase } from '../services/supabaseClient';
  *  2. Expired/invalid link → hash contains #error=access_denied — no session,
  *     App.jsx routes here by path so the user sees a clear error instead of
  *     silently landing on the Login page.
+ *  3. mode="invite": an invited user signed in by the invite link (their
+ *     user_metadata.needs_password is set) creates their first password and
+ *     goes straight into the app.
  */
-export default function ResetPassword() {
+export default function ResetPassword({ mode = 'reset' }) {
+  const invite = mode === 'invite';
   const [password, setPassword] = useState('');
   const [confirm, setConfirm] = useState('');
   const [busy, setBusy] = useState(false);
@@ -38,9 +42,17 @@ export default function ResetPassword() {
     setBusy(true);
     setError(null);
     try {
-      const { error: updateError } = await supabase.auth.updateUser({ password });
+      const { error: updateError } = await supabase.auth.updateUser(
+        invite ? { password, data: { needs_password: false } } : { password }
+      );
       if (updateError) throw updateError;
       setDone(true);
+      if (invite) {
+        // Stay signed in: pick up the cleared flag, then open the app.
+        await supabase.auth.refreshSession().catch(() => {});
+        setTimeout(() => { window.location.href = '/'; }, 1200);
+        return;
+      }
       // Sign out the recovery session and redirect to login after a brief moment
       // so the user sees the confirmation before being taken back.
       setTimeout(async () => {
@@ -72,27 +84,33 @@ export default function ResetPassword() {
                 <h1 className="font-[var(--font-display)] text-lg font-semibold">Link expired</h1>
               </div>
               <p className="text-sm text-[var(--color-text-muted)] mb-5">
-                {error || 'This password reset link has expired or already been used.'}
-                {' '}Reset links are valid for 1 hour — request a fresh one below.
+                {error || (invite ? 'This invite link has expired or already been used.' : 'This password reset link has expired or already been used.')}
+                {' '}{invite
+                  ? 'Ask the person who invited you to resend the invite, or use "Forgot password" on the sign-in page.'
+                  : 'Reset links are valid for 1 hour — request a fresh one below.'}
               </p>
               <a
                 href="/"
                 className="w-full flex items-center justify-center gap-1.5 text-sm font-medium px-3 py-2 rounded-md bg-[var(--color-accent)] text-black hover:brightness-110"
               >
-                Request a new reset link
+                {invite ? 'Go to sign in' : 'Request a new reset link'}
               </a>
             </>
           ) : done ? (
             <>
-              <h1 className="font-[var(--font-display)] text-lg font-semibold mb-1">Password updated</h1>
+              <h1 className="font-[var(--font-display)] text-lg font-semibold mb-1">{invite ? 'Password created' : 'Password updated'}</h1>
               <p className="text-sm text-[var(--color-text-muted)]">
-                Taking you back to sign in…
+                {invite ? 'Opening CodeCraft…' : 'Taking you back to sign in…'}
               </p>
             </>
           ) : (
             <>
-              <h1 className="font-[var(--font-display)] text-lg font-semibold mb-1">Set a new password</h1>
-              <p className="text-sm text-[var(--color-text-muted)] mb-6">Choose a new password for your account.</p>
+              <h1 className="font-[var(--font-display)] text-lg font-semibold mb-1">{invite ? 'Create your password' : 'Set a new password'}</h1>
+              <p className="text-sm text-[var(--color-text-muted)] mb-6">
+                {invite
+                  ? "Welcome! Choose a password - you'll use it with your email to sign in next time."
+                  : 'Choose a new password for your account.'}
+              </p>
 
               <form onSubmit={handleSubmit} className="space-y-3">
                 <div>
@@ -123,7 +141,7 @@ export default function ResetPassword() {
                   className="w-full flex items-center justify-center gap-1.5 text-sm font-medium px-3 py-2 rounded-md bg-[var(--color-accent)] text-black hover:brightness-110 disabled:opacity-50 mt-2"
                 >
                   <KeyRound size={14} />
-                  {busy ? 'Updating…' : 'Update password'}
+                  {busy ? 'Saving…' : invite ? 'Create password' : 'Update password'}
                 </button>
               </form>
             </>
