@@ -1,5 +1,14 @@
 # CodeCraft AI — Progress
 
+## Security fix: invited workspaces saw the owner's tasks and activity
+
+- **Live activity stream** (`/api/events/stream`) broadcast every workspace's events to every open page. It now sends only the caller's workspace events.
+- **Unstamped rows** (`workspace_id = null`: pre-workspace history and background jobs such as webhooks, which can't resolve a workspace once there are two) were returned to every workspace by every list. They now belong to the app owner's workspace only (`canSeeLegacy`), in both stores and in the route filters. If the owner workspace can't be resolved, nobody sees them.
+- **By-id routes** let any admin read, approve, reject, edit or delete another workspace's task (and edit/delete workflows, manage skills) by id. They now return 404 for anything outside the caller's workspace. `mark-all-read` only touches the caller's own tasks.
+- Coding agent plan narration is now stamped with the workspace.
+- Test: `workspace-legacy-visibility` (lists, by-id actions, mark-all-read, live stream).
+- Note: inviting someone as **"Team member of my workspace"** shares your workspace on purpose — use **"New business (own workspace)"** for a separate one.
+
 ## Sign in with an email code
 
 - Sign-in page has **Sign in with an email code**: enter your email, get a one-time code by email, type it in. Uses Supabase email OTP with `shouldCreateUser: false`, so it only works for existing (invited) accounts and never creates new ones. Disabled accounts are still refused.

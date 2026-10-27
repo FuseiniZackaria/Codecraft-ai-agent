@@ -2,6 +2,22 @@ const express = require('express');
 const { v4: uuid } = require('uuid');
 const memory = require('../memory');
 const scheduler = require('../core/scheduler');
+const { canSeeLegacy, rowVisible } = require('../core/workspaceContext');
+
+// Only the caller's own rows; rows with no workspace_id (legacy) only for the
+// app owner's workspace. A request with no workspace sees nothing.
+async function visibleList(rows, req) {
+  const ws = req.user?.workspaceId;
+  if (!ws) return [];
+  const legacyOk = await canSeeLegacy(ws);
+  return (rows || []).filter((r) => rowVisible(r, ws, legacyOk));
+}
+
+async function visibleOne(row, req) {
+  const ws = req.user?.workspaceId;
+  if (!row || !ws) return null;
+  return rowVisible(row, ws, await canSeeLegacy(ws)) ? row : null;
+}
 
 const router = express.Router();
 
@@ -26,7 +42,7 @@ router.get('/', async (req, res) => {
     // nothing disappears on existing deployments; Phase 2.3c tightens.
     const ws = req.user?.workspaceId;
     const all = await memory.listWorkflows({ workspaceId: ws || null });
-    const scoped = ws ? (all || []).filter((w) => !w.workspace_id || w.workspace_id === ws) : all;
+    const scoped = await visibleList(all, req);
     res.json(scoped);
   } catch (err) {
     res.status(500).json({ error: err.message });
@@ -63,8 +79,8 @@ router.post('/', async (req, res) => {
 
 router.patch('/:id', async (req, res) => {
   try {
-    const existing = await memory.getWorkflow(req.params.id);
-        if (!existing) return res.status(404).json({ error: 'Workflow not found' });
+    const existing = await visibleOne(await memory.getWorkflow(req.params.id), req);
+    if (!existing) return res.status(404).json({ error: 'Workflow not found' });
 
     const patch = {};
     for (const field of ['name', 'goal', 'scheduleType', 'intervalMinutes', 'dailyTime', 'daysOfWeek', 'enabled', 'deliverWhatsappEnabled', 'deliverWhatsappTo']) {
@@ -80,7 +96,8 @@ router.patch('/:id', async (req, res) => {
 
 router.delete('/:id', async (req, res) => {
   try {
-    const existing = await memory.getWorkflow(req.params.id);
+    const existing = await visibleOne(await memory.getWorkflow(req.params.id), req);
+    if (!existing) return res.status(404).json({ error: 'Workflow not found' });
     const workspaceId = req.user?.workspaceId || existing?.workspace_id || null;
     await memory.deleteWorkflow(req.params.id, { workspaceId });
     res.json({ deleted: true });
@@ -93,11 +110,8 @@ router.delete('/:id', async (req, res) => {
 router.post('/:id/run-now', async (req, res) => {
   try {
     const workflow = await memory.getWorkflow(req.params.id);
-    const ws = req.user?.workspaceId;
-    // Another workspace's workflow is reported as not found (legacy rows stay reachable).
-    if (!workflow || (ws && workflow.workspace_id && workflow.workspace_id !== ws)) {
-      return res.status(404).json({ error: 'Workflow not found' });
-    }
+    // Another workspace's workflow is reported as not found.
+    if (!(await visibleOne(workflow, req))) return res.status(404).json({ error: 'Workflow not found' });
     await scheduler.runWorkflow(workflow);
     const updated = await memory.getWorkflow(req.params.id);
     res.json(updated);

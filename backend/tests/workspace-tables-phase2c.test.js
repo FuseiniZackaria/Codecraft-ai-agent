@@ -1,8 +1,9 @@
 // Phase 2.3c coverage test: every remaining table that wasn't stamped in
 // Phase 2.3b (scheduled_workflows, workflow_definitions, workflow_runs,
 // briefing_runs, briefing_articles, skills, long_term_memory) now carries
-// workspace_id end-to-end, and legacy rows (workspace_id = null) stay
-// visible to a workspace-scoped reader.
+// workspace_id end-to-end, and legacy rows (workspace_id = null) are
+// visible to the app owner's workspace ONLY (here: A) - never to another
+// workspace (B).
 //
 // Runs against the in-memory store so it's self-contained and doesn't
 // need a live Supabase connection.
@@ -20,6 +21,8 @@ async function main() {
   const WS_B = '22222222-2222-2222-2222-222222222222';
 
   clearShadowLog();
+  // A is the app owner's workspace; B is an invited, separate workspace.
+  require('../core/workspaceContext').getAppOwnerWorkspaceId = async () => WS_A;
 
   // --- scheduled_workflows ---------------------------------------------------
   const wfA = { id: uuid(), name: 'A workflow', goal: 'ping A', scheduleType: 'interval',
@@ -39,7 +42,8 @@ async function main() {
   assert.ok(idsA.includes(wfA.id), 'workspace A sees its own workflow');
   assert.ok(idsA.includes(wfLegacy.id), 'workspace A sees legacy (null workspace_id) workflow');
   assert.ok(!idsA.includes(wfB.id), 'workspace A must NOT see workspace B\'s workflow');
-  console.log('✓ scheduled_workflows: stamp + scope + legacy-visible');
+  assert.ok(!(await memory.listWorkflows({ workspaceId: WS_B })).some((w) => w.id === wfLegacy.id), 'workspace B must NOT see legacy workflow');
+  console.log('✓ scheduled_workflows: stamp + scope + legacy owner-only');
 
   // --- workflow_definitions --------------------------------------------------
   const defA = { id: uuid(), name: 'def A', graph: { nodes: [{ id: 't', type: 'trigger' }], edges: [] },
@@ -57,7 +61,8 @@ async function main() {
   assert.ok(defIdsA.includes(defA.id), 'workspace A sees its own definition');
   assert.ok(defIdsA.includes(defLegacy.id), 'workspace A sees legacy definition');
   assert.ok(!defIdsA.includes(defB.id), 'workspace A must NOT see workspace B\'s definition');
-  console.log('✓ workflow_definitions: stamp + scope + legacy-visible');
+  assert.ok(!(await memory.listWorkflowDefinitions({ workspaceId: WS_B })).some((d) => d.id === defLegacy.id), 'workspace B must NOT see legacy definition');
+  console.log('✓ workflow_definitions: stamp + scope + legacy owner-only');
 
   // --- workflow_runs ---------------------------------------------------------
   const runA = { id: uuid(), workflowId: defA.id, status: 'running', workspace_id: WS_A };
@@ -102,7 +107,9 @@ async function main() {
   assert.ok(urls.includes('https://a.example'), 'workspace A sees its own article');
   assert.ok(urls.includes('https://legacy.example'), 'workspace A sees legacy article');
   assert.ok(!urls.includes('https://b.example'), 'workspace A must NOT see workspace B\'s article');
-  console.log('✓ briefing_articles: stamp + scope + legacy-visible');
+  const urlsB = (await memory.getBriefingArticles('coverage test', { workspaceId: WS_B })).map((a) => a.url);
+  assert.ok(!urlsB.includes('https://legacy.example'), 'workspace B must NOT see legacy article');
+  console.log('✓ briefing_articles: stamp + scope + legacy owner-only');
 
   // --- skills ----------------------------------------------------------------
   await memory.saveSkill({ id: 'skill-a', name: 'Skill A', version: '1.0.0', workspace_id: WS_A, installedAt: new Date().toISOString() });
@@ -113,7 +120,8 @@ async function main() {
   assert.ok(skillIds.includes('skill-a'), 'workspace A sees its own skill');
   assert.ok(skillIds.includes('skill-legacy'), 'workspace A sees legacy skill');
   assert.ok(!skillIds.includes('skill-b'), 'workspace A must NOT see workspace B\'s skill');
-  console.log('✓ skills: stamp + scope + legacy-visible');
+  assert.ok(!(await memory.listSkills({ workspaceId: WS_B })).some((s) => s.id === 'skill-legacy'), 'workspace B must NOT see legacy skill');
+  console.log('✓ skills: stamp + scope + legacy owner-only');
 
   // --- long_term_memory -----------------------------------------------------
   await memory.addFact('remember A fact', { workspaceId: WS_A });
@@ -124,7 +132,8 @@ async function main() {
   assert.ok(factContents.includes('remember A fact'), 'workspace A sees its own fact');
   assert.ok(factContents.includes('remember legacy fact'), 'workspace A sees legacy fact');
   assert.ok(!factContents.includes('remember B fact'), 'workspace A must NOT see workspace B\'s fact');
-  console.log('✓ long_term_memory: stamp + scope + legacy-visible');
+  assert.ok(!(await memory.getFacts(50, { workspaceId: WS_B })).some((f) => f.fact === 'remember legacy fact'), 'workspace B must NOT see legacy fact');
+  console.log('✓ long_term_memory: stamp + scope + legacy owner-only');
 
   console.log('\nAll Phase 2.3c workspace stamping + scoping checks passed.');
 }

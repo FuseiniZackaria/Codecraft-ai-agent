@@ -6,6 +6,9 @@
  * the SupabaseStore interface exactly, so callers never know or care which
  * backing store is active.
  */
+// Legacy (workspace_id = null) rows are visible to the app owner's workspace only.
+const canSeeLegacy = (ws) => require('../core/workspaceContext').canSeeLegacy(ws);
+
 class MemoryStore {
   constructor() {
     this.tasks = new Map();
@@ -34,16 +37,22 @@ class MemoryStore {
 
   async listTasks(options = {}) {
     const ws = options.workspaceId || options.workspace_id || null;
+    const legacy = ws ? await canSeeLegacy(ws) : false;
     const all = Array.from(this.tasks.values());
-    return ws ? all.filter((t) => !t.workspace_id || t.workspace_id === ws) : all;
+    return ws ? all.filter((t) => (t.workspace_id ? t.workspace_id === ws : legacy)) : all;
   }
 
   async deleteTask(id) {
     return this.tasks.delete(id);
   }
 
-  async markAllTasksRead() {
-    for (const task of this.tasks.values()) task.read = true;
+  async markAllTasksRead(options = {}) {
+    const ws = options.workspaceId || null;
+    const legacy = ws ? await canSeeLegacy(ws) : false;
+    for (const task of this.tasks.values()) {
+      if (ws && !(task.workspace_id ? task.workspace_id === ws : legacy)) continue;
+      task.read = true;
+    }
     return true;
   }
 
@@ -90,8 +99,9 @@ class MemoryStore {
 
   async getAuditLog(limit, options = {}) {
     const ws = options.workspaceId || options.workspace_id || null;
+    const legacy = ws ? await canSeeLegacy(ws) : false;
     const scoped = ws
-      ? this.auditLog.filter((e) => !e.workspace_id || e.workspace_id === ws)
+      ? this.auditLog.filter((e) => (e.workspace_id ? e.workspace_id === ws : legacy))
       : this.auditLog;
     return limit ? scoped.slice(-limit) : scoped;
   }
@@ -107,8 +117,9 @@ class MemoryStore {
   // matching the SupabaseStore behavior.
   async getFacts(limit = 50, options = {}) {
     const ws = options.workspaceId || options.workspace_id || null;
+    const legacy = ws ? await canSeeLegacy(ws) : false;
     const all = this.facts || [];
-    const scoped = ws ? all.filter((f) => !f.workspace_id || f.workspace_id === ws) : all;
+    const scoped = ws ? all.filter((f) => (f.workspace_id ? f.workspace_id === ws : legacy)) : all;
     return scoped.slice(-limit);
   }
 
@@ -142,8 +153,9 @@ class MemoryStore {
   async listSkills(options = {}) {
     if (!this.skills) return [];
     const ws = options.workspaceId || options.workspace_id || null;
+    const legacy = ws ? await canSeeLegacy(ws) : false;
     const all = Array.from(this.skills.values());
-    return ws ? all.filter((s) => !s.workspace_id || s.workspace_id === ws) : all;
+    return ws ? all.filter((s) => (s.workspace_id ? s.workspace_id === ws : legacy)) : all;
   }
 
   async updateSkill(id, patch) {
@@ -173,8 +185,9 @@ class MemoryStore {
   async listWorkflows(options = {}) {
     if (!this.workflows) return [];
     const ws = options.workspaceId || options.workspace_id || null;
+    const legacy = ws ? await canSeeLegacy(ws) : false;
     const all = Array.from(this.workflows.values());
-    return ws ? all.filter((w) => !w.workspace_id || w.workspace_id === ws) : all;
+    return ws ? all.filter((w) => (w.workspace_id ? w.workspace_id === ws : legacy)) : all;
   }
 
   async updateWorkflow(id, patch) {
@@ -201,7 +214,8 @@ class MemoryStore {
   async listChatMessages(limit = 200, options = {}) {
     if (!this.chatMessages) return [];
     const ws = options.workspaceId || options.workspace_id || null;
-    const scoped = ws ? this.chatMessages.filter((m) => !m.workspace_id || m.workspace_id === ws) : this.chatMessages;
+    const legacy = ws ? await canSeeLegacy(ws) : false;
+    const scoped = ws ? this.chatMessages.filter((m) => (m.workspace_id ? m.workspace_id === ws : legacy)) : this.chatMessages;
     return scoped.slice(-limit);
   }
 
@@ -234,8 +248,9 @@ class MemoryStore {
   async listWorkflowDefinitions(options = {}) {
     if (!this.workflowDefinitions) return [];
     const ws = options.workspaceId || options.workspace_id || null;
+    const legacy = ws ? await canSeeLegacy(ws) : false;
     const all = Array.from(this.workflowDefinitions.values());
-    return ws ? all.filter((d) => !d.workspace_id || d.workspace_id === ws) : all;
+    return ws ? all.filter((d) => (d.workspace_id ? d.workspace_id === ws : legacy)) : all;
   }
 
   async updateWorkflowDefinition(id, patch) {
@@ -348,8 +363,9 @@ class MemoryStore {
   async getLatestBriefingRun(goal, options = {}) {
     if (!this.briefingRuns) return null;
     const ws = options.workspaceId || options.workspace_id || null;
+    const legacy = ws ? await canSeeLegacy(ws) : false;
     const matches = this.briefingRuns
-      .filter((r) => r.goal === goal && (!ws || !r.workspace_id || r.workspace_id === ws))
+      .filter((r) => r.goal === goal && (!ws || (r.workspace_id ? r.workspace_id === ws : legacy)))
       .sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
     return matches[0] || null;
   }
@@ -370,11 +386,12 @@ class MemoryStore {
   async getBriefingArticles(workflowGoal, { sinceDays, workspaceId, workspace_id } = {}) {
     if (!this.briefingArticles) return [];
     const ws = workspaceId || workspace_id || null;
+    const legacy = ws ? await canSeeLegacy(ws) : false;
     const sinceMs = sinceDays ? Date.now() - sinceDays * 24 * 60 * 60 * 1000 : 0;
     return this.briefingArticles.filter((a) => {
       if (a.workflowGoal !== workflowGoal) return false;
       if (sinceMs && new Date(a.collectedAt).getTime() < sinceMs) return false;
-      if (ws && a.workspace_id && a.workspace_id !== ws) return false;
+      if (ws && (a.workspace_id ? a.workspace_id !== ws : !legacy)) return false;
       return true;
     });
   }

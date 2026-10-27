@@ -12,7 +12,10 @@ function sleep(ms) {
 }
 
 async function run() {
+  // A signed-in admin's workspace: the live stream only carries that workspace's events.
+  const WS = 'cccccccc-0000-0000-0000-00000000000c';
   const app = express();
+  app.use((req, _res, next) => { req.user = { id: 'u-test', workspaceId: WS }; next(); });
   app.use('/api/events', eventsRoutes);
   const server = await new Promise((resolve) => { const s = app.listen(0, () => resolve(s)); });
   const port = server.address().port;
@@ -49,7 +52,7 @@ async function run() {
   // This is the real thing the Chat page's live behavior depends on: the
   // SAME blocking call /api/chat makes, checked for real narration arriving
   // over the live stream WHILE it is still unresolved - not after.
-  const chatPromise = chat.handleMessage('Build me a test website', [], []);
+  const chatPromise = chat.handleMessage('Build me a test website', [], [], { workspaceId: WS });
   await sleep(600);
 
   assert(receivedNarrations.length > 0, 'real narration must arrive over the live SSE stream while the blocking chat request is still in flight');

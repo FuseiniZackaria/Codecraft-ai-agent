@@ -1,4 +1,5 @@
 const { createClient } = require('@supabase/supabase-js');
+const canSeeLegacy = (ws) => require('../core/workspaceContext').canSeeLegacy(ws);
 
 /**
  * SupabaseStore
@@ -56,7 +57,7 @@ class SupabaseStore {
   async listTasks(options = {}) {
     const ws = options.workspaceId || options.workspace_id || null;
     let query = this.client.from('tasks').select('*').order('created_at', { ascending: false });
-    if (ws) query = query.or(`workspace_id.is.null,workspace_id.eq.${ws}`);
+    if (ws) query = (await canSeeLegacy(ws)) ? query.or(`workspace_id.is.null,workspace_id.eq.${ws}`) : query.eq('workspace_id', ws);
     const { data, error } = await query;
     if (error) throw new Error(`SupabaseStore.listTasks: ${error.message}`);
     return (data || []).map((row) => this._fromRow(row));
@@ -69,8 +70,13 @@ class SupabaseStore {
     return true;
   }
 
-  async markAllTasksRead() {
-    const { error } = await this.client.from('tasks').update({ read: true, updated_at: new Date().toISOString() }).eq('read', false);
+  // Only the caller's own workspace (and, for the owner, legacy rows) - never
+  // every workspace's tasks.
+  async markAllTasksRead(options = {}) {
+    const ws = options.workspaceId || null;
+    let query = this.client.from('tasks').update({ read: true, updated_at: new Date().toISOString() }).eq('read', false);
+    if (ws) query = (await canSeeLegacy(ws)) ? query.or(`workspace_id.is.null,workspace_id.eq.${ws}`) : query.eq('workspace_id', ws);
+    const { error } = await query;
     if (error) throw new Error(`SupabaseStore.markAllTasksRead: ${error.message}`);
     return true;
   }
@@ -138,7 +144,7 @@ class SupabaseStore {
       .select('id,actor,action,target,metadata,workspace_id,created_at')
       .order('created_at', { ascending: false })
       .limit(limit);
-    if (ws) query = query.or(`workspace_id.is.null,workspace_id.eq.${ws}`);
+    if (ws) query = (await canSeeLegacy(ws)) ? query.or(`workspace_id.is.null,workspace_id.eq.${ws}`) : query.eq('workspace_id', ws);
     const { data, error } = await query;
     if (error) throw new Error(`SupabaseStore.getAuditLog: ${error.message}`);
     // taskId only ever exists nested inside metadata in the database (it
@@ -177,7 +183,7 @@ class SupabaseStore {
       .select('fact, created_at, workspace_id')
       .order('created_at', { ascending: false })
       .limit(limit);
-    if (ws) query = query.or(`workspace_id.is.null,workspace_id.eq.${ws}`);
+    if (ws) query = (await canSeeLegacy(ws)) ? query.or(`workspace_id.is.null,workspace_id.eq.${ws}`) : query.eq('workspace_id', ws);
     const { data, error } = await query;
     if (error) throw new Error(`SupabaseStore.getFacts: ${error.message}`);
     return (data || []).reverse().map((r) => ({ fact: r.fact, at: r.created_at, workspace_id: r.workspace_id }));
@@ -240,7 +246,7 @@ class SupabaseStore {
       .from('skills')
       .select('id,name,version,author,description,status,source_type,source_input,checksum,installed_at,updated_at,workspace_id')
       .order('installed_at', { ascending: false });
-    if (ws) query = query.or(`workspace_id.is.null,workspace_id.eq.${ws}`);
+    if (ws) query = (await canSeeLegacy(ws)) ? query.or(`workspace_id.is.null,workspace_id.eq.${ws}`) : query.eq('workspace_id', ws);
     const { data, error } = await query;
     if (error) throw new Error(`SupabaseStore.listSkills: ${error.message}`);
     return (data || []).map((r) => this._skillFromRow(r));
@@ -323,7 +329,7 @@ class SupabaseStore {
       .from('scheduled_workflows')
       .select('id,name,goal,schedule_type,interval_minutes,daily_time,days_of_week,enabled,last_run_at,deliver_whatsapp_enabled,deliver_whatsapp_to,workspace_id,created_at,updated_at')
       .order('created_at', { ascending: false });
-    if (ws) query = query.or(`workspace_id.is.null,workspace_id.eq.${ws}`);
+    if (ws) query = (await canSeeLegacy(ws)) ? query.or(`workspace_id.is.null,workspace_id.eq.${ws}`) : query.eq('workspace_id', ws);
     const { data, error } = await query;
     if (error) throw new Error(`SupabaseStore.listWorkflows: ${error.message}`);
     return (data || []).map((r) => this._workflowFromRow(r));
@@ -395,7 +401,7 @@ class SupabaseStore {
       .select('id,role,content,attachment_names,task_id,workspace_id,created_at')
       .order('created_at', { ascending: false })
       .limit(limit);
-    if (ws) query = query.or(`workspace_id.is.null,workspace_id.eq.${ws}`);
+    if (ws) query = (await canSeeLegacy(ws)) ? query.or(`workspace_id.is.null,workspace_id.eq.${ws}`) : query.eq('workspace_id', ws);
     const { data, error } = await query;
     if (error) throw new Error(`SupabaseStore.listChatMessages: ${error.message}`);
     return (data || []).reverse().map((r) => this._chatMessageFromRow(r));
@@ -476,7 +482,7 @@ class SupabaseStore {
       .from('workflow_definitions')
       .select('id,name,enabled,schedule_type,interval_minutes,daily_time,days_of_week,watch_folder,last_run_at,workspace_id,created_at,updated_at,graph')
       .order('created_at', { ascending: false });
-    if (ws) query = query.or(`workspace_id.is.null,workspace_id.eq.${ws}`);
+    if (ws) query = (await canSeeLegacy(ws)) ? query.or(`workspace_id.is.null,workspace_id.eq.${ws}`) : query.eq('workspace_id', ws);
     const { data, error } = await query;
     if (error) throw new Error(`SupabaseStore.listWorkflowDefinitions: ${error.message}`);
     return (data || []).map((r) => this._workflowDefFromRow(r));
@@ -715,7 +721,7 @@ class SupabaseStore {
       .eq('goal', goal)
       .order('created_at', { ascending: false })
       .limit(1);
-    if (ws) query = query.or(`workspace_id.is.null,workspace_id.eq.${ws}`);
+    if (ws) query = (await canSeeLegacy(ws)) ? query.or(`workspace_id.is.null,workspace_id.eq.${ws}`) : query.eq('workspace_id', ws);
     const { data, error } = await query.maybeSingle();
     if (error) throw new Error(`SupabaseStore.getLatestBriefingRun: ${error.message}`);
     return data ? this._briefingRunFromRow(data) : null;
@@ -768,7 +774,7 @@ class SupabaseStore {
       const since = new Date(Date.now() - sinceDays * 24 * 60 * 60 * 1000).toISOString();
       query = query.gte('collected_at', since);
     }
-    if (ws) query = query.or(`workspace_id.is.null,workspace_id.eq.${ws}`);
+    if (ws) query = (await canSeeLegacy(ws)) ? query.or(`workspace_id.is.null,workspace_id.eq.${ws}`) : query.eq('workspace_id', ws);
     const { data, error } = await query;
     if (error) throw new Error(`SupabaseStore.getBriefingArticles: ${error.message}`);
     return (data || []).map((r) => this._briefingArticleFromRow(r));

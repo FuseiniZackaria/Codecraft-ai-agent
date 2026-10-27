@@ -11,6 +11,7 @@ const telegramProvider = require('../core/telegramProvider');
 const { agents } = require('../agents/registry');
 const { availableProviders } = require('../core/router');
 const { goalSubmissionLimiter } = require('../core/rateLimits');
+const { canSeeLegacy, rowVisible } = require('../core/workspaceContext');
 const config = require('../config');
 const { sections: agentSectionList, agentMeta, backgroundJobs: agentBgJobs } = require('../config/agentSections');
 const router = express.Router();
@@ -78,22 +79,32 @@ router.post('/chat', async (req, res) => {
   }
 });
 
-// Phase 2.3: scopes a list result to the current workspace at the route
-// layer. Returns rows unfiltered if the request has no workspaceId
-// (pre-migration behavior, or legacy service-key callers), AND if a row
-// has no workspace_id (unstamped backfill rows). Phase 2.3b will remove
-// the second escape once every row is stamped.
-function scopeByWorkspace(rows, req) {
+// Scopes a list result to the caller's workspace at the route layer (the
+// stores already filter; this is the second line of defence). A request with
+// no workspace sees nothing. Rows with no workspace_id are legacy data and
+// belong to the app owner's workspace only.
+async function scopeByWorkspace(rows, req) {
   const ws = req.user?.workspaceId;
-  if (!ws) return rows;
-  return (rows || []).filter((r) => !r.workspace_id || r.workspace_id === ws);
+  if (!ws) return [];
+  const legacyOk = await canSeeLegacy(ws);
+  return (rows || []).filter((r) => rowVisible(r, ws, legacyOk));
+}
+
+// Loads a task by id only if it belongs to the caller's workspace; another
+// workspace's task is reported as not found (never readable, approvable,
+// editable or deletable by id).
+async function loadOwnTask(req, id) {
+  const task = await memory.getTask(id);
+  const ws = req.user?.workspaceId;
+  if (!task || !ws) return null;
+  return rowVisible(task, ws, await canSeeLegacy(ws)) ? task : null;
 }
 
 router.get('/chat/history', async (req, res) => {
   try {
     const limit = Math.min(Number(req.query.limit) || 200, 500);
     const rows = await memory.listChatMessages(limit, { workspaceId: req.user?.workspaceId || null });
-    res.json(scopeByWorkspace(rows, req));
+    res.json(await scopeByWorkspace(rows, req));
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
@@ -285,7 +296,7 @@ router.post('/orchestrator/goal', goalSubmissionLimiter, async (req, res) => {
 // Task status
 router.get('/tasks/:id', async (req, res) => {
   try {
-    const task = await memory.getTask(req.params.id);
+    const task = await loadOwnTask(req, req.params.id);
     if (!task) return res.status(404).json({ error: 'Task not found' });
     res.json(task);
   } catch (err) {
@@ -298,7 +309,7 @@ router.get('/tasks', async (req, res) => {
     const wsId = req.user?.workspaceId;
     if (!wsId) return res.json([]);
     const rows = await memory.listTasks({ workspaceId: wsId });
-    res.json(scopeByWorkspace(rows, req));
+    res.json(await scopeByWorkspace(rows, req));
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
@@ -307,6 +318,7 @@ router.get('/tasks', async (req, res) => {
 router.delete('/tasks/:id', async (req, res) => {
   try {
     const workspaceId = req.user?.workspaceId || null;
+    if (!(await loadOwnTask(req, req.params.id))) return res.status(404).json({ error: 'Task not found' });
     await memory.deleteTask(req.params.id, { workspaceId });
     res.json({ deleted: true });
   } catch (err) {
@@ -325,6 +337,7 @@ router.post('/tasks/bulk-delete', async (req, res) => {
   const errors = [];
   for (const id of ids) {
     try {
+      if (!(await loadOwnTask(req, id))) throw new Error('Task not found');
       await memory.deleteTask(id, { workspaceId });
       deleted++;
     } catch (err) {
@@ -338,6 +351,7 @@ router.post('/tasks/bulk-delete', async (req, res) => {
 router.post('/tasks/mark-all-read', async (req, res) => {
   try {
     const workspaceId = req.user?.workspaceId || null;
+    if (!workspaceId) return res.json({ ok: true });
     await memory.markAllTasksRead({ workspaceId });
     res.json({ ok: true });
   } catch (err) {
@@ -349,7 +363,7 @@ router.post('/tasks/mark-all-read', async (req, res) => {
 // drafted email body). Only allowed while still pending approval.
 router.patch('/tasks/:id/payload', async (req, res) => {
   try {
-    const task = await memory.getTask(req.params.id);
+    const task = await loadOwnTask(req, req.params.id);
     if (!task) return res.status(404).json({ error: 'Task not found' });
     if (task.status !== 'pending_approval') {
       return res.status(400).json({ error: `Task is not pending approval (status: ${task.status})` });
@@ -366,6 +380,7 @@ router.patch('/tasks/:id/payload', async (req, res) => {
 // Approve / reject a pending_approval task
 router.post('/tasks/:id/approve', async (req, res) => {
   try {
+    if (!(await loadOwnTask(req, req.params.id))) return res.status(404).json({ error: 'Task not found' });
     const task = await orchestrator.approveTask(req.params.id, { workspaceId: req.user?.workspaceId || null });
     res.json(task);
   } catch (err) {
@@ -375,6 +390,7 @@ router.post('/tasks/:id/approve', async (req, res) => {
 
 router.post('/tasks/:id/reject', async (req, res) => {
   try {
+    if (!(await loadOwnTask(req, req.params.id))) return res.status(404).json({ error: 'Task not found' });
     const task = await orchestrator.rejectTask(req.params.id, { workspaceId: req.user?.workspaceId || null });
     res.json(task);
   } catch (err) {
@@ -411,7 +427,7 @@ router.get('/dashboard/summary', async (req, res) => {
   try {
     const wsId = req.user?.workspaceId;
     const allTasks = wsId ? await memory.listTasks({ workspaceId: wsId }) : [];
-    const tasks = scopeByWorkspace(allTasks, req);
+    const tasks = await scopeByWorkspace(allTasks, req);
     const auditLog = wsId ? await memory.getAuditLog(undefined, { workspaceId: wsId }) : [];
     res.json({
       activeAgents: Object.keys(agents).length,

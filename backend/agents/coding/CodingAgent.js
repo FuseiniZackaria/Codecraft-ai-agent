@@ -124,6 +124,7 @@ class CodingAgent extends BaseAgent {
       taskId: task.id,
       fileCount: files.length,
       hasDesignBrief: !!task.designBrief,
+      workspaceId: task.workspace_id || null,
     });
 
     // Live narration: pushed through the same event bus the Console page
@@ -136,6 +137,7 @@ class CodingAgent extends BaseAgent {
       : '';
     await activityLog.record(this.role, 'narration', task.workspaceId, {
       taskId: task.id,
+      workspaceId: task.workspace_id || null,
       text: `Planned it out: ${plan.summary || task.instruction}${designNote} Building ${files.length} file${files.length === 1 ? '' : 's'} now.`,
     });
 

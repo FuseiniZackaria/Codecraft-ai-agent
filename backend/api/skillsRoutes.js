@@ -6,6 +6,7 @@ const { detectSource } = require('../core/installer/SourceDetector');
 const { Downloader } = require('../core/installer/Downloader');
 const { SignatureVerifier } = require('../core/installer/SignatureVerifier');
 const { Manifest } = require('../core/installer/Manifest');
+const { canSeeLegacy, rowVisible } = require('../core/workspaceContext');
 
 const router = express.Router();
 const installer = new Installer();
@@ -86,12 +87,35 @@ router.post('/install', async (req, res) => {
 
 // scopeSkill: null if caller's workspace can't see this row, else row.
 // Legacy rows (workspace_id = null) stay visible to every workspace.
-function scopeSkill(skill, req) {
-  if (!skill) return null;
+
+// Only the caller's own rows; rows with no workspace_id (legacy) only for the
+// app owner's workspace. A request with no workspace sees nothing.
+async function visibleList(rows, req) {
   const ws = req.user?.workspaceId;
-  if (!ws) return skill;
-  if (!skill.workspace_id || skill.workspace_id === ws) return skill;
-  return null;
+  if (!ws) return [];
+  const legacyOk = await canSeeLegacy(ws);
+  return (rows || []).filter((r) => rowVisible(r, ws, legacyOk));
+}
+
+async function visibleOne(row, req) {
+  const ws = req.user?.workspaceId;
+  if (!row || !ws) return null;
+  return rowVisible(row, ws, await canSeeLegacy(ws)) ? row : null;
+}
+
+function scopeSkill(skill, req) {
+  return visibleOne(skill, req);
+}
+
+// Lifecycle operations only on the caller's own skills.
+async function ownSkillOr404(req, res) {
+  let skill = null;
+  try { skill = await skillManager.info(req.params.id); } catch { skill = null; }
+  if (!(await visibleOne(skill, req))) {
+    res.status(404).json({ error: `Skill "${req.params.id}" is not installed` });
+    return false;
+  }
+  return true;
 }
 
 router.get('/', async (req, res) => {
@@ -112,7 +136,7 @@ router.get('/search', async (req, res) => {
 
 router.get('/:id', async (req, res) => {
   try {
-    const skill = scopeSkill(await skillManager.info(req.params.id), req);
+    const skill = await scopeSkill(await skillManager.info(req.params.id), req);
     if (!skill) return res.status(404).json({ error: `Skill "${req.params.id}" is not installed` });
     res.json(skill);
   } catch (err) {
@@ -124,6 +148,7 @@ router.get('/:id', async (req, res) => {
 
 router.post('/:id/enable', async (req, res) => {
   try {
+    if (!(await ownSkillOr404(req, res))) return;
     res.json(await skillManager.enable(req.params.id));
   } catch (err) {
     handleError(res, err);
@@ -132,6 +157,7 @@ router.post('/:id/enable', async (req, res) => {
 
 router.post('/:id/disable', async (req, res) => {
   try {
+    if (!(await ownSkillOr404(req, res))) return;
     res.json(await skillManager.disable(req.params.id));
   } catch (err) {
     handleError(res, err);
@@ -140,6 +166,7 @@ router.post('/:id/disable', async (req, res) => {
 
 router.delete('/:id', async (req, res) => {
   try {
+    if (!(await ownSkillOr404(req, res))) return;
     res.json(await skillManager.remove(req.params.id));
   } catch (err) {
     handleError(res, err);
@@ -148,6 +175,7 @@ router.delete('/:id', async (req, res) => {
 
 router.post('/:id/reinstall', async (req, res) => {
   try {
+    if (!(await ownSkillOr404(req, res))) return;
     res.json(await skillManager.reinstall(req.params.id, req.body.approvedPermissions || []));
   } catch (err) {
     handleError(res, err);
@@ -156,6 +184,7 @@ router.post('/:id/reinstall', async (req, res) => {
 
 router.post('/:id/repair', async (req, res) => {
   try {
+    if (!(await ownSkillOr404(req, res))) return;
     res.json(await skillManager.repair(req.params.id));
   } catch (err) {
     handleError(res, err);
@@ -164,6 +193,7 @@ router.post('/:id/repair', async (req, res) => {
 
 router.get('/:id/update-check', async (req, res) => {
   try {
+    if (!(await ownSkillOr404(req, res))) return;
     res.json(await skillManager.checkForUpdate(req.params.id));
   } catch (err) {
     handleError(res, err);
@@ -172,6 +202,7 @@ router.get('/:id/update-check', async (req, res) => {
 
 router.post('/:id/update', async (req, res) => {
   try {
+    if (!(await ownSkillOr404(req, res))) return;
     res.json(await skillManager.update(req.params.id, req.body.approvedPermissions || []));
   } catch (err) {
     handleError(res, err);
@@ -180,6 +211,7 @@ router.post('/:id/update', async (req, res) => {
 
 router.post('/:id/backup', async (req, res) => {
   try {
+    if (!(await ownSkillOr404(req, res))) return;
     res.json(await skillManager.backup(req.params.id));
   } catch (err) {
     handleError(res, err);
@@ -188,6 +220,7 @@ router.post('/:id/backup', async (req, res) => {
 
 router.post('/:id/restore', async (req, res) => {
   try {
+    if (!(await ownSkillOr404(req, res))) return;
     res.json(await skillManager.restore(req.params.id, req.body.backupPath));
   } catch (err) {
     handleError(res, err);

@@ -218,7 +218,29 @@ async function attachWorkspace(req, res, next) {
   next();
 }
 
+/**
+ * Rows with no workspace_id are legacy single-tenant data (pre-workspaces
+ * history, background jobs that couldn't resolve a workspace). They belong to
+ * the app owner, so only the owner's workspace may see them - never any other
+ * workspace. Fails closed: if the owner workspace can't be resolved, nobody
+ * sees them.
+ */
+async function canSeeLegacy(workspaceId) {
+  if (!workspaceId) return false;
+  // Through module.exports so tests can stub the owner lookup.
+  const ownerWs = await module.exports.getAppOwnerWorkspaceId();
+  return !!ownerWs && ownerWs === workspaceId;
+}
+
+/** Is this row visible to the workspace? (legacyOk = await canSeeLegacy(ws)) */
+function rowVisible(row, workspaceId, legacyOk) {
+  if (!row || !workspaceId) return false;
+  return row.workspace_id ? row.workspace_id === workspaceId : !!legacyOk;
+}
+
 module.exports = {
+  canSeeLegacy,
+  rowVisible,
   resolveWorkspaceForUser,
   attachWorkspace,
   invalidateUser,
