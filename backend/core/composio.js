@@ -53,7 +53,12 @@ async function resolveConnectedAccountId(toolkitSlug) {
 
   if (accountCache.has(toolkitSlug)) return accountCache.get(toolkitSlug);
 
-  const res = await fetch(`https://backend.composio.dev/api/v3/connected_accounts?toolkit_slug=${toolkitSlug}`, {
+  // Only the server's own Composio user (COMPOSIO_USER_ID). Workspaces connect
+  // under their own "ws_<id>" users, and an account belonging to one of them
+  // must never be picked up as the server's legacy account.
+  const legacyUser = config.composio.userId;
+  const qs = new URLSearchParams({ toolkit_slugs: toolkitSlug, user_ids: legacyUser, statuses: 'ACTIVE' });
+  const res = await fetch(`https://backend.composio.dev/api/v3/connected_accounts?${qs}`, {
     headers: { 'x-api-key': config.composio.apiKey },
   });
   const json = await res.json();
@@ -61,13 +66,16 @@ async function resolveConnectedAccountId(toolkitSlug) {
     throw new Error(`Could not look up connected accounts for "${toolkitSlug}": ${json?.error?.message || `HTTP ${res.status}`}`);
   }
 
-  // Defense in depth: don't just trust the ?toolkit_slug= query param to
-  // have filtered correctly - verify each returned item is actually for
-  // this toolkit. This was a real bug: without this check, accounts from
-  // OTHER services (Gmail, WhatsApp) showed up in a "github" lookup.
-  const active = (json.items || []).filter(
-    (a) => a.status === 'ACTIVE' && a.toolkit?.slug?.toLowerCase() === toolkitSlug.toLowerCase()
-  );
+  // Defense in depth: don't just trust the query params to have filtered
+  // correctly - verify each returned item is actually for this toolkit (a
+  // real earlier bug: other services showed up in a "github" lookup) and
+  // never belongs to a workspace entity.
+  const active = (json.items || []).filter((a) => {
+    if (a.status !== 'ACTIVE' || a.toolkit?.slug?.toLowerCase() !== toolkitSlug.toLowerCase()) return false;
+    const owner = a.user_id ?? a.userId;
+    if (owner && owner !== legacyUser) return false;
+    return !String(owner || '').startsWith('ws_');
+  });
   if (active.length === 0) {
     throw new Error(`No active "${toolkitSlug}" connection found - connect it in the Composio dashboard first.`);
   }

@@ -165,6 +165,25 @@ async function main() {
   composio._resetForTests(client);
   console.log('✓ connect tries each enabled auth config and reports Composio\'s real error');
 
+  // The server's legacy account lookup (no pinned .env id) only considers the
+  // server's own Composio user - a workspace's ws_ account is never adopted.
+  config.composio.connectedAccountIds.github = null;
+  const realFetch = global.fetch;
+  let fetchedUrl = null;
+  global.fetch = async (url) => {
+    fetchedUrl = String(url);
+    return { ok: true, json: async () => ({ items: [{ id: 'ca_b_github', status: 'ACTIVE', toolkit: { slug: 'github' }, user_id: `ws_${WS_BOB}` }] }) };
+  };
+  composio._resetForTests(fakeClient());
+  assert.strictEqual(await composio.findLegacyAccount('github'), null, 'another workspace\'s account must not become the server account');
+  assert.ok(fetchedUrl.includes('user_ids=legacy-user'), `lookup must be filtered to the server user: ${fetchedUrl}`);
+  global.fetch = async () => ({ ok: true, json: async () => ({ items: [{ id: 'ca_server_github', status: 'ACTIVE', toolkit: { slug: 'github' }, user_id: 'legacy-user' }] }) });
+  composio._resetForTests(fakeClient());
+  assert.strictEqual((await composio.findLegacyAccount('github')).id, 'ca_server_github');
+  global.fetch = realFetch;
+  composio._resetForTests(client);
+  console.log('✓ the server account lookup only uses COMPOSIO_USER_ID, never a workspace\'s account');
+
   // --- Identity for the card, read-only ---
   const identity = await composio.fetchAccountIdentity('gmail', found);
   assert.strictEqual(identity, 'someone@gmail.com');
