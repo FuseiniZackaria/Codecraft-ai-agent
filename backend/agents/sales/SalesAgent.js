@@ -44,6 +44,50 @@ function extractEmail(text) {
   return match ? match[0] : null;
 }
 
+// The "who to find / what I sell" header for the lead extractors.
+function leadBrief(ctx, instruction) {
+  return (
+    `Original request: ${instruction}\n` +
+    `What I sell: ${ctx.offer || 'not stated - infer it from the request'}\n` +
+    `Target customers: ${ctx.target}${ctx.need ? ` (who need ${ctx.need})` : ''}\n\n`
+  );
+}
+
+// A phone number has 9-15 digits and starts with + or 0 - rules out
+// postcodes ("06454-000"), dates and ids that a looser pattern matches.
+function extractPhone(text) {
+  const candidates = (text || '').match(/(?:\+|\b0)[\d\s().-]{7,20}\d/g) || [];
+  return candidates.map((c) => c.trim()).find((c) => {
+    const digits = c.replace(/\D/g, '').length;
+    return digits >= 9 && digits <= 15;
+  }) || null;
+}
+
+/**
+ * Contact details for one lead from its follow-up search: only from a result
+ * whose title or text names the lead, so another business's email or phone
+ * on the same results page is never attached to it.
+ */
+function findContact(name, results) {
+  const words = String(name || '').toLowerCase().split(/[^a-z0-9]+/).filter((w) => w.length > 2);
+  const out = { email: null, emailSource: null, phone: null, phoneSource: null };
+  if (!words.length) return out;
+  for (const r of results) {
+    const lower = `${r.title || ''} ${r.content || ''}`.toLowerCase();
+    const hits = words.filter((w) => lower.includes(w)).length;
+    if (hits < Math.min(words.length, 2)) continue;
+    if (!out.email) {
+      const email = extractEmail(r.content);
+      if (email) { out.email = email; out.emailSource = r.url || null; }
+    }
+    if (!out.phone) {
+      const phone = extractPhone(r.content);
+      if (phone) { out.phone = phone; out.phoneSource = r.url || null; }
+    }
+  }
+  return out;
+}
+
 /**
  * Projects a lead into the compact, provenance-first shape every approval
  * card and lead-card consumes. Centralized so email, WhatsApp, social DM,
@@ -133,8 +177,18 @@ function parsePlatforms(instruction) {
   });
 }
 
+// Words that name the thing being searched for, not who to search for -
+// "find 10 leads in Accra" must not search for the word "leads".
+const GENERIC_TARGET = /^(?:leads?|prospects?|clients?|customers?|people|contacts?|businesses?)$/i;
+
 function parseLeadContext(instruction) {
-  const target = instruction.match(/Target customer:\s*(.+)/im)?.[1]?.trim() || '';
+  const target =
+    instruction.match(/Target customers?:\s*(.+)/im)?.[1]?.trim() ||
+    instruction.match(/target customers?\s+(?:are|is|include)\s+([^.\n]+)/i)?.[1]?.trim() || '';
+  const offer =
+    instruction.match(/(?:What I sell|Offer|Selling):\s*(.+)/im)?.[1]?.trim() ||
+    instruction.match(/\b(?:I'?m|I am|we'?re|we are)\s+(?:selling|offering)\s+([^.\n]+)/i)?.[1]?.trim() || '';
+  const need = instruction.match(/\b(?:that|who)\s+needs?\s+([^.:\n]+)/i)?.[1]?.trim() || '';
   const location = instruction.match(/Location:\s*(.+)/im)?.[1]?.trim() || '';
   const countMatch =
     instruction.match(/How many leads:\s*(\d+)/im) ||
@@ -147,6 +201,7 @@ function parseLeadContext(instruction) {
   if (!target) {
     const m = instruction.match(/find\s+(?:me\s+)?(?:\d+\s+)?(.+?)\s+(?:in|that|who)\s/i);
     nlTarget = m ? m[1].replace(/^(?:me|some|any)\s+/i, '').trim() : '';
+    if (GENERIC_TARGET.test(nlTarget)) nlTarget = need ? `businesses that need ${need}` : '';
   }
   const nlLocation = location || instruction.match(/\bin\s+([A-Z][a-z]+(?:[,\s]+[A-Z][a-z]+)*)/)?.[1]?.trim() || '';
 
@@ -154,7 +209,7 @@ function parseLeadContext(instruction) {
   const finalLocation = location || nlLocation || 'Accra, Ghana';
   const usedDefaults = { target: !target && !nlTarget, location: !location && !nlLocation };
 
-  return { target: finalTarget, location: finalLocation, count, usedDefaults };
+  return { target: finalTarget, location: finalLocation, count, usedDefaults, offer, need };
 }
 
 /**
@@ -282,8 +337,11 @@ class SalesAgent extends BaseAgent {
       const count = ctx.count || 15;
 
       const listInstruction =
-        `From the search results above, extract up to ${count} distinct REAL, NAMED businesses ` +
-        'that match the search criteria. When the SAME business appears in results from different ' +
+        leadBrief(ctx, task.instruction) +
+        `From the search results above, extract up to ${count} distinct REAL, NAMED businesses or people ` +
+        'that match the target customers. Skip anything that only shares a word with the search ' +
+        '(e.g. an organisation with "Lead" in its name, a news story, an event, a job post). ' +
+        'When the SAME business appears in results from different ' +
         'platforms (match by name + location), MERGE them into one entry with all profile links.\n\n' +
         'For each business, extract ONLY what is ACTUALLY present — never invent or guess:\n' +
         '- name: business name\n' +
@@ -301,11 +359,11 @@ class SalesAgent extends BaseAgent {
         '- phoneSource: URL where the phone was found, else null\n' +
         '- reason: one specific sentence explaining why this business is worth contacting, grounded in ' +
         'the evidence above (e.g. "Has 2,000 Instagram followers but no website; bio link is WhatsApp only").\n' +
-        '- offer: one short sentence on what my business can realistically do for them.\n' +
+        '- offer: one short sentence on how WHAT I SELL helps them (never a website unless I sell websites).\n' +
         '- confidence: "high" (2+ platforms with contact), "medium" (1 platform or limited), "low" (uncertain)\n' +
         '- confidenceReason: one short sentence explaining the confidence score (what evidence supports it, what\'s missing).\n' +
         '- activityLevel: brief note on followers/reviews/activity if visible, else null\n' +
-        '- needsWebsite: true if the business appears not to have a proper, working website.\n' +
+        '- needsWebsite: true only if I sell websites/web design and they have no proper, working website; otherwise false.\n' +
         '- needsWebsiteReason: plain English explanation.\n\n' +
         'Respond with ONLY a JSON array.';
 
@@ -323,6 +381,7 @@ class SalesAgent extends BaseAgent {
         `${ctx.target} ${ctx.location} ${PLATFORMS[p].siteFilter}`
       );
       searchQueries.push(`${ctx.target} ${ctx.location} contact email phone "contact us"`);
+      if (ctx.need) searchQueries.push(`${ctx.need} ${ctx.location} ${PLATFORMS.linkedin.siteFilter} OR ${PLATFORMS.instagram.siteFilter}`);
       if (ctx.usedDefaults.target || ctx.usedDefaults.location) {
         searchQueries.push(`${ctx.target} ${ctx.location} directory listing`);
       }
@@ -518,7 +577,8 @@ class SalesAgent extends BaseAgent {
             const extractResult = await provider.complete({
               maxTokens: 8000,
               system:
-                `Extract up to ${remaining} distinct REAL, NAMED businesses from these search results. ` +
+                leadBrief(ctx, task.instruction) +
+                `Extract up to ${remaining} distinct REAL, NAMED businesses or people from these search results that match the target customers. ` +
                 `Skip any business already found: ${[...existingNames].join(', ')}. ` +
                 // Same schema as the main extractor - provenance must flow
                 // through the retry path too, so no lead loses source/reason
@@ -529,7 +589,7 @@ class SalesAgent extends BaseAgent {
                 'email (if found), phone (if found), website (if found), ' +
                 'emailSource, phoneSource, needsWebsite (boolean), needsWebsiteReason, ' +
                 'reason (one sentence why to contact them, grounded in evidence), ' +
-                'offer (one short sentence on what you can do for them), ' +
+                'offer (one short sentence on how what I sell helps them), ' +
                 'confidence (high/medium/low), ' +
                 'confidenceReason (one sentence explaining the confidence score), ' +
                 'activityLevel. Omit any business with no sources URL. ' +
@@ -566,13 +626,9 @@ class SalesAgent extends BaseAgent {
             { type: 'tool_call', tool: 'websearch.search', args: { query, maxResults: 4 } },
             task
           );
-          const combined = (searchResult?.results || []).map((r) => r.content).join(' ');
-          const email = extractEmail(combined);
-          const phone = combined.match(/(?:\+\d{1,3}[\s-]?)?\(?\d{2,4}\)?[\s.-]?\d{3,4}[\s.-]?\d{3,4}/)?.[0] || null;
-          const website = combined.match(/https?:\/\/(?:www\.)?[a-zA-Z0-9-]+\.[a-zA-Z]{2,}(?:\/[^\s"')]*)?/)?.[0] || null;
-          if (email) { lead.email = email; lead.emailSource = searchResult?.results?.[0]?.url || null; }
-          if (phone) { lead.phone = phone; lead.phoneSource = searchResult?.results?.[0]?.url || null; }
-          if (website && !lead.website) lead.website = website;
+          const found = findContact(lead.name, searchResult?.results || []);
+          if (found.email) { lead.email = found.email; lead.emailSource = found.emailSource; }
+          if (found.phone) { lead.phone = found.phone; lead.phoneSource = found.phoneSource; }
         } catch (err) {
           warnings.push(`Contact search failed for "${lead.name}": ${err.message}`);
         }
@@ -901,4 +957,4 @@ class SalesAgent extends BaseAgent {
   }
 }
 
-module.exports = SalesAgent;
+module.exports = SalesAgent;module.exports._internals = { parseLeadContext, findContact, extractPhone };
