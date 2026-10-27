@@ -118,12 +118,30 @@ async function isConfigured(workspaceId) {
 function explainGoogleError(err, sheetId) {
   const status = err?.code || err?.response?.status;
   const email = serviceAccountEmail() || 'the service account';
-  if (status === 403 || status === 404) {
+  const googleMsg = err?.response?.data?.error?.message || err?.message || '';
+  // Google also answers 403 when the Sheets API isn't enabled in the
+  // service account's project - say that instead of blaming sharing.
+  if (/has not been used in project|is disabled|SERVICE_DISABLED|accessNotConfigured/i.test(googleMsg)) {
+    const project = googleMsg.match(/project (\d+)/)?.[1];
     return new SheetsConfigError(
-      `Can't open Google Sheet ${sheetId}. Share it with ${email} as an Editor, and check the sheet id is right.`
+      'The Google Sheets API is not enabled for the service account\'s Google Cloud project. ' +
+      `Enable it at https://console.cloud.google.com/apis/library/sheets.googleapis.com${project ? `?project=${project}` : ''}, ` +
+      'wait a minute, then try again.'
     );
   }
-  return new Error(`Google Sheets error: ${err?.message || err}`);
+  // An uploaded .xlsx (not converted to Google Sheets) can't be edited through the API.
+  if (/not supported for this document/i.test(googleMsg)) {
+    return new SheetsConfigError(
+      'That file is an uploaded Excel file, not a Google Sheet. Open it and use File -> Save as Google Sheets, then connect the new sheet.'
+    );
+  }
+  if (status === 403 || status === 404) {
+    return new SheetsConfigError(
+      `Can't open Google Sheet ${sheetId}. Share it with ${email} as an Editor, and check the sheet id is right.` +
+      (googleMsg ? ` (Google said: ${googleMsg})` : '')
+    );
+  }
+  return new Error(`Google Sheets error: ${googleMsg || err}`);
 }
 
 const quoteTitle = (title) => `'${String(title).replace(/'/g, "''")}'`;
