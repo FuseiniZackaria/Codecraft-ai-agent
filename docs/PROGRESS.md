@@ -1,5 +1,10 @@
 # CodeCraft AI — Progress
 
+## Sign in with an email code
+
+- Sign-in page has **Sign in with an email code**: enter your email, get a one-time code by email, type it in. Uses Supabase email OTP with `shouldCreateUser: false`, so it only works for existing (invited) accounts and never creates new ones. Disabled accounts are still refused.
+- **Required Supabase setting:** Authentication → Emails → **Magic Link** template must contain `{{ .Token }}` (the default template only has a link). Code length is set under Authentication → Providers → Email → Email OTP Length (6 by default).
+
 ## Fix: invited users create a password
 
 - Invite links signed people straight into the app with no password, so after logging out they couldn't sign in. Invites (and resends) now mark the account `user_metadata.needs_password` and link to `/set-password`; while the flag is set the app only shows **Create your password**, and saving it clears the flag and opens the app.
