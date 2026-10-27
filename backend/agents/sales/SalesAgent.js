@@ -53,6 +53,55 @@ function leadBrief(ctx, instruction) {
   );
 }
 
+const INDIVIDUAL_WORDS = /\b(?:individuals?|people|persons?|professionals?|students?|freelancers?|lecturers?|managers?|marketers?)\b/i;
+const isIndividualTarget = (target) => INDIVIDUAL_WORDS.test(target || '');
+
+// Short search terms from the target: "individuals (e.g. active marketers,
+// freelancers, social media managers)" -> each example on its own, since
+// the whole line pasted into one query finds nothing useful.
+function targetRoles(target) {
+  const text = String(target || '');
+  const examples = text.match(/\((?:e\.g\.?|eg|such as|like)?\s*([^)]+)\)/i)?.[1] ||
+    text.match(/\b(?:e\.g\.?|such as)\s+(.+)$/i)?.[1] || '';
+  const roles = examples
+    .split(/,|;|\band\b|\bor\b/i)
+    .map((r) => r.replace(/\b(?:etc|who|that)\b.*$/i, '').trim())
+    .filter((r) => r && r.split(/\s+/).length <= 5);
+  if (roles.length) {
+    // "marketing lecturers and students" -> "marketing students": a one-word
+    // role gets the subject word most of the others share.
+    const counts = {};
+    for (const r of roles) for (const w of new Set(r.toLowerCase().split(/\s+/))) if (w.length > 3) counts[w] = (counts[w] || 0) + 1;
+    const subject = Object.entries(counts).filter(([, n]) => n >= 2).sort((a, b) => b[1] - a[1])[0]?.[0];
+    return roles.map((r) => (subject && !/\s/.test(r) && !r.toLowerCase().includes(subject) ? `${subject} ${r}` : r));
+  }
+  return [text.replace(/\(.*?\)/g, '').split(/\s+/).slice(0, 6).join(' ').trim() || 'small businesses'];
+}
+
+/**
+ * One search per platform, each with a short role term and the city, rotating
+ * through the target's examples. Individuals: no Google Maps (it lists
+ * businesses only), LinkedIn person profiles, no "contact us" query.
+ */
+function buildLeadQueries(ctx, platforms) {
+  const individuals = isIndividualTarget(ctx.target);
+  const roles = targetRoles(ctx.target);
+  const city = String(ctx.location || '').split(',')[0].trim() || ctx.location;
+  const usable = platforms.filter((p) => !(individuals && p === 'google_maps'));
+  const filter = (p) => (individuals && p === 'linkedin' ? 'site:linkedin.com/in' : PLATFORMS[p].siteFilter);
+
+  const queries = usable.map((p, i) => `"${roles[i % roles.length]}" ${city} ${filter(p)}`);
+  // Remaining roles get a LinkedIn / Instagram search each.
+  for (let i = usable.length; i < roles.length && queries.length < 10; i++) {
+    const p = i % 2 ? 'instagram' : 'linkedin';
+    queries.push(`"${roles[i]}" ${city} ${filter(p)}`);
+  }
+  if (!individuals) queries.push(`${roles[0]} ${ctx.location} contact email phone "contact us"`);
+  if (ctx.need && queries.length < 11) queries.push(`"${ctx.need}" ${city} ${filter('linkedin')} OR ${filter('instagram')}`);
+  if (ctx.usedDefaults?.target || ctx.usedDefaults?.location) queries.push(`${roles[0]} ${ctx.location} directory listing`);
+  return queries;
+}
+
 // A phone number has 9-15 digits and starts with + or 0 - rules out
 // postcodes ("06454-000"), dates and ids that a looser pattern matches.
 function extractPhone(text) {
@@ -181,15 +230,23 @@ function parsePlatforms(instruction) {
 // "find 10 leads in Accra" must not search for the word "leads".
 const GENERIC_TARGET = /^(?:leads?|prospects?|clients?|customers?|people|contacts?|businesses?)$/i;
 
+// "Label: value" fields, often all on one line - a value runs to the next
+// known label (or the end of the line), not to the end of the request.
+const FIELD_LABELS = "Target customers?|Location|How many leads|What I'?m selling|What I sell|Offer|Selling|Search platforms?";
+function labelledField(instruction, label) {
+  const re = new RegExp(`(?:${label}):\\s*(.+?)\\s*(?=(?:${FIELD_LABELS}):|$)`, 'im');
+  return instruction.match(re)?.[1]?.replace(/[.\s]+$/, '').trim() || '';
+}
+
 function parseLeadContext(instruction) {
   const target =
-    instruction.match(/Target customers?:\s*(.+)/im)?.[1]?.trim() ||
+    labelledField(instruction, 'Target customers?') ||
     instruction.match(/target customers?\s+(?:are|is|include)\s+([^.\n]+)/i)?.[1]?.trim() || '';
   const offer =
-    instruction.match(/(?:What I sell|Offer|Selling):\s*(.+)/im)?.[1]?.trim() ||
+    labelledField(instruction, "What I'?m selling|What I sell|Offer|Selling") ||
     instruction.match(/\b(?:I'?m|I am|we'?re|we are)\s+(?:selling|offering)\s+([^.\n]+)/i)?.[1]?.trim() || '';
   const need = instruction.match(/\b(?:that|who)\s+needs?\s+([^.:\n]+)/i)?.[1]?.trim() || '';
-  const location = instruction.match(/Location:\s*(.+)/im)?.[1]?.trim() || '';
+  const location = labelledField(instruction, 'Location');
   const countMatch =
     instruction.match(/How many leads:\s*(\d+)/im) ||
     instruction.match(/(\d+)\s+leads/i) ||
@@ -341,6 +398,13 @@ class SalesAgent extends BaseAgent {
         `From the search results above, extract up to ${count} distinct REAL, NAMED businesses or people ` +
         'that match the target customers. Skip anything that only shares a word with the search ' +
         '(e.g. an organisation with "Lead" in its name, a news story, an event, a job post). ' +
+        'Skip competitors: anyone who sells the same thing I sell (e.g. another course, school, ' +
+        'trainer or agency offering it). ' +
+        (isIndividualTarget(ctx.target)
+          ? 'The target is INDIVIDUALS: return named people found on their own profile or post - ' +
+            'never companies, agencies, schools, brand pages or "we are hiring" posts. ' +
+            'For a person, "type" is their role (e.g. "social media manager", "marketing student"). '
+          : '') +
         'When the SAME business appears in results from different ' +
         'platforms (match by name + location), MERGE them into one entry with all profile links.\n\n' +
         'For each business, extract ONLY what is ACTUALLY present — never invent or guess:\n' +
@@ -377,14 +441,7 @@ class SalesAgent extends BaseAgent {
         ];
       }
 
-      const searchQueries = platforms.map((p) =>
-        `${ctx.target} ${ctx.location} ${PLATFORMS[p].siteFilter}`
-      );
-      searchQueries.push(`${ctx.target} ${ctx.location} contact email phone "contact us"`);
-      if (ctx.need) searchQueries.push(`${ctx.need} ${ctx.location} ${PLATFORMS.linkedin.siteFilter} OR ${PLATFORMS.instagram.siteFilter}`);
-      if (ctx.usedDefaults.target || ctx.usedDefaults.location) {
-        searchQueries.push(`${ctx.target} ${ctx.location} directory listing`);
-      }
+      const searchQueries = buildLeadQueries(ctx, platforms);
 
       const searchSteps = searchQueries.map((q) => ({
         type: 'tool_call',
@@ -553,11 +610,14 @@ class SalesAgent extends BaseAgent {
 
       if (leads.length < Math.ceil(ctx.count / 2) && config.search.tavilyKey) {
         try {
-          const broadQueries = [
-            `${ctx.target} ${ctx.location} directory listing contact`,
-            `best ${ctx.target} ${ctx.location} reviews`,
-            `"${ctx.target}" "${ctx.location}" email phone website`,
-          ];
+          const roles = targetRoles(ctx.target);
+          const broadQueries = isIndividualTarget(ctx.target)
+            ? roles.slice(0, 3).map((r) => `"${r}" ${ctx.location} profile`)
+            : [
+                `${roles[0]} ${ctx.location} directory listing contact`,
+                `best ${roles[0]} ${ctx.location} reviews`,
+                `"${roles[0]}" "${ctx.location}" email phone website`,
+              ];
           const extraContent = [];
           for (const q of broadQueries) {
             try {
@@ -579,6 +639,8 @@ class SalesAgent extends BaseAgent {
               system:
                 leadBrief(ctx, task.instruction) +
                 `Extract up to ${remaining} distinct REAL, NAMED businesses or people from these search results that match the target customers. ` +
+                'Skip competitors (anyone selling the same thing I sell). ' +
+                (isIndividualTarget(ctx.target) ? 'The target is INDIVIDUALS: named people only, never companies, schools or brand pages. ' : '') +
                 `Skip any business already found: ${[...existingNames].join(', ')}. ` +
                 // Same schema as the main extractor - provenance must flow
                 // through the retry path too, so no lead loses source/reason
@@ -957,4 +1019,4 @@ class SalesAgent extends BaseAgent {
   }
 }
 
-module.exports = SalesAgent;module.exports._internals = { parseLeadContext, findContact, extractPhone };
+module.exports = SalesAgent;module.exports._internals = { parseLeadContext, findContact, extractPhone, buildLeadQueries, targetRoles };

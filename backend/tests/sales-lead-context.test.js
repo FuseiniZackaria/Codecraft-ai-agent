@@ -41,3 +41,23 @@ assert.strictEqual(found.phone, null);
 console.log('✓ contact details only come from a result that names the lead');
 
 console.log('\nAll sales-lead-context checks passed.');
+
+const { buildLeadQueries, targetRoles } = require('../agents/sales/SalesAgent')._internals;
+const REQUEST2 =
+  "Find me 10 individuals in Accra, Ghana who need AI in Marketing. What I'm selling: an AI in Marketing Course. " +
+  'Target customer: individuals (e.g. active marketers, marketing professionals, freelancers, social media managers, ' +
+  'marketing lecturers and students, small business owners who do their own marketing). ' +
+  'Search platforms: Google Maps, Instagram, Facebook, TikTok, X (Twitter), LinkedIn.';
+const ctx2 = parseLeadContext(REQUEST2);
+assert.strictEqual(ctx2.offer, 'an AI in Marketing Course');
+const roles2 = targetRoles(ctx2.target);
+assert.deepStrictEqual(roles2.slice(0, 6), ['active marketers', 'marketing professionals', 'marketing freelancers', 'social media managers', 'marketing lecturers', 'marketing students']);
+const platforms2 = ['google_maps', 'instagram', 'facebook', 'tiktok', 'x', 'linkedin'];
+const q2 = buildLeadQueries(ctx2, platforms2);
+assert.ok(!q2.some((q) => q.includes('google.com/maps')), 'no Google Maps search for individuals');
+assert.ok(q2.some((q) => q.includes('site:linkedin.com/in')), 'LinkedIn person profiles');
+assert.ok(q2.every((q) => q.length < 120), `queries stay short: ${q2.find((q) => q.length >= 120)}`);
+assert.ok(q2.every((q) => !q.includes('(e.g.')), 'the example list is not pasted into queries');
+const qBiz = buildLeadQueries(parseLeadContext('Find 10 restaurants in Accra, Ghana'), platforms2);
+assert.ok(qBiz.some((q) => q.includes('google.com/maps')), 'businesses still search Google Maps');
+console.log('✓ individuals: short role searches, LinkedIn profiles, no Google Maps');
