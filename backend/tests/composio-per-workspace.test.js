@@ -133,8 +133,37 @@ async function main() {
   const started = await composio.startWorkspaceConnection(WS_BOB, 'gmail', 'https://app.example/cb');
   assert.strictEqual(client.calls.link[0].userId, `ws_${WS_BOB}`);
   assert.strictEqual(client.calls.authCreate[0].options.type, 'use_composio_managed_auth');
+  assert.strictEqual(client.calls.link[0].options.callbackUrl, 'https://app.example/cb');
+  assert.strictEqual(client.calls.link[0].options.allowMultiple, true, 'a reconnect is not blocked by the old account');
   assert.strictEqual(started.redirectUrl, 'https://connect.example/redirect');
   console.log('✓ connect starts a fresh OAuth flow under the workspace\'s own entity');
+
+  // A failing auth config falls through to the next one; when all fail the
+  // real Composio reason is shown (not just "Failed to create connected account link").
+  const linkErr = (msg) => Object.assign(new Error('Failed to create connected account link'), { cause: { error: { error: { message: msg } } } });
+  const fallback = fakeClient();
+  fallback.authConfigs.list = async () => ({ items: [
+    { id: 'ac_custom', toolkit: { slug: 'gmail' }, status: 'ENABLED', isComposioManaged: false },
+    { id: 'ac_disabled', toolkit: { slug: 'gmail' }, status: 'DISABLED', isComposioManaged: true },
+    { id: 'ac_managed', toolkit: { slug: 'gmail' }, status: 'ENABLED', isComposioManaged: true },
+  ] });
+  fallback.connectedAccounts.link = async (userId, authConfigId, options) => {
+    fallback.calls.link.push({ userId, authConfigId, options });
+    if (authConfigId === 'ac_managed') throw linkErr('auth config is not enabled for link');
+    return { id: 'ca_ok', redirectUrl: 'https://connect.example/ok' };
+  };
+  composio._resetForTests(fallback);
+  const viaFallback = await composio.startWorkspaceConnection(WS_BOB, 'gmail', null);
+  assert.deepStrictEqual(fallback.calls.link.map((c) => c.authConfigId), ['ac_managed', 'ac_custom'], 'managed first, disabled skipped, then the next one');
+  assert.strictEqual(viaFallback.redirectUrl, 'https://connect.example/ok');
+
+  const allFail = fakeClient();
+  allFail.authConfigs.list = async () => ({ items: [{ id: 'ac_only', toolkit: { slug: 'gmail' }, status: 'ENABLED', isComposioManaged: true }] });
+  allFail.connectedAccounts.link = async () => { throw linkErr('callback_url is not allowed'); };
+  composio._resetForTests(allFail);
+  await assert.rejects(() => composio.startWorkspaceConnection(WS_BOB, 'gmail', null), /callback_url is not allowed/);
+  composio._resetForTests(client);
+  console.log('✓ connect tries each enabled auth config and reports Composio\'s real error');
 
   // --- Identity for the card, read-only ---
   const identity = await composio.fetchAccountIdentity('gmail', found);

@@ -247,18 +247,36 @@ async function uploadFile(filePath, actionSlug, toolkitSlug) {
 
 const authConfigCache = new Map(); // toolkitSlug -> Composio-managed auth config id
 
-async function getManagedAuthConfigId(toolkitSlug) {
-  if (authConfigCache.has(toolkitSlug)) return authConfigCache.get(toolkitSlug);
+/**
+ * Auth configs to try for a toolkit, best first: the last one that worked,
+ * then enabled Composio-managed configs, then any other enabled config for
+ * the toolkit (e.g. your own OAuth app). Creates a managed one if none exist.
+ */
+async function candidateAuthConfigIds(toolkitSlug) {
   const composio = getClient();
-  const existing = await composio.authConfigs.list({ toolkit: toolkitSlug, isComposioManaged: true });
-  let id = existing?.items?.[0]?.id;
-  if (!id) {
-    const created = await composio.authConfigs.create(toolkitSlug, { type: 'use_composio_managed_auth' });
-    id = created?.id;
-  }
-  if (!id) throw new Error(`Could not find or create a Composio-managed auth config for "${toolkitSlug}"`);
-  authConfigCache.set(toolkitSlug, id);
-  return id;
+  const res = await composio.authConfigs.list({ toolkit: toolkitSlug });
+  const items = (res?.items || []).filter((c) =>
+    (c.toolkit?.slug || toolkitSlug).toLowerCase() === toolkitSlug.toLowerCase()
+    && !c.isDisabled && (c.status ? c.status === 'ENABLED' : true));
+  const ordered = [
+    ...items.filter((c) => c.isComposioManaged),
+    ...items.filter((c) => !c.isComposioManaged),
+  ].map((c) => c.id);
+  const cached = authConfigCache.get(toolkitSlug);
+  const ids = [...new Set([...(cached ? [cached] : []), ...ordered])];
+  if (ids.length) return ids;
+  const created = await composio.authConfigs.create(toolkitSlug, { type: 'use_composio_managed_auth' });
+  if (!created?.id) throw new Error(`Could not find or create a Composio auth config for "${toolkitSlug}"`);
+  return [created.id];
+}
+
+// The SDK wraps API failures ("Failed to create connected account link"); the
+// useful reason is on the cause.
+function composioErrorDetail(err) {
+  const c = err?.cause;
+  const body = c?.error || c?.body || c?.response?.data;
+  const inner = body?.error?.message || body?.message || (typeof body === 'string' ? body : null);
+  return [err?.message, inner || c?.message].filter(Boolean).join(': ');
 }
 
 /**
@@ -272,13 +290,25 @@ async function startWorkspaceConnection(workspaceId, toolkitSlug, callbackUrl) {
   if (!workspaceId) throw new Error('workspaceId is required');
   if (!PER_WORKSPACE_TOOLKITS.has(toolkitSlug)) throw new Error(`"${toolkitSlug}" cannot be connected per workspace`);
   const composio = getClient();
-  const authConfigId = await getManagedAuthConfigId(toolkitSlug);
-  const request = await composio.connectedAccounts.link(
-    entityFor(workspaceId),
-    authConfigId,
-    callbackUrl ? { callbackUrl } : undefined
-  );
-  return { redirectUrl: request.redirectUrl || null, connectionId: request.id || null };
+  const failures = [];
+  for (const authConfigId of await candidateAuthConfigIds(toolkitSlug)) {
+    try {
+      const request = await composio.connectedAccounts.link(
+        entityFor(workspaceId),
+        authConfigId,
+        // allowMultiple: a reconnect after an expired token must not be blocked
+        // by the old (still "ACTIVE" in Composio) account for the same entity.
+        { ...(callbackUrl ? { callbackUrl } : {}), allowMultiple: true }
+      );
+      authConfigCache.set(toolkitSlug, authConfigId);
+      return { redirectUrl: request.redirectUrl || null, connectionId: request.id || null };
+    } catch (err) {
+      const detail = composioErrorDetail(err);
+      console.warn(`[composio] link failed for ${toolkitSlug} with auth config ${authConfigId}: ${detail}`);
+      failures.push(`${authConfigId}: ${detail}`);
+    }
+  }
+  throw new Error(`Composio could not start the sign-in (${failures.join(' | ')})`);
 }
 
 /**
