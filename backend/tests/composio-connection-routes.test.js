@@ -18,7 +18,7 @@ let wsAccount = null;
 const LEGACY = { id: 'ca_owner_gmail', userId: 'legacy-user' };
 
 composio.startWorkspaceConnection = async (ws, toolkit, cb) => {
-  calls.start.push({ ws, toolkit, entity: composio.entityFor(ws) });
+  calls.start.push({ ws, toolkit, cb, entity: composio.entityFor(ws) });
   return { redirectUrl: 'https://connect.example/r', connectionId: 'ca_pending' };
 };
 composio.findWorkspaceAccount = async (ws, toolkit, connectionId) => { calls.findWs.push({ ws, connectionId }); return wsAccount; };
@@ -74,6 +74,20 @@ async function main() {
     assert.strictEqual(calls.start[0].entity, `ws_${WS_B}`);
     assert.strictEqual(calls.findLegacy.length, 0);
     console.log('✓ B clicking Connect starts a fresh OAuth flow under ws_<B>');
+
+    // After sign-in Composio returns the browser to the app's Connections page
+    // (which finishes the connection) - only the app's own origins are allowed.
+    config.cors.allowedOrigins = ['https://app.example'];
+    reset();
+    await call('POST', '/gmail/connect', { redirectUrl: 'https://app.example/connections?connected=gmail' });
+    assert.strictEqual(calls.start[0].cb, 'https://app.example/connections?connected=gmail');
+    reset();
+    await call('POST', '/gmail/connect', { redirectUrl: 'https://evil.example/steal' });
+    assert.strictEqual(calls.start[0].cb, 'https://app.example/connections?connected=gmail', 'foreign redirect is replaced');
+    reset();
+    await call('POST', '/gmail/connect', {});
+    assert.strictEqual(calls.start[0].cb, 'https://app.example/connections?connected=gmail', 'default returns to the Connections page');
+    console.log('✓ sign-in returns to the app\'s Connections page; foreign redirect URLs are refused');
 
     // Before sign-in completes: pending, nothing stored, no legacy fallback.
     reset();

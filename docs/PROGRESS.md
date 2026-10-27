@@ -1,5 +1,10 @@
 # CodeCraft AI — Progress
 
+## Fix: Composio sign-in finishes by itself
+
+- After the Google / GitHub sign-in, Composio now returns the browser to the app's **Connections** page (it used to go to a non-existent `/api/connections/<provider>/callback`), which completes the connection and shows "Gmail connected as …". The Connect dialog also checks every few seconds, so the original tab updates too. Only the app's own origins (`CORS_ALLOWED_ORIGINS`) are accepted as the return address.
+- The Plugins page no longer sends Gmail / Calendar / GitHub to the Composio dashboard ("Manage in Composio" doesn't connect anything); it links to the Connections page.
+
 ## Fix: owner can reconnect an expired Gmail / Calendar / GitHub
 
 - If the server's legacy (.env) account's token expires (Composio 401 "invalid or expired"), the owner clicks **Disconnect** then **Connect**: the legacy account is remembered as dismissed (never revoked, never re-attached), and the new sign-in is stored under `ws_<owner workspace>`. Previously the card re-attached the expired account on every load, so Connect never appeared.

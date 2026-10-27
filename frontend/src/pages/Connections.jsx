@@ -232,10 +232,28 @@ function ComposioWizard({ provider, label, onClose, onConnected }) {
   const [status, setStatus] = useState(null); // 'redirected' | 'checking' | 'connected'
   const [connectionId, setConnectionId] = useState(null);
 
+  // While the sign-in tab is open, check every few seconds so the connection
+  // completes on its own - no need to click "I completed authorization".
+  useEffect(() => {
+    if (status !== 'redirected') return undefined;
+    let tries = 0;
+    const timer = setInterval(async () => {
+      tries += 1;
+      if (tries > 60) { clearInterval(timer); return; } // stop after ~4 minutes
+      try {
+        const res = await api.checkComposio(provider, connectionId);
+        if (res.ok) { clearInterval(timer); setStatus('connected'); setError(null); }
+      } catch { /* keep waiting */ }
+    }, 4000);
+    return () => clearInterval(timer);
+  }, [status, provider, connectionId]);
+
   async function handleInitiate() {
     setBusy(true); setError(null);
     try {
-      const res = await api.connectComposio(provider);
+      const res = await api.connectComposio(provider, {
+        redirectUrl: `${window.location.origin}/connections?connected=${provider}`,
+      });
       if (res.error) throw new Error(res.error);
       if (res.adopted) {
         setStatus('connected');
@@ -276,8 +294,9 @@ function ComposioWizard({ provider, label, onClose, onConnected }) {
         </div>
       ) : status === 'redirected' || status === 'checking' ? (
         <div className="space-y-4">
-          <p className="text-sm text-[var(--color-text-muted)]">
-            Complete the authorization in the window that opened. When done, click below to verify.
+          <p className="text-sm text-[var(--color-text-muted)] flex items-center gap-2">
+            <Loader2 size={14} className="animate-spin shrink-0" />
+            Sign in with {label} in the window that opened. This will finish by itself once you're done.
           </p>
           {error && <ErrorMsg>{error}</ErrorMsg>}
           <button onClick={handleCheck} disabled={status === 'checking'} className={`${BTN_PRIMARY} w-full`}>
@@ -422,7 +441,26 @@ export default function Connections() {
     setRefreshing(false);
   }, []);
 
-  useEffect(() => { load(false); }, [load]);
+  const [returnNotice, setReturnNotice] = useState(null);
+
+  useEffect(() => {
+    // Back from the Google / GitHub sign-in (Composio redirects here with
+    // ?connected=<provider>): finish the connection, then show the result.
+    const params = new URLSearchParams(window.location.search);
+    const returned = params.get('connected');
+    if (returned && PROVIDERS.some((p) => p.key === returned && p.composio)) {
+      window.history.replaceState(null, '', window.location.pathname);
+      const label = PROVIDERS.find((p) => p.key === returned)?.label || returned;
+      api.checkComposio(returned, null)
+        .then((res) => setReturnNotice(res.ok
+          ? { ok: true, text: `${label} connected${res.connected_email ? ` as ${res.connected_email}` : ''}. You can close the other tab.` }
+          : { ok: false, text: `${label} sign-in isn't finished yet (${res.status || 'not connected'}). Try Connect again.` }))
+        .catch((err) => setReturnNotice({ ok: false, text: err.message }))
+        .finally(() => load(false));
+      return;
+    }
+    load(false);
+  }, [load]);
 
   async function handleDisconnect(provider) {
     setDisconnecting(provider);
@@ -467,6 +505,16 @@ export default function Connections() {
         Connect your accounts so agents can send messages, read email, and manage your calendar.
         Each workspace has its own connections.
       </p>
+
+      {returnNotice && (
+        <div className={`mb-4 flex items-center gap-2 rounded-md border px-3 py-2 text-sm ${returnNotice.ok
+          ? 'border-emerald-500/30 bg-emerald-500/10 text-emerald-600'
+          : 'border-[var(--color-warning)]/30 bg-[var(--color-warning)]/10 text-[var(--color-warning)]'}`}>
+          {returnNotice.ok ? <CheckCircle2 size={14} /> : <AlertCircle size={14} />}
+          <span>{returnNotice.text}</span>
+          <button onClick={() => setReturnNotice(null)} className="ml-auto opacity-70 hover:opacity-100"><X size={14} /></button>
+        </div>
+      )}
 
       <div className="grid md:grid-cols-2 gap-4">
         {PROVIDERS.map((p) => {

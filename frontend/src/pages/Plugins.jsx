@@ -6,7 +6,7 @@ const CATALOG = [
   { name: 'Slack', icon: Hash, desc: 'Post and read messages in channels.' },
 ];
 
-function ComposioCard({ icon: Icon, name, desc, toolPrefix, connectedKey, viaLabel = 'via Composio', manageUrl = 'https://app.composio.dev', manageLabel = 'Manage in Composio' }) {
+function ComposioCard({ icon: Icon, name, desc, toolPrefix, connectedKey, viaLabel = 'via Composio', manageUrl = '/connections', manageLabel = 'Connect on the Connections page' }) {
   const store = useStore();
   const loaded = store.summary.installedTools.some((t) => t.startsWith(`${toolPrefix}.`));
   const isConnected = store[connectedKey];
@@ -36,7 +36,7 @@ function ComposioCard({ icon: Icon, name, desc, toolPrefix, connectedKey, viaLab
           
           <a
             href={manageUrl}
-            target="_blank"
+            target={manageUrl.startsWith('/') ? undefined : '_blank'}
             rel="noreferrer"
             className="flex items-center gap-1 text-xs text-[var(--color-accent)] hover:underline w-fit"
           >
@@ -82,8 +82,8 @@ export default function Plugins() {
         </button>
       </div>
       <p className={`text-sm text-[var(--color-text-muted)] ${connectorsLastFetchedAt > 0 ? 'mb-1' : 'mb-6'}`}>
-        Install integrations to give agents new tools — no core changes required. Connections for
-        Composio-backed tools (like Gmail) are managed in your Composio dashboard, not here.
+        Install integrations to give agents new tools — no core changes required. Connect Gmail,
+        Google Calendar and GitHub on the Connections page.
       </p>
       {connectorsLastFetchedAt > 0 && (
         <p className="text-[11px] text-[var(--color-text-muted)] mb-6">
@@ -93,7 +93,7 @@ export default function Plugins() {
 
       <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-4">
         <ComposioCard icon={Mail} name="Gmail" desc="Read and send email on your behalf." toolPrefix="gmail" connectedKey="gmailConnected" />
-        <ComposioCard icon={MessageSquare} name="Reddit" desc="Post replies to threads the Sales Agent finds." toolPrefix="reddit" connectedKey="redditConnected" />
+        <ComposioCard icon={MessageSquare} name="Reddit" desc="Post replies to threads the Sales Agent finds." toolPrefix="reddit" connectedKey="redditConnected" manageUrl="https://app.composio.dev" manageLabel="Manage in Composio" />
         <ComposioCard
           icon={MessageCircle}
           name="WhatsApp"

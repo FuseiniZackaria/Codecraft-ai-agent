@@ -26,6 +26,21 @@ function connectionRow(acct, identity) {
   };
 }
 
+// Where Composio sends the browser after the Google / GitHub sign-in: back to
+// the app's Connections page, which finishes the connection automatically.
+// Only the app's own frontend origins are accepted (no open redirect).
+function composioCallbackUrl(requested, provider) {
+  const allowed = config.cors.allowedOrigins || [];
+  if (requested) {
+    try {
+      const url = new URL(requested);
+      if (allowed.includes(url.origin)) return url.toString();
+    } catch { /* fall through to the default */ }
+  }
+  const origin = allowed.find((o) => o.startsWith('https://')) || allowed[0];
+  return `${origin}/connections?connected=${encodeURIComponent(provider)}`;
+}
+
 async function composioConnection(wsId, provider) {
   const owner = await composio.isOwnerWorkspace(wsId);
   let conn = await connections.getConnection(wsId, provider);
@@ -386,8 +401,7 @@ router.post('/:provider/connect', async (req, res) => {
       return res.status(400).json({ error: 'COMPOSIO_API_KEY is not configured on this server.' });
     }
 
-    const { redirectUrl } = req.body || {};
-    const callbackUrl = redirectUrl || `${baseUrl()}/api/connections/${provider}/callback`;
+    const callbackUrl = composioCallbackUrl(req.body?.redirectUrl, provider);
     const started = await composio.startWorkspaceConnection(wsId, provider, callbackUrl);
     res.json({ ok: true, redirectUrl: started.redirectUrl, connectionId: started.connectionId });
   } catch (err) {
