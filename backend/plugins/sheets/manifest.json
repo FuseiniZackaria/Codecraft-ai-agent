@@ -1,0 +1,8 @@
+{
+  "name": "sheets",
+  "version": "1.0.0",
+  "permissions": ["sheets.write"],
+  "auth": { "type": "service_account", "provider": "google" },
+  "actions": ["saveLead"],
+  "events": []
+}

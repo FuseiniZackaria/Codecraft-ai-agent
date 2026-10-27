@@ -71,6 +71,29 @@ Same flow as Gmail — click **Connect**, authorize via GitHub, confirm back in 
 
 ---
 
+## Google Sheets (lead storage)
+
+When connected, **Sales Manager** saves every lead it finds as a new row: `timestamp` (UTC), `name`, `email`, `phone`, `source`, `notes`. The header row is created automatically, and a lead whose email is already in the sheet is skipped.
+
+**One-time server setup (app owner):**
+
+1. In [Google Cloud Console](https://console.cloud.google.com/), pick or create a project and enable the **Google Sheets API** (APIs & Services → Library). The Drive API is not needed.
+2. Go to **IAM & Admin → Service Accounts → Create service account**. No roles are needed. Open it → **Keys → Add key → Create new key → JSON** and download the file. Keep it private — never commit it (it's in `.gitignore`).
+3. On **Render → backend service → Environment**, add `GOOGLE_SERVICE_ACCOUNT_JSON` and paste the whole JSON file as the value. (Alternatively upload it as a **Secret File** and set `GOOGLE_SERVICE_ACCOUNT_FILE=/etc/secrets/<file name>`.) Locally, put the same variable in `backend/.env`.
+4. Optional: set `LEADS_SHEET_ID` to a sheet id as the fallback sheet for **your own workspace only**.
+
+**Each workspace:**
+
+1. Create a Google Sheet. The sheet id is the long part of its URL: `https://docs.google.com/spreadsheets/d/<SHEET ID>/edit`.
+2. Click **Share** and add the service account's address (the `client_email` in the key file, shown on the Connections page) as an **Editor**.
+3. In CodeCraft go to **Connections → Google Sheets → Connect**, paste the sheet link, and click **Connect sheet**. CodeCraft checks it can open the sheet before saving it.
+
+**Check the connection:** `cd backend && npm run check:sheets` (or `npm run check:sheets -- <sheet link>`) writes one sample row. Running it twice shows the duplicate-email skip.
+
+A workspace without its own sheet never writes to another workspace's sheet or to `LEADS_SHEET_ID`.
+
+---
+
 ## Security notes
 
 - Bot tokens and API keys are encrypted with AES-256-GCM before storage. They are never returned in API responses or logged.

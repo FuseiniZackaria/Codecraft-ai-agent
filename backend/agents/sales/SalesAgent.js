@@ -2,6 +2,8 @@ const BaseAgent = require('../base/BaseAgent');
 const memory = require('../../memory');
 const config = require('../../config');
 const { selectProvider } = require('../../core/router');
+const toolRegistry = require('../../tools/ToolRegistry');
+const googleSheets = require('../../core/googleSheets');
 
 function applicantProfileLine() {
   const p = config.applicant || {};
@@ -613,6 +615,32 @@ class SalesAgent extends BaseAgent {
       leads = kept;
       if (droppedNoSource > 0) warnings.push(`Dropped ${droppedNoSource} lead(s) with no source URL.`);
 
+      // Save every kept lead to the workspace's Google Sheet, when one is set
+      // up (Connections page). Quietly skipped otherwise; a sheet error is a
+      // warning, never a failed run.
+      const sheetsWorkspaceId = task?.workspace_id || this._currentTask?.workspace_id || null;
+      let sheetSaved = 0;
+      let sheetDuplicates = 0;
+      if (leads.length && await googleSheets.isConfigured(sheetsWorkspaceId)) {
+        for (const l of leads) {
+          const p = projectLead(l);
+          try {
+            const msg = await toolRegistry.call('sheets.saveLead', {
+              name: p.name,
+              email: l.email || '',
+              phone: l.phone || '',
+              source: p.sources[0] || p.contactSource || '',
+              notes: [p.type, p.location, p.reason].filter(Boolean).join(' | '),
+            }, { role: this.role, workspaceId: sheetsWorkspaceId });
+            if (/already in the sheet/i.test(msg)) sheetDuplicates++;
+            else sheetSaved++;
+          } catch (err) {
+            warnings.push(`Google Sheet: ${err.message}`);
+            break; // same cause for every lead (not shared, bad id) - report once
+          }
+        }
+      }
+
       const emailLeads = leads.filter((l) => l.email);
       const whatsappOnlyLeads = leads.filter((l) => l.phone && !l.email);
       const socialOnlyLeads = leads.filter((l) => !l.email && !l.phone && (l.platforms || []).length > 0);
@@ -759,6 +787,9 @@ class SalesAgent extends BaseAgent {
       if (socialDrafted) note += `${(emailDrafted || whatsappDrafted) ? ',' : ''} ${socialDrafted} social DM draft(s)`;
       if (totalDrafted) note += ' — awaiting your approval.';
       if (noContactLeads.length) note += ` ${noContactLeads.length} lead(s) need manual outreach (no contact info found).`;
+      if (sheetSaved || sheetDuplicates) {
+        note += ` Saved ${sheetSaved} lead(s) to your Google Sheet${sheetDuplicates ? ` (${sheetDuplicates} already there)` : ''}.`;
+      }
       await memory.addReflection(this.role, task.id, note, { workspaceId: task?.workspace_id || this._currentTask?.workspace_id || null });
 
       results.push({

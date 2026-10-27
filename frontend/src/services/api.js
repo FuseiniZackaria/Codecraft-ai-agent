@@ -259,6 +259,8 @@ export const api = {
   connectComposio: (provider, data) => request(`/connections/${provider}/connect`, { method: 'POST', body: JSON.stringify(data || {}) }),
   checkComposio: (provider, connectionId) => request(`/connections/${provider}/check`, { method: 'POST', body: JSON.stringify({ connectionId }) }),
   disconnectProvider: (provider) => request(`/connections/${provider}`, { method: 'DELETE' }),
+  sheetsInfo: () => request('/connections/googlesheets/info'),
+  connectSheets: (sheet) => request('/connections/googlesheets/connect', { method: 'POST', body: JSON.stringify({ sheet }) }),
 
   connectMCP: (url) => browserPost('/mcp/connect', { url }),
 

@@ -71,6 +71,11 @@ function safeConnectionView(conn) {
   if (meta.type) safe.type = meta.type;
   if (meta.display_phone) safe.display_phone = meta.display_phone;
   if (meta.whatsapp_from) safe.whatsapp_from = meta.whatsapp_from;
+  if (meta.sheet_id) {
+    safe.sheet_id = meta.sheet_id;
+    safe.sheet_title = meta.sheet_title || null;
+    safe.sheet_url = `https://docs.google.com/spreadsheets/d/${meta.sheet_id}/edit`;
+  }
   if (conn.composio_account_id) safe.composio_account_id = conn.composio_account_id;
   if (meta.webhook_token) {
     const baseUrl = (process.env.RENDER_EXTERNAL_URL || process.env.BASE_URL || `http://localhost:${config.port}`).replace(/\/$/, '');

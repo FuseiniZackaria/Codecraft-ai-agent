@@ -1,5 +1,12 @@
 # CodeCraft AI — Progress
 
+## Google Sheets lead storage
+
+- New `sheets` plugin (`sheets.saveLead`, no approval gate) backed by `core/googleSheets.js` (`googleapis`, Google service account from `GOOGLE_SERVICE_ACCOUNT_JSON` or `GOOGLE_SERVICE_ACCOUNT_FILE`). Appends `timestamp (UTC ISO), name, email, phone, source, notes` to the first worksheet, writes the header row if missing, skips a lead whose email is already there (case-insensitive), only `name` required, clear errors for missing config or a sheet not shared with the service account.
+- **Sales Manager** lead-gen saves every lead it keeps (after the no-source filter) when the workspace has a sheet; a sheet error is a warning in the run, never a failure. The run summary says how many were saved.
+- **Per workspace:** Connections → **Google Sheets** (paste the sheet link; the server verifies access). `LEADS_SHEET_ID` is a fallback for the owner workspace only.
+- Setup steps: `docs/connecting-accounts.md`. Live check: `npm run check:sheets`. Test: `sheets-save-lead` (mocked).
+
 ## Security fix: invited workspaces saw the owner's tasks and activity
 
 - **Live activity stream** (`/api/events/stream`) broadcast every workspace's events to every open page. It now sends only the caller's workspace events.

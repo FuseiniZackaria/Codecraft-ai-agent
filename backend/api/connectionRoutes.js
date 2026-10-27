@@ -3,11 +3,12 @@ const https = require('https');
 const config = require('../config');
 const connections = require('../core/workspaceConnections');
 const composio = require('../core/composio');
+const googleSheets = require('../core/googleSheets');
 
 const router = express.Router();
 
 const COMPOSIO_PROVIDERS = new Set(['gmail', 'googlecalendar', 'github']);
-const ALL_PROVIDERS = new Set(['gmail', 'googlecalendar', 'github', 'telegram', 'whatsapp']);
+const ALL_PROVIDERS = new Set(['gmail', 'googlecalendar', 'github', 'telegram', 'whatsapp', 'googlesheets']);
 
 // ---------- Composio (Gmail, Calendar, GitHub) helpers ----------
 //
@@ -381,6 +382,34 @@ router.delete('/whatsapp', async (req, res) => {
     res.json({ ok: true });
   } catch (err) {
     res.status(500).json({ error: err.message });
+  }
+});
+
+// ========================= GOOGLE SHEETS (lead storage) =========================
+//
+// Each workspace stores Sales Manager leads in its own Google Sheet, which it
+// shares with the server's service account. Defined before the generic
+// /:provider/connect route below.
+
+router.get('/googlesheets/info', (req, res) => {
+  res.json({ serviceAccountEmail: googleSheets.serviceAccountEmail() });
+});
+
+router.post('/googlesheets/connect', async (req, res) => {
+  try {
+    const wsId = req.user?.workspaceId;
+    if (!wsId) return res.status(400).json({ error: 'No workspace resolved.' });
+    const sheetId = googleSheets.parseSheetId(req.body?.sheet);
+    if (!sheetId) return res.status(400).json({ error: 'Paste the Google Sheet link (or its id).' });
+
+    const { title, spreadsheetTitle } = await googleSheets.checkAccess(sheetId);
+    await connections.upsertConnection(wsId, 'googlesheets', {
+      provider_meta: { sheet_id: sheetId, sheet_title: spreadsheetTitle, worksheet: title },
+      status: 'connected',
+    });
+    res.json({ ok: true, sheetId, sheetTitle: spreadsheetTitle, worksheet: title });
+  } catch (err) {
+    res.status(400).json({ error: err.message });
   }
 });
 

@@ -35,6 +35,10 @@ Three services run together:
   misses, with a Clear-log button.
 - **Audit log** — every meaningful event is persisted (`activityLog`) and
   streamed to the UI over Server-Sent Events.
+- **Google Sheets lead storage** — Sales Manager saves each lead it finds to the
+  workspace's own Google Sheet (service account). Setup:
+  [docs/connecting-accounts.md](docs/connecting-accounts.md#google-sheets-lead-storage);
+  check it with `cd backend && npm run check:sheets`.
 
 ---
 

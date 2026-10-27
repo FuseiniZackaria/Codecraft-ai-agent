@@ -28,6 +28,8 @@ token.pickle
 *.key
 service-account*.json
 google-credentials*.json
+google-sa*.json
+backend/secrets/
 gmail-credentials*.json
 
 # Dependencies

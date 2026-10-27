@@ -49,6 +49,10 @@ const SECRETS_TO_BLANK = [
   // Telegram
   'TELEGRAM_BOT_TOKEN',
   'TELEGRAM_WEBHOOK_SECRET',
+  // Google Sheets lead storage (service account + sheet)
+  'GOOGLE_SERVICE_ACCOUNT_JSON',
+  'GOOGLE_SERVICE_ACCOUNT_FILE',
+  'LEADS_SHEET_ID',
   // Browser extension pairing token
   'BROWSER_EXTENSION_TOKEN',
   // Owner-notification destinations (so a test can't text or email the user)

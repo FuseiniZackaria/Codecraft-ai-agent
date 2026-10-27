@@ -58,6 +58,7 @@ falls back to a mock provider and every agent returns canned text.
 
 | Group | Env vars | Lives on |
 |---|---|---|
+| Google Sheets lead storage | `GOOGLE_SERVICE_ACCOUNT_JSON` (key JSON) or `GOOGLE_SERVICE_ACCOUNT_FILE` (key path), `LEADS_SHEET_ID` (owner-workspace fallback) — see [connecting-accounts.md](connecting-accounts.md#google-sheets-lead-storage) | Render |
 | Composio (Gmail, Google Calendar, Reddit, GitHub) | `COMPOSIO_API_KEY`, `COMPOSIO_USER_ID`, `COMPOSIO_GMAIL_CONNECTED_ACCOUNT_ID`, `COMPOSIO_REDDIT_CONNECTED_ACCOUNT_ID`, `COMPOSIO_GITHUB_CONNECTED_ACCOUNT_ID` (the pinned ids are used only by the app owner's workspace; every other workspace connects its own account) | Render |
 | WhatsApp (Meta) | `WHATSAPP_PHONE_NUMBER_ID`, `WHATSAPP_ACCESS_TOKEN`, `WHATSAPP_WEBHOOK_VERIFY_TOKEN` | Render |
 | WhatsApp (Twilio) | `TWILIO_ACCOUNT_SID`, `TWILIO_AUTH_TOKEN`, `TWILIO_WHATSAPP_FROM` | Render |

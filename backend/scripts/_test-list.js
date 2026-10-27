@@ -19,6 +19,7 @@ module.exports = [
   'tests/assistant-workspace-scope.test.js',
   'tests/composio-per-workspace.test.js',
   'tests/composio-connection-routes.test.js',
+  'tests/sheets-save-lead.test.js',
   'tests/team-invite-isolation.test.js',
   'tests/team-phase2-6b.test.js',
   'tests/team-close-account.test.js',
