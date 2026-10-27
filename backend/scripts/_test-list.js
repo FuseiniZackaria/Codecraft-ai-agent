@@ -13,6 +13,7 @@ module.exports = [
   'tests/workspace-system-scope.test.js',
   'tests/workspace-enforce-isolation.test.js',
   'tests/workspace-legacy-visibility.test.js',
+  'tests/supabase-store-workspace-stamp.test.js',
   'tests/workspace-shadow-leaks.test.js',
   'tests/business-profile.test.js',
   'tests/workspace-connections.test.js',

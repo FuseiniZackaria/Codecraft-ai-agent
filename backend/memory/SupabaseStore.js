@@ -13,7 +13,7 @@ class SupabaseStore {
   }
 
   // --- Task memory ---
-  async saveTask(task) {
+  async saveTask(task, options = {}) {
     const { data, error } = await this.client
       .from('tasks')
       .insert({
@@ -27,6 +27,7 @@ class SupabaseStore {
         result: task.result || null,
         read: false,
         created_at: task.created_at,
+        workspace_id: task.workspace_id || task.workspaceId || options.workspaceId || null,
       })
       .select()
       .single();
@@ -94,6 +95,7 @@ class SupabaseStore {
       read: !!row.read,
       created_at: row.created_at,
       updated_at: row.updated_at,
+      workspace_id: row.workspace_id || null,
     };
   }
 
@@ -379,7 +381,7 @@ class SupabaseStore {
   }
 
   // --- Chat history (server-side persistence, survives refresh/device change) ---
-  async addChatMessage(msg) {
+  async addChatMessage(msg, options = {}) {
     const { data, error } = await this.client
       .from('chat_messages')
       .insert({
@@ -387,6 +389,7 @@ class SupabaseStore {
         content: msg.content,
         attachment_names: msg.attachmentNames || [],
         task_id: msg.taskId || null,
+        workspace_id: msg.workspace_id || msg.workspaceId || options.workspaceId || null,
       })
       .select()
       .maybeSingle();
@@ -415,6 +418,7 @@ class SupabaseStore {
       attachmentNames: row.attachment_names || [],
       taskId: row.task_id,
       createdAt: row.created_at,
+      workspace_id: row.workspace_id || null,
     };
   }
 

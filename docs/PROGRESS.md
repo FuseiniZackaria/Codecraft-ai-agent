@@ -1,5 +1,11 @@
 # CodeCraft AI — Progress
 
+## Fix: invited workspaces didn't see their own tasks
+
+- `SupabaseStore.saveTask` and `addChatMessage` never wrote `workspace_id`, so every task and chat row was saved with no workspace. Since the isolation fix, no-workspace rows show only to the app owner, so an invited workspace's tasks appeared on the owner's Tasks page instead of theirs. Both now store the workspace.
+- **Run `backend/database/migrations/0004_restamp_task_workspace.sql` in Supabase** to move existing tasks (and their linked chat replies) back to the workspace that created them, using the audit log.
+- Test: `supabase-store-workspace-stamp`.
+
 ## Google Sheets lead storage
 
 - New `sheets` plugin (`sheets.saveLead`, no approval gate) backed by `core/googleSheets.js` (`googleapis`, Google service account from `GOOGLE_SERVICE_ACCOUNT_JSON` or `GOOGLE_SERVICE_ACCOUNT_FILE`). Appends `timestamp (UTC ISO), name, email, phone, source, notes` to the first worksheet, writes the header row if missing, skips a lead whose email is already there (case-insensitive), only `name` required, clear errors for missing config or a sheet not shared with the service account.
