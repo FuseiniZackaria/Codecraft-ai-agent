@@ -39,7 +39,7 @@ function fakeSheets({ deny = [] } = {}) {
           calls.push(['values.get', spreadsheetId, range]);
           const r = rows(spreadsheetId);
           if (range.endsWith('!A1:F1')) return { data: { values: r[0] ? [r[0]] : undefined } };
-          if (range.endsWith('!C2:C')) return { data: { values: r.slice(1).map((row) => [row[2]]) } };
+          if (range.endsWith('!B2:E')) return { data: { values: r.slice(1).map((row) => row.slice(1, 5)) } };
           throw new Error(`unexpected range ${range}`);
         },
         async update({ spreadsheetId, range, requestBody }) {

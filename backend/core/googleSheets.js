@@ -240,13 +240,15 @@ async function checkAccess(sheetId, { workspaceId = null } = {}) {
 /**
  * Appends a lead to the first worksheet: timestamp (UTC ISO), name, email,
  * phone, source, notes. Writes the header row first if the sheet has none.
- * Skips (and says so) when a row with the same email already exists,
- * compared case-insensitively. Only `name` is required.
+ * Skips (and says so) when the lead is already there: same email, same
+ * source link, or - for a lead with no email - same name. All compared
+ * case-insensitively. Only `name` is required.
  */
 async function saveLead({ name, email, phone, source, notes } = {}, { workspaceId = null } = {}) {
   const cleanName = String(name || '').trim();
   if (!cleanName) throw new Error('saveLead needs a name.');
-  const cleanEmail = String(email || '').trim();
+  const cleanEmail = String(email || '').trim().replace(/[.,;:]+$/, '');
+  const cleanSource = String(source || '').trim();
 
   const sheetId = await resolveSheetId(workspaceId);
   const { sheets, via } = await getClient(workspaceId);
@@ -266,11 +268,19 @@ async function saveLead({ name, email, phone, source, notes } = {}, { workspaceI
       });
     }
 
-    if (cleanEmail) {
-      const col = await sheets.spreadsheets.values.get({ spreadsheetId: sheetId, range: `${tab}!C2:C` });
-      const wanted = cleanEmail.toLowerCase();
-      const exists = (col?.data?.values || []).some((row) => String(row?.[0] || '').trim().toLowerCase() === wanted);
-      if (exists) return `Lead not saved: ${cleanEmail} is already in the sheet.`;
+    // Columns B..E = name, email, phone, source.
+    const existing = await sheets.spreadsheets.values.get({ spreadsheetId: sheetId, range: `${tab}!B2:E` });
+    const norm = (v) => String(v || '').trim().toLowerCase().replace(/[.,;:]+$/, '');
+    for (const [rowName, rowEmail, , rowSource] of existing?.data?.values || []) {
+      if (cleanEmail && norm(rowEmail) === norm(cleanEmail)) {
+        return `Lead not saved: ${cleanEmail} is already in the sheet.`;
+      }
+      if (cleanSource && norm(rowSource) === norm(cleanSource)) {
+        return `Lead not saved: ${cleanName} (${cleanSource}) is already in the sheet.`;
+      }
+      if (!cleanEmail && norm(rowName) === norm(cleanName)) {
+        return `Lead not saved: ${cleanName} is already in the sheet.`;
+      }
     }
 
     await sheets.spreadsheets.values.append({

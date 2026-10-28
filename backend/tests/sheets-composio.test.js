@@ -35,7 +35,7 @@ async function main() {
     }
     if (slug === 'GOOGLESHEETS_VALUES_GET') {
       if (args.range.endsWith('A1:F1')) return { response_data: { values: rows.slice(0, 1) } };
-      return { response_data: { values: rows.slice(1).map((r) => [r[2]]) } };
+      return { response_data: { values: rows.slice(1).map((r) => r.slice(1, 5)) } };
     }
     if (slug === 'GOOGLESHEETS_VALUES_UPDATE') { rows[0] = args.values[0]; return {}; }
     if (slug === 'GOOGLESHEETS_SPREADSHEETS_VALUES_APPEND') { rows.push(...args.values); return {}; }
@@ -76,7 +76,13 @@ async function main() {
   const dup = await googleSheets.saveLead({ name: 'Ama again', email: 'AMA@example.com' }, { workspaceId: WS_A });
   assert.match(dup, /already in the sheet/);
   assert.strictEqual(rows.length, 2);
-  console.log('✓ duplicate email skipped');
+  assert.match(await googleSheets.saveLead({ name: 'Someone else', source: 'https://instagram.com/ama' }, { workspaceId: WS_A }), /already in the sheet/);
+  await googleSheets.saveLead({ name: 'Kofi Boateng', source: 'https://linkedin.com/in/kofi' }, { workspaceId: WS_A });
+  assert.match(await googleSheets.saveLead({ name: 'kofi boateng' }, { workspaceId: WS_A }), /already in the sheet/);
+  await googleSheets.saveLead({ name: 'Efua', email: 'efua@example.com.' }, { workspaceId: WS_A });
+  assert.strictEqual(rows[rows.length - 1][2], 'efua@example.com', 'trailing dot stripped');
+  assert.strictEqual(rows.length, 4);
+  console.log('✓ duplicates skipped by email, profile link, or name (no email)');
 
   // Workspace B has nothing: not configured, never reaches A's sheet.
   calls.length = 0;
