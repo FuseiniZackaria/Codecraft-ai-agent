@@ -7,7 +7,7 @@ const googleSheets = require('../core/googleSheets');
 
 const router = express.Router();
 
-const COMPOSIO_PROVIDERS = new Set(['gmail', 'googlecalendar', 'github']);
+const COMPOSIO_PROVIDERS = new Set(['gmail', 'googlecalendar', 'github', 'googlesheets']);
 const ALL_PROVIDERS = new Set(['gmail', 'googlecalendar', 'github', 'telegram', 'whatsapp', 'googlesheets']);
 
 // ---------- Composio (Gmail, Calendar, GitHub) helpers ----------
@@ -387,25 +387,28 @@ router.delete('/whatsapp', async (req, res) => {
 
 // ========================= GOOGLE SHEETS (lead storage) =========================
 //
-// Each workspace stores Sales Manager leads in its own Google Sheet, which it
-// shares with the server's service account. Defined before the generic
-// /:provider/connect route below.
+// Google Sheets: the workspace signs in with Google through Composio (the
+// generic /:provider/connect + /check routes below), then picks its leads
+// sheet here. The sheet is opened with that workspace's own Google account.
 
-router.get('/googlesheets/info', (req, res) => {
-  res.json({ serviceAccountEmail: googleSheets.serviceAccountEmail() });
-});
-
-router.post('/googlesheets/connect', async (req, res) => {
+router.post('/googlesheets/sheet', async (req, res) => {
   try {
     const wsId = req.user?.workspaceId;
     if (!wsId) return res.status(400).json({ error: 'No workspace resolved.' });
     const sheetId = googleSheets.parseSheetId(req.body?.sheet);
     if (!sheetId) return res.status(400).json({ error: 'Paste the Google Sheet link (or its id).' });
 
-    const { title, spreadsheetTitle } = await googleSheets.checkAccess(sheetId);
+    const conn = await composioConnection(wsId, 'googlesheets');
+    if (!conn || conn.status !== 'connected') {
+      return res.status(400).json({ error: 'Connect your Google account first (Connect on the Google Sheets card).' });
+    }
+
+    const { title, spreadsheetTitle } = await googleSheets.checkAccess(sheetId, { workspaceId: wsId });
     await connections.upsertConnection(wsId, 'googlesheets', {
-      provider_meta: { sheet_id: sheetId, sheet_title: spreadsheetTitle, worksheet: title },
+      composio_account_id: conn.composio_account_id,
+      connected_email: conn.connected_email,
       status: 'connected',
+      provider_meta: { ...(conn.provider_meta || {}), sheet_id: sheetId, sheet_title: spreadsheetTitle, worksheet: title },
     });
     res.json({ ok: true, sheetId, sheetTitle: spreadsheetTitle, worksheet: title });
   } catch (err) {
@@ -413,7 +416,7 @@ router.post('/googlesheets/connect', async (req, res) => {
   }
 });
 
-// ========================= COMPOSIO (Gmail, Calendar, GitHub) =========================
+// ========================= COMPOSIO (Gmail, Calendar, GitHub, Google Sheets) =========================
 
 // Connect ALWAYS starts a fresh sign-in under this workspace's own entity. It
 // never adopts an existing account (that is how a second workspace used to end
@@ -458,7 +461,13 @@ router.post('/:provider/check', async (req, res) => {
     if (!acct) return res.json({ ok: false, status: connectionId ? 'pending' : 'not_connected' });
 
     const identity = await composio.fetchAccountIdentity(provider, acct);
-    const row = await connections.upsertConnection(wsId, provider, connectionRow(acct, identity));
+    const fresh = connectionRow(acct, identity);
+    if (provider === 'googlesheets') {
+      const prev = await connections.getConnection(wsId, provider);
+      const { sheet_id, sheet_title, worksheet } = prev?.provider_meta || {};
+      if (sheet_id) Object.assign(fresh.provider_meta, { sheet_id, sheet_title, worksheet });
+    }
+    const row = await connections.upsertConnection(wsId, provider, fresh);
     res.json({ ok: true, status: 'connected', connectionId: acct.id, connected_email: row?.connected_email || identity || null });
   } catch (err) {
     res.status(400).json({ error: err.message });

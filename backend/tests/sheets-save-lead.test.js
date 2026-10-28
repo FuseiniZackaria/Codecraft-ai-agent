@@ -65,7 +65,7 @@ async function main() {
   // --- Missing configuration gives a clear error ---
   googleSheets._resetForTests();
   await assert.rejects(() => googleSheets.saveLead({ name: 'A' }, { workspaceId: OWNER_WS }),
-    (err) => err.code === 'SHEETS_NOT_CONFIGURED' && /GOOGLE_SERVICE_ACCOUNT_JSON/.test(err.message) || /LEADS_SHEET_ID|No leads sheet/.test(err.message));
+    (err) => err.code === 'SHEETS_NOT_CONFIGURED' && /GOOGLE_SERVICE_ACCOUNT_JSON/.test(err.message) || /LEADS_SHEET_ID|not connected/.test(err.message));
   assert.strictEqual(await googleSheets.isConfigured(OWNER_WS), false);
   console.log('✓ missing service account / sheet id -> clear error, isConfigured false');
 
@@ -108,7 +108,7 @@ async function main() {
   console.log('✓ only name is required; other columns are left blank');
 
   // --- Another workspace never falls back to the owner's LEADS_SHEET_ID ---
-  await assert.rejects(() => googleSheets.saveLead({ name: 'X' }, { workspaceId: OTHER_WS }), /No leads sheet is connected for this workspace/);
+  await assert.rejects(() => googleSheets.saveLead({ name: 'X' }, { workspaceId: OTHER_WS }), /Google Sheets is not connected for this workspace/);
   assert.strictEqual(await googleSheets.isConfigured(OTHER_WS), false);
   await connections.upsertConnection(OTHER_WS, 'googlesheets', { provider_meta: { sheet_id: OTHER_SHEET }, status: 'connected' });
   await googleSheets.saveLead({ name: 'Other Co', email: 'hi@other.co' }, { workspaceId: OTHER_WS });

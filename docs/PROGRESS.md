@@ -1,5 +1,11 @@
 # CodeCraft AI — Progress
 
+## Google Sheets through Composio
+
+- Connections → **Google Sheets** now signs in with Google through Composio (like Gmail), then asks for the sheet link. Calls run as the workspace's own Composio account (`ws_<workspace_id>`); no Google Cloud project, service account or key needed. Reconnecting keeps the chosen sheet; **Change sheet** switches it.
+- Same lead format, header row and duplicate-email skip as before (`core/googleSheets.js` maps the calls to Composio `GOOGLESHEETS_*` actions). The service account + `LEADS_SHEET_ID` stays as an owner-only fallback.
+- Route: `POST /api/connections/googlesheets/sheet` (connect/check/disconnect use the shared Composio routes). Test: `sheets-composio`.
+
 ## Fix: invited workspaces didn't see their own tasks
 
 - `SupabaseStore.saveTask` and `addChatMessage` never wrote `workspace_id`, so every task and chat row was saved with no workspace. Since the isolation fix, no-workspace rows show only to the app owner, so an invited workspace's tasks appeared on the owner's Tasks page instead of theirs. Both now store the workspace.

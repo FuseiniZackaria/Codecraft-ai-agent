@@ -4,17 +4,13 @@ const { google } = require('googleapis');
 /**
  * Google Sheets lead storage.
  *
- * Auth: one Google service account for the whole server, read from
- *   GOOGLE_SERVICE_ACCOUNT_JSON  (the key file's JSON pasted into an env var -
- *                                 easiest on Render), or
- *   GOOGLE_SERVICE_ACCOUNT_FILE  (path to the key file, e.g. a Render Secret
- *                                 File at /etc/secrets/google-sa.json).
- * Each workspace shares its own sheet with the service account's client_email.
+ * Auth, per workspace: the workspace connects its own Google account through
+ * Composio (Connections -> Google Sheets -> Connect, like Gmail) and then
+ * picks the sheet. Calls run as that workspace's Composio account only.
  *
- * Which sheet: the workspace's own "googlesheets" connection (Connections
- * page). LEADS_SHEET_ID is a fallback for the app owner's workspace (and
- * background callers with no workspace) only - another workspace never writes
- * into the owner's sheet.
+ * Fallback for the app owner / background jobs: a Google service account
+ * (GOOGLE_SERVICE_ACCOUNT_JSON or GOOGLE_SERVICE_ACCOUNT_FILE) writing to
+ * LEADS_SHEET_ID. Another workspace never writes into the owner's sheet.
  */
 
 const SCOPES = ['https://www.googleapis.com/auth/spreadsheets'];
@@ -71,12 +67,64 @@ function serviceAccountEmail() {
   }
 }
 
-function getClient() {
+function getServiceAccountClient() {
   if (client) return client;
   const creds = loadCredentials();
   const auth = new google.auth.GoogleAuth({ credentials: creds, scopes: SCOPES });
   client = google.sheets({ version: 'v4', auth });
   return client;
+}
+
+// Composio responses wrap the Google payload differently per action/version.
+function unwrap(d, key) {
+  for (const c of [d, d?.data, d?.response_data, d?.valueRange, d?.data?.response_data]) {
+    if (c && typeof c === 'object' && key in c) return c;
+  }
+  return d || {};
+}
+
+/**
+ * The same shape as the googleapis Sheets client (spreadsheets.get,
+ * spreadsheets.values.get/update/append), backed by Composio and running as
+ * this workspace's own connected Google account.
+ */
+function composioClient(workspaceId) {
+  const run = (slug, args) => require('./composio').execute(slug, args, 'googlesheets', { workspaceId });
+  return {
+    spreadsheets: {
+      get: async ({ spreadsheetId }) => ({
+        data: unwrap(await run('GOOGLESHEETS_GET_SPREADSHEET_INFO', { spreadsheet_id: spreadsheetId }), 'sheets'),
+      }),
+      values: {
+        get: async ({ spreadsheetId, range }) => ({
+          data: { values: unwrap(await run('GOOGLESHEETS_VALUES_GET', { spreadsheet_id: spreadsheetId, range }), 'values').values || [] },
+        }),
+        update: async ({ spreadsheetId, range, valueInputOption, requestBody }) => ({
+          data: await run('GOOGLESHEETS_VALUES_UPDATE', {
+            spreadsheet_id: spreadsheetId, range, value_input_option: valueInputOption, values: requestBody.values,
+          }),
+        }),
+        append: async ({ spreadsheetId, range, valueInputOption, insertDataOption, requestBody }) => ({
+          data: await run('GOOGLESHEETS_SPREADSHEETS_VALUES_APPEND', {
+            spreadsheetId, range, valueInputOption, insertDataOption, values: requestBody.values,
+          }),
+        }),
+      },
+    },
+  };
+}
+
+async function sheetsConnection(workspaceId) {
+  if (!workspaceId) return null;
+  const conn = await require('./workspaceConnections').getConnection(workspaceId, 'googlesheets');
+  return conn?.status === 'connected' && conn.composio_account_id ? conn : null;
+}
+
+// A workspace with its own Composio Google account uses it; otherwise the
+// server's service account (owner fallback).
+async function getClient(workspaceId) {
+  if (await sheetsConnection(workspaceId)) return { sheets: composioClient(workspaceId), via: 'composio' };
+  return { sheets: getServiceAccountClient(), via: 'service_account' };
 }
 
 /** Accepts a bare sheet id or a full https://docs.google.com/spreadsheets/d/<id>/... URL. */
@@ -88,16 +136,22 @@ function parseSheetId(input) {
 }
 
 async function resolveSheetId(workspaceId) {
+  const conn = await sheetsConnection(workspaceId);
+  if (conn) {
+    if (conn.provider_meta?.sheet_id) return conn.provider_meta.sheet_id;
+    throw new SheetsConfigError('Google Sheets is connected but no sheet is chosen yet - paste the sheet link on the Connections page.');
+  }
   if (workspaceId) {
-    const conn = await require('./workspaceConnections').getConnection(workspaceId, 'googlesheets');
-    if (conn?.status === 'connected' && conn.provider_meta?.sheet_id) return conn.provider_meta.sheet_id;
+    const old = await require('./workspaceConnections').getConnection(workspaceId, 'googlesheets');
+    // Pre-Composio rows (sheet shared with the service account) keep working.
+    if (old?.status === 'connected' && old.provider_meta?.sheet_id && !old.composio_account_id) return old.provider_meta.sheet_id;
   }
   const fallback = process.env.LEADS_SHEET_ID;
   const ownerOk = !workspaceId || await require('./workspaceContext').canSeeLegacy(workspaceId);
   if (fallback && ownerOk) return fallback;
   throw new SheetsConfigError(
     workspaceId
-      ? 'No leads sheet is connected for this workspace - add one on the Connections page (Google Sheets).'
+      ? 'Google Sheets is not connected for this workspace - connect it on the Connections page.'
       : 'LEADS_SHEET_ID is not set.'
   );
 }
@@ -105,8 +159,8 @@ async function resolveSheetId(workspaceId) {
 /** True when a save would have somewhere to go - lets callers skip quietly when Sheets isn't set up. */
 async function isConfigured(workspaceId) {
   try {
-    loadCredentials();
     await resolveSheetId(workspaceId);
+    if (!(await sheetsConnection(workspaceId))) loadCredentials();
     return true;
   } catch {
     return false;
@@ -115,10 +169,20 @@ async function isConfigured(workspaceId) {
 
 // Google returns 403 (no access) or 404 (wrong id / not visible to the
 // service account) for a sheet that isn't shared with it.
-function explainGoogleError(err, sheetId) {
+function explainGoogleError(err, sheetId, via = 'service_account') {
   const status = err?.code || err?.response?.status;
   const email = serviceAccountEmail() || 'the service account';
   const googleMsg = err?.response?.data?.error?.message || err?.message || '';
+  if (err?.code === 'WORKSPACE_CONNECTION_MISSING') return new SheetsConfigError(err.message);
+  if (via === 'composio') {
+    if (/not found|404|permission|403|does not have access|caller does not have/i.test(googleMsg)) {
+      return new SheetsConfigError(
+        `Can't open Google Sheet ${sheetId}. Check the link, and that the Google account you connected can edit it.` +
+        (googleMsg ? ` (Google said: ${googleMsg.slice(0, 300)})` : '')
+      );
+    }
+    return new Error(`Google Sheets error: ${googleMsg.slice(0, 500)}`);
+  }
   // Google also answers 403 when the Sheets API isn't enabled in the
   // service account's project - say that instead of blaming sharing.
   if (/has not been used in project|is disabled|SERVICE_DISABLED|accessNotConfigured/i.test(googleMsg)) {
@@ -153,13 +217,13 @@ async function firstSheetTitle(sheets, sheetId) {
   return { title, spreadsheetTitle: meta?.data?.properties?.title || null };
 }
 
-/** Checks the server can open the sheet (used when a workspace connects one). */
-async function checkAccess(sheetId) {
-  const sheets = getClient();
+/** Checks the workspace's Google account (or the service account) can open the sheet. */
+async function checkAccess(sheetId, { workspaceId = null } = {}) {
+  const { sheets, via } = await getClient(workspaceId);
   try {
     return await firstSheetTitle(sheets, sheetId);
   } catch (err) {
-    throw explainGoogleError(err, sheetId);
+    throw explainGoogleError(err, sheetId, via);
   }
 }
 
@@ -175,7 +239,7 @@ async function saveLead({ name, email, phone, source, notes } = {}, { workspaceI
   const cleanEmail = String(email || '').trim();
 
   const sheetId = await resolveSheetId(workspaceId);
-  const sheets = getClient();
+  const { sheets, via } = await getClient(workspaceId);
 
   try {
     const { title } = await firstSheetTitle(sheets, sheetId);
@@ -218,7 +282,7 @@ async function saveLead({ name, email, phone, source, notes } = {}, { workspaceI
     return `Saved lead ${cleanName}${cleanEmail ? ` (${cleanEmail})` : ''} to the sheet.`;
   } catch (err) {
     if (err instanceof SheetsConfigError) throw err;
-    throw explainGoogleError(err, sheetId);
+    throw explainGoogleError(err, sheetId, via);
   }
 }
 

@@ -94,9 +94,9 @@ async function resolveConnectedAccountId(toolkitSlug) {
 // Toolkits that can be connected per workspace (rows in workspace_connections,
 // provider name == toolkit slug). Every other toolkit (youtube, reddit, ...) only
 // has the server's single legacy account, so it is owner-workspace only.
-const PER_WORKSPACE_TOOLKITS = new Set(['gmail', 'googlecalendar', 'github']);
+const PER_WORKSPACE_TOOLKITS = new Set(['gmail', 'googlecalendar', 'github', 'googlesheets']);
 
-const TOOLKIT_LABELS = { gmail: 'Gmail', googlecalendar: 'Google Calendar', github: 'GitHub' };
+const TOOLKIT_LABELS = { gmail: 'Gmail', googlecalendar: 'Google Calendar', github: 'GitHub', googlesheets: 'Google Sheets' };
 
 class WorkspaceConnectionError extends Error {
   constructor(message) {

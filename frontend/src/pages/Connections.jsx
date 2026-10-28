@@ -12,7 +12,7 @@ const PROVIDERS = [
   { key: 'github',         label: 'GitHub',           icon: GitBranch,      composio: true,  desc: 'Create repos, commit files, open PRs.' },
   { key: 'telegram',       label: 'Telegram',         icon: MessageCircle,  composio: false, desc: 'Receive and reply to Telegram messages.' },
   { key: 'whatsapp',       label: 'WhatsApp',         icon: MessageCircle,  composio: false, desc: 'Receive and reply to WhatsApp messages.' },
-  { key: 'googlesheets',   label: 'Google Sheets',    icon: Table2,         composio: false, desc: 'Sales Manager saves every lead it finds as a new row.' },
+  { key: 'googlesheets',   label: 'Google Sheets',    icon: Table2,         composio: true,  desc: 'Sales Manager saves every lead it finds as a new row.' },
 ];
 
 function StatusBadge({ status }) {
@@ -100,18 +100,12 @@ function TelegramWizard({ onClose, onConnected }) {
 
 // ======================== WHATSAPP WIZARD ========================
 
+// Step 2 of Google Sheets, after the Google sign-in: pick the leads sheet.
 function SheetsWizard({ onClose, onConnected }) {
   const [sheet, setSheet] = useState('');
-  const [serviceEmail, setServiceEmail] = useState(undefined); // undefined = loading
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState(null);
   const [done, setDone] = useState(null);
-
-  useEffect(() => {
-    api.sheetsInfo()
-      .then((r) => setServiceEmail(r.serviceAccountEmail || null))
-      .catch(() => setServiceEmail(null));
-  }, []);
 
   async function handleConnect() {
     setBusy(true); setError(null);
@@ -124,7 +118,7 @@ function SheetsWizard({ onClose, onConnected }) {
   }
 
   return (
-    <Modal title="Connect Google Sheets" onClose={onClose}>
+    <Modal title="Choose your leads sheet" onClose={onClose}>
       {done ? (
         <div className="space-y-4">
           <div className="flex items-center gap-2 text-emerald-500 font-medium"><CheckCircle2 size={16} /> Connected to "{done.sheetTitle || done.sheetId}"</div>
@@ -133,20 +127,9 @@ function SheetsWizard({ onClose, onConnected }) {
         </div>
       ) : (
         <div className="space-y-4">
-          {serviceEmail === undefined ? (
-            <p className="text-sm text-[var(--color-text-muted)] flex items-center gap-2"><Loader2 size={14} className="animate-spin" /> Loading...</p>
-          ) : serviceEmail ? (
-            <div className="text-sm text-[var(--color-text-muted)] space-y-2">
-              <p>1. Open your Google Sheet, click <strong>Share</strong>, and add this address as an <strong>Editor</strong>:</p>
-              <div className="flex items-center gap-1 text-xs bg-[var(--color-surface-2)] rounded px-2 py-1.5">
-                <span className="truncate font-[var(--font-mono)]">{serviceEmail}</span>
-                <CopyButton text={serviceEmail} />
-              </div>
-              <p>2. Paste the sheet's link below.</p>
-            </div>
-          ) : (
-            <ErrorMsg>Google Sheets isn't set up on the server yet (missing service-account key). Ask the app owner to set GOOGLE_SERVICE_ACCOUNT_JSON.</ErrorMsg>
-          )}
+          <p className="text-sm text-[var(--color-text-muted)]">
+            Paste the link of a Google Sheet that the Google account you connected can edit. No sharing needed if it's your own sheet.
+          </p>
           <input
             type="text"
             value={sheet}
@@ -155,7 +138,7 @@ function SheetsWizard({ onClose, onConnected }) {
             className="w-full px-3 py-2 rounded-md border border-[var(--color-border)] bg-[var(--color-bg)] text-sm outline-none focus:border-[var(--color-accent)]/50"
           />
           {error && <ErrorMsg>{error}</ErrorMsg>}
-          <button onClick={handleConnect} disabled={busy || !sheet.trim() || !serviceEmail} className={`${BTN_PRIMARY} w-full`}>
+          <button onClick={handleConnect} disabled={busy || !sheet.trim()} className={`${BTN_PRIMARY} w-full`}>
             {busy ? <><Loader2 size={14} className="animate-spin" /> Checking access...</> : <><Link2 size={14} /> Connect sheet</>}
           </button>
         </div>
@@ -495,6 +478,7 @@ export default function Connections() {
   const [wizard, setWizard] = useState(null); // { type: 'telegram' | 'whatsapp' | 'composio', provider?, label? }
   const [testDialog, setTestDialog] = useState(null); // { provider, label }
   const [disconnecting, setDisconnecting] = useState(null);
+  const [pickSheet, setPickSheet] = useState(false); // Google Sheets step 2
 
   const load = useCallback(async (showSpinner) => {
     if (showSpinner) setRefreshing(true);
@@ -517,9 +501,12 @@ export default function Connections() {
       window.history.replaceState(null, '', window.location.pathname);
       const label = PROVIDERS.find((p) => p.key === returned)?.label || returned;
       api.checkComposio(returned, null)
-        .then((res) => setReturnNotice(res.ok
-          ? { ok: true, text: `${label} connected${res.connected_email ? ` as ${res.connected_email}` : ''}. You can close the other tab.` }
-          : { ok: false, text: `${label} sign-in isn't finished yet (${res.status || 'not connected'}). Try Connect again.` }))
+        .then((res) => {
+          setReturnNotice(res.ok
+            ? { ok: true, text: `${label} connected${res.connected_email ? ` as ${res.connected_email}` : ''}. You can close the other tab.` }
+            : { ok: false, text: `${label} sign-in isn't finished yet (${res.status || 'not connected'}). Try Connect again.` });
+          if (res.ok && returned === 'googlesheets') setPickSheet(true);
+        })
         .catch((err) => setReturnNotice({ ok: false, text: err.message }))
         .finally(() => load(false));
       return;
@@ -543,8 +530,6 @@ export default function Connections() {
       setWizard({ type: 'composio', provider: providerDef.key, label: providerDef.label });
     } else if (providerDef.key === 'telegram') {
       setWizard({ type: 'telegram' });
-    } else if (providerDef.key === 'googlesheets') {
-      setWizard({ type: 'googlesheets' });
     } else if (providerDef.key === 'whatsapp') {
       setWizard({ type: 'whatsapp' });
     }
@@ -599,20 +584,23 @@ export default function Connections() {
                   <StatusBadge status={conn.status} />
                 </div>
                 <span className="ml-auto text-[9px] uppercase tracking-wide text-[var(--color-text-muted)] font-[var(--font-mono)] border border-[var(--color-border)] rounded px-1.5 py-0.5">
-                  {p.composio ? 'via Composio' : p.key === 'telegram' ? 'Bot API' : p.key === 'googlesheets' ? 'Service account' : 'Direct'}
+                  {p.composio ? 'via Composio' : p.key === 'telegram' ? 'Bot API' : 'Direct'}
                 </span>
               </div>
               <p className="text-xs text-[var(--color-text-muted)] flex-1">{p.desc}</p>
 
               {isConnected && p.composio && (
                 <p className="text-xs text-[var(--color-text-muted)]">
-                  Account: <strong>{conn.connected_email || 'connected (address unavailable)'}</strong>
+                  Account: <strong>{conn.connected_email || (p.key === 'googlesheets' ? 'Google account connected' : 'connected (address unavailable)')}</strong>
                 </p>
               )}
               {isConnected && conn.sheet_id && (
                 <p className="text-xs text-[var(--color-text-muted)] truncate">
                   Sheet: <a href={conn.sheet_url} target="_blank" rel="noreferrer" className="text-[var(--color-accent)] hover:underline"><strong>{conn.sheet_title || conn.sheet_id}</strong></a>
                 </p>
+              )}
+              {isConnected && p.key === 'googlesheets' && !conn.sheet_id && (
+                <p className="text-xs text-[var(--color-warning)]">No sheet chosen yet - leads aren't saved until you pick one.</p>
               )}
               {isConnected && conn.bot_username && (
                 <p className="text-xs text-[var(--color-text-muted)]">Bot: <strong>@{conn.bot_username}</strong></p>
@@ -637,6 +625,11 @@ export default function Connections() {
                   </button>
                 ) : (
                   <>
+                    {p.key === 'googlesheets' && (
+                      <button onClick={() => setPickSheet(true)} className={`${conn.sheet_id ? BTN_SECONDARY : BTN_PRIMARY} text-xs flex-1`}>
+                        <Table2 size={13} /> {conn.sheet_id ? 'Change sheet' : 'Choose sheet'}
+                      </button>
+                    )}
                     {(p.key === 'telegram' || p.key === 'whatsapp') && (
                       <button onClick={() => setTestDialog({ provider: p.key, label: p.label })} className={`${BTN_SECONDARY} text-xs flex-1`}>
                         <Send size={13} /> Test
@@ -660,9 +653,14 @@ export default function Connections() {
 
       {wizard?.type === 'telegram' && <TelegramWizard onClose={() => setWizard(null)} onConnected={() => load(false)} />}
       {wizard?.type === 'whatsapp' && <WhatsAppWizard onClose={() => setWizard(null)} onConnected={() => load(false)} />}
-      {wizard?.type === 'googlesheets' && <SheetsWizard onClose={() => setWizard(null)} onConnected={() => load(false)} />}
+      {pickSheet && <SheetsWizard onClose={() => setPickSheet(false)} onConnected={() => load(false)} />}
       {wizard?.type === 'composio' && (
-        <ComposioWizard provider={wizard.provider} label={wizard.label} onClose={() => setWizard(null)} onConnected={() => load(false)} />
+        <ComposioWizard
+          provider={wizard.provider}
+          label={wizard.label}
+          onClose={() => setWizard(null)}
+          onConnected={() => { load(false); if (wizard.provider === 'googlesheets') setPickSheet(true); }}
+        />
       )}
       {testDialog && <TestDialog provider={testDialog.provider} providerLabel={testDialog.label} onClose={() => setTestDialog(null)} />}
     </div>
