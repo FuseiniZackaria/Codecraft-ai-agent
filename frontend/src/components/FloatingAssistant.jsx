@@ -14,6 +14,31 @@ const CORNERS = {
   tl: { top: 70, left: 20, align: 'start' },
 };
 
+const PAUSE_MS = 1500; // silence after speech that ends one voice message
+const MAX_VOICE_RESTARTS = 5; // failed restarts in a row before the mic gives up
+
+// Friendly text for SpeechRecognition error codes.
+const VOICE_ERRORS = {
+  'not-allowed': 'Microphone blocked. Allow it in your browser\'s site settings, then click the mic.',
+  'service-not-allowed': 'Your browser doesn\'t allow speech recognition here. Try Chrome or Edge, or check its settings.',
+  'audio-capture': 'No microphone found. Plug one in or check your sound settings. Retrying…',
+  network: 'Voice recognition lost its connection. Retrying…',
+  'language-not-supported': 'Voice input isn\'t available for this language in your browser.',
+  'bad-grammar': 'Voice input isn\'t available in this browser.',
+};
+const FATAL_VOICE_ERRORS = new Set(['not-allowed', 'service-not-allowed', 'language-not-supported', 'bad-grammar']);
+
+const wordsOf = (s) => String(s || '').toLowerCase().replace(/[^a-z0-9' ]+/g, ' ').split(/\s+/).filter(Boolean);
+
+// True when most of what the mic heard is words Ian is saying (or just said).
+function isEcho(heard, spoken) {
+  const words = wordsOf(heard);
+  if (!words.length) return true;
+  const said = new Set(wordsOf(spoken));
+  if (!said.size) return false;
+  return words.filter((w) => said.has(w)).length / words.length >= 0.6;
+}
+
 function PanelMessage({ msg, tasks }) {
   const isUser = msg.role === 'user';
   const liveTask = msg.task ? tasks.find((t) => t.id === msg.task.id) || msg.task : null;
@@ -67,11 +92,9 @@ export default function FloatingAssistant() {
   const panelRef = useRef(null);
   const recRef = useRef(null);
   const voiceModeRef = useRef(assistant.voiceMode);
-  const streamingRef = useRef(assistant.streaming);
   const silenceTimerRef = useRef(null);
 
   useEffect(() => { voiceModeRef.current = assistant.voiceMode; }, [assistant.voiceMode]);
-  useEffect(() => { streamingRef.current = assistant.streaming; }, [assistant.streaming]);
 
   // Scope from current route: /departments/:deptKey/... -> scope: deptKey
   const scope = (() => {
@@ -103,15 +126,76 @@ export default function FloatingAssistant() {
     if (!Ctor) setVoiceSupported(false);
   }, []);
 
-  // Trigger-match wrapper around sendMessage - the ignored path never
-  // touches the API, so ignored messages cost zero.
+  // --- Voice: continuous conversation (no name needed) ---
+  // One SpeechRecognition session at a time (recRef). Final results are
+  // collected and sent as one message after a 1.5s pause; interim text is only
+  // shown, never sent. The mic stays on while Ian speaks so you can interrupt,
+  // and anything that matches his own words is ignored as echo.
+  const [speaking, setSpeaking] = useState(false);
+  const [voiceError, setVoiceError] = useState(null);
+  const [heard, setHeard] = useState(''); // live transcript, display only
+  const speakingRef = useRef(false);
+  const speakTokenRef = useRef(0);
+  const spokenTextRef = useRef('');
+  const echoUntilRef = useRef(0);
+  const bufferRef = useRef(''); // final results not sent yet
+  const interimRef = useRef('');
+  const lastSpeechAtRef = useRef(0);
+  const pauseTimerRef = useRef(null);
+  const restartTimerRef = useRef(null);
+  const failuresRef = useRef(0);
+  const trySendRef = useRef(null);
+  const voiceOffRef = useRef(null);
+
+  function stopSpeaking() {
+    speakTokenRef.current += 1;
+    try { window.speechSynthesis?.cancel(); } catch {}
+    if (speakingRef.current) echoUntilRef.current = Date.now() + 1500;
+    speakingRef.current = false;
+    setSpeaking(false);
+  }
+
+  function speak(text) {
+    if (!window.speechSynthesis || !text) return;
+    const clean = text
+      .replace(/```[\s\S]*?```/g, ' code block ')
+      .replace(/`([^`]+)`/g, '$1')
+      .replace(/\*\*([^*]+)\*\*/g, '$1')
+      .replace(/\[([^\]]+)\]\([^)]+\)/g, '$1')
+      .replace(/^#+\s*/gm, '')
+      .replace(/^\s*[-*]\s+/gm, '');
+    stopSpeaking();
+    const token = speakTokenRef.current;
+    const utter = new SpeechSynthesisUtterance(clean);
+    utter.rate = 1.0;
+    spokenTextRef.current = clean;
+    speakingRef.current = true;
+    setSpeaking(true);
+    // Chrome cuts long utterances off after ~15s unless nudged.
+    const keepAlive = setInterval(() => {
+      if (window.speechSynthesis.speaking) { window.speechSynthesis.pause(); window.speechSynthesis.resume(); }
+    }, 10000);
+    const done = () => {
+      clearInterval(keepAlive);
+      if (token !== speakTokenRef.current) return; // replaced or cancelled
+      speakingRef.current = false;
+      setSpeaking(false);
+      echoUntilRef.current = Date.now() + 1500; // late echo can still arrive
+      if (voiceModeRef.current) resetSilenceTimer();
+    };
+    utter.onend = done;
+    utter.onerror = done;
+    window.speechSynthesis.speak(utter);
+  }
+
+  // Typed messages follow the "Respond to" setting; voice never needs the name.
   const trySend = useCallback(async (rawText, { fromVoice = false } = {}) => {
-    const effectiveMode = fromVoice ? 'name' : assistant.triggerMode;
     const text = (rawText || '').trim();
     if (!text) return;
 
     let toSend = text;
-    if (effectiveMode === 'name') {
+    if (!fromVoice && assistant.triggerMode === 'name') {
+      // The ignored path never touches the API, so ignored messages cost zero.
       const { matched, stripped } = matchNameTrigger(text, assistant.nameVariations);
       if (!matched) {
         setAssistant({ ignoredHint: `Say "${assistant.name}" to get my attention.` });
@@ -123,121 +207,202 @@ export default function FloatingAssistant() {
       toSend = stripped || `(no instruction after "${assistant.name}")`;
     }
 
-    setInput('');
+    if (!fromVoice) setInput('');
     const result = await sendMessage({ text: toSend, scope, voice: fromVoice });
 
-    // TTS the reply if enabled.
-    const spoken = useStore.getState().assistant.spokenReplies || fromVoice;
-    if (spoken && result?.accumulated && window.speechSynthesis) {
-      const clean = result.accumulated
-        .replace(/```[\s\S]*?```/g, ' code block ')
-        .replace(/`([^`]+)`/g, '$1')
-        .replace(/\*\*([^*]+)\*\*/g, '$1')
-        .replace(/\[([^\]]+)\]\([^)]+\)/g, '$1')
-        .replace(/^#+\s*/gm, '')
-        .replace(/^\s*[-*]\s+/gm, '');
-      const utter = new SpeechSynthesisUtterance(clean);
-      utter.rate = 1.0;
-      window.speechSynthesis.cancel();
-      window.speechSynthesis.speak(utter);
+    // Don't read out an answer you've already started talking over.
+    if (useStore.getState().assistant.spokenReplies && result?.accumulated && !bufferRef.current) {
+      speak(result.accumulated);
     }
+    if (voiceModeRef.current) resetSilenceTimer();
   }, [assistant.triggerMode, assistant.nameVariations, assistant.name, scope, sendMessage, setAssistant]);
+  trySendRef.current = trySend;
 
-  // --- Voice mode: continuous listening for the trigger word ---
-  const startListening = useCallback(() => {
+  function resetSilenceTimer() {
+    if (silenceTimerRef.current) clearTimeout(silenceTimerRef.current);
+    silenceTimerRef.current = setTimeout(() => {
+      setVoiceError('Mic turned off after 2 minutes of silence. Click the mic to talk again.');
+      turnVoiceOff();
+    }, 2 * 60 * 1000);
+  }
+
+  function schedulePauseFlush() {
+    if (pauseTimerRef.current) clearTimeout(pauseTimerRef.current);
+    const wait = Math.max(200, lastSpeechAtRef.current + PAUSE_MS - Date.now());
+    pauseTimerRef.current = setTimeout(flushVoice, wait);
+  }
+
+  function flushVoice() {
+    pauseTimerRef.current = null;
+    const text = bufferRef.current.trim();
+    if (!text) {
+      // Words heard but not finalised yet - give the browser a moment.
+      if (interimRef.current && Date.now() - lastSpeechAtRef.current < 4000) {
+        pauseTimerRef.current = setTimeout(flushVoice, 400);
+      } else {
+        interimRef.current = '';
+        setHeard('');
+      }
+      return;
+    }
+    // Ian is still answering the last message - send this one right after.
+    if (useStore.getState().assistant.streaming) {
+      pauseTimerRef.current = setTimeout(flushVoice, 400);
+      return;
+    }
+    bufferRef.current = '';
+    interimRef.current = '';
+    setHeard('');
+    if (wordsOf(text).length < 2) return; // one-word noise
+    trySendRef.current?.(text, { fromVoice: true });
+  }
+
+  function startRecognition() {
     const Ctor = window.SpeechRecognition || window.webkitSpeechRecognition;
-    if (!Ctor) return;
-    if (recRef.current) return; // already listening
+    if (!Ctor || recRef.current || !voiceModeRef.current) return;
+    if (restartTimerRef.current) { clearTimeout(restartTimerRef.current); restartTimerRef.current = null; }
     const rec = new Ctor();
     rec.continuous = true;
-    rec.interimResults = true;
+    rec.interimResults = true; // for pause detection + interruption; never sent
     rec.lang = 'en-US';
+    let started = false;
+    let failed = false;
+
+    rec.onstart = () => {
+      if (recRef.current !== rec) return;
+      started = true;
+      setAssistant({ listening: true });
+    };
 
     rec.onresult = (e) => {
-      // Reset the 2-min silence timer on any speech activity.
-      resetSilenceTimer();
-      // Only process the latest final result.
+      if (recRef.current !== rec) return;
+      let finalText = '';
+      let interim = '';
       for (let i = e.resultIndex; i < e.results.length; i++) {
-        if (e.results[i].isFinal) {
-          const transcript = e.results[i][0].transcript;
-          trySend(transcript, { fromVoice: true });
-        }
+        const t = e.results[i][0].transcript;
+        if (e.results[i].isFinal) finalText += ` ${t}`;
+        else interim += ` ${t}`;
       }
+      finalText = finalText.trim();
+      interim = interim.trim();
+      const now = `${finalText} ${interim}`.trim();
+      if (!now) return;
+
+      // Ian's own voice coming back through the speakers - drop it.
+      const echoWindow = speakingRef.current || Date.now() < echoUntilRef.current;
+      if (echoWindow && isEcho(now, spokenTextRef.current)) return;
+      if (speakingRef.current) {
+        if (wordsOf(now).length < 2) return;
+        stopSpeaking(); // you talked over Ian: stop him and listen
+      }
+
+      failuresRef.current = 0;
+      setVoiceError(null);
+      resetSilenceTimer();
+      if (interim) lastSpeechAtRef.current = Date.now();
+      else if (!lastSpeechAtRef.current) lastSpeechAtRef.current = Date.now();
+      if (finalText) bufferRef.current = `${bufferRef.current} ${finalText}`.trim();
+      interimRef.current = interim;
+      setHeard(`${bufferRef.current} ${interim}`.trim());
+      schedulePauseFlush();
     };
+
+    rec.onerror = (e) => {
+      if (recRef.current !== rec) return;
+      // The browser stops after silence ("no-speech") or on its own ("aborted"); onend restarts.
+      if (e.error === 'no-speech' || e.error === 'aborted') return;
+      const message = VOICE_ERRORS[e.error] || `Voice input hit a problem (${e.error}). Retrying…`;
+      setVoiceError(message);
+      if (FATAL_VOICE_ERRORS.has(e.error)) { turnVoiceOff(); return; }
+      failed = true;
+    };
+
     rec.onend = () => {
       if (recRef.current !== rec) return;
       recRef.current = null;
-      setAssistant({ listening: false });
-      // Auto-restart while voice mode is on and we're not currently streaming.
-      if (voiceModeRef.current && !streamingRef.current) {
-        setTimeout(() => { if (voiceModeRef.current && !recRef.current && !streamingRef.current) startListening(); }, 300);
+      if (!voiceModeRef.current) { setAssistant({ listening: false }); return; }
+      failuresRef.current = started && !failed ? 0 : failuresRef.current + 1;
+      if (failuresRef.current >= MAX_VOICE_RESTARTS) {
+        setVoiceError('Voice input keeps stopping, so I turned the mic off. Click the mic to try again.');
+        turnVoiceOff();
+        return;
       }
-    };
-    rec.onerror = (ev) => {
-      if (recRef.current !== rec) return;
-      if (ev.error === 'not-allowed' || ev.error === 'service-not-allowed') {
-        voiceModeRef.current = false;
-        setAssistant({ voiceMode: false, listening: false });
-      }
+      restartTimerRef.current = setTimeout(startRecognition, 250 * (failuresRef.current + 1));
     };
 
     try {
       rec.start();
       recRef.current = rec;
-      setAssistant({ listening: true });
-    } catch {
-      setTimeout(() => { if (voiceModeRef.current && !recRef.current) startListening(); }, 500);
+    } catch (err) {
+      failuresRef.current += 1;
+      if (failuresRef.current >= MAX_VOICE_RESTARTS) {
+        setVoiceError(`Couldn't start the microphone (${err.message}). Click the mic to try again.`);
+        turnVoiceOff();
+      } else {
+        restartTimerRef.current = setTimeout(startRecognition, 500 * failuresRef.current);
+      }
     }
-  }, [trySend, setAssistant]);
+  }
 
-  const stopListening = useCallback(() => {
+  // Ends the session and every timer. Safe to call any number of times.
+  function stopRecognition() {
+    for (const ref of [restartTimerRef, pauseTimerRef, silenceTimerRef]) {
+      if (ref.current) clearTimeout(ref.current);
+      ref.current = null;
+    }
+    bufferRef.current = '';
+    interimRef.current = '';
+    lastSpeechAtRef.current = 0;
+    setHeard('');
     const rec = recRef.current;
     recRef.current = null;
     if (rec) {
-      try { rec.onresult = null; rec.onend = null; rec.onerror = null; rec.abort(); } catch {}
+      try { rec.onstart = null; rec.onresult = null; rec.onend = null; rec.onerror = null; rec.abort(); } catch {}
     }
-    setAssistant({ listening: false });
-  }, [setAssistant]);
+  }
 
-  const resetSilenceTimer = useCallback(() => {
-    if (silenceTimerRef.current) clearTimeout(silenceTimerRef.current);
-    silenceTimerRef.current = setTimeout(() => {
-      // 2 minutes of no final transcript - turn voice mode off.
-      voiceModeRef.current = false;
-      setAssistant({ voiceMode: false });
-      stopListening();
-    }, 2 * 60 * 1000);
-  }, [setAssistant, stopListening]);
+  function turnVoiceOff() {
+    voiceModeRef.current = false;
+    setAssistant({ voiceMode: false, listening: false });
+    stopRecognition();
+  }
+  voiceOffRef.current = turnVoiceOff;
 
   // Toggle voice mode (never listens without this click).
-  const toggleVoice = useCallback(() => {
-    const next = !voiceModeRef.current;
-    voiceModeRef.current = next;
-    setAssistant({ voiceMode: next });
-    if (next) {
-      resetSilenceTimer();
-      startListening();
-    } else {
-      if (silenceTimerRef.current) clearTimeout(silenceTimerRef.current);
-      stopListening();
+  function toggleVoice() {
+    if (voiceModeRef.current) {
+      setVoiceError(null);
+      turnVoiceOff();
+      return;
     }
-  }, [setAssistant, startListening, stopListening, resetSilenceTimer]);
+    setVoiceError(null);
+    failuresRef.current = 0;
+    voiceModeRef.current = true;
+    setAssistant({ voiceMode: true });
+    resetSilenceTimer();
+    startRecognition();
+  }
 
-  // Turn off voice when the panel closes.
+  // Turn off voice (and any speech) when the panel closes.
   useEffect(() => {
-    if (!assistant.panelOpen && voiceModeRef.current) {
-      voiceModeRef.current = false;
-      setAssistant({ voiceMode: false });
-      stopListening();
-      if (silenceTimerRef.current) clearTimeout(silenceTimerRef.current);
+    if (!assistant.panelOpen) {
+      if (voiceModeRef.current || recRef.current) voiceOffRef.current();
+      if (speakingRef.current) stopSpeaking();
     }
-  }, [assistant.panelOpen, setAssistant, stopListening]);
+  }, [assistant.panelOpen]);
 
-  // Clean up on unmount.
-  useEffect(() => () => {
-    stopListening();
-    if (silenceTimerRef.current) clearTimeout(silenceTimerRef.current);
-  }, [stopListening]);
+  // Clean up on unmount and when the page is closed or reloaded.
+  useEffect(() => {
+    const onLeave = () => {
+      voiceOffRef.current?.();
+      try { window.speechSynthesis?.cancel(); } catch {}
+    };
+    window.addEventListener('pagehide', onLeave);
+    return () => {
+      window.removeEventListener('pagehide', onLeave);
+      onLeave();
+    };
+  }, []);
 
   // --- Drag + corner snap ---
   const dragStateRef = useRef(null);
@@ -275,10 +440,14 @@ export default function FloatingAssistant() {
   // it visually "grows from" the button. On mobile we fullscreen the panel.
   const isMobile = typeof window !== 'undefined' && window.innerWidth < 640;
 
-  const statusColor =
-    assistant.streaming ? 'bg-amber-400 animate-pulse' :
-    assistant.listening ? 'bg-green-400 animate-pulse' :
-    'bg-[var(--color-text-muted)]/50';
+  const voiceState = speaking ? 'speaking' : assistant.streaming ? 'thinking' : assistant.listening ? 'listening' : 'idle';
+  const statusColor = {
+    speaking: 'bg-sky-400 animate-pulse',
+    thinking: 'bg-amber-400 animate-pulse',
+    listening: 'bg-green-400 animate-pulse',
+    idle: 'bg-[var(--color-text-muted)]/50',
+  }[voiceState];
+  const hint = voiceError || (heard ? `🎙 ${heard}` : assistant.ignoredHint);
 
   return (
     <>
@@ -319,7 +488,7 @@ export default function FloatingAssistant() {
               <div className="text-sm font-medium leading-tight">{assistant.name}</div>
               <div className="text-[11px] text-[var(--color-text-muted)] leading-tight flex items-center gap-1.5">
                 <span className={`w-1.5 h-1.5 rounded-full ${statusColor}`} />
-                {assistant.streaming ? 'thinking…' : assistant.listening ? 'listening…' : scope ? `${scope} scope` : 'idle'}
+                {voiceState !== 'idle' ? `${voiceState}…` : scope ? `${scope} scope` : 'idle'}
               </div>
             </div>
             <button
@@ -433,10 +602,15 @@ export default function FloatingAssistant() {
             <div ref={bottomRef} />
           </div>
 
-          {/* Ignored hint */}
-          {assistant.ignoredHint && (
-            <div className="px-3 py-1.5 text-[11px] text-[var(--color-text-muted)] bg-[var(--color-surface-2)]/40 border-t border-[var(--color-border)]">
-              {assistant.ignoredHint}
+          {/* Voice error / live transcript / ignored hint */}
+          {hint && (
+            <div
+              role={voiceError ? 'alert' : undefined}
+              className={`px-3 py-1.5 text-[11px] bg-[var(--color-surface-2)]/40 border-t border-[var(--color-border)] ${
+                voiceError ? 'text-[var(--color-danger)]' : 'text-[var(--color-text-muted)]'
+              }`}
+            >
+              {hint}
             </div>
           )}
 
@@ -450,7 +624,7 @@ export default function FloatingAssistant() {
                 type="button"
                 onClick={toggleVoice}
                 disabled={!connected}
-                title={assistant.voiceMode ? 'Turn voice off' : 'Turn voice on (listens for your name)'}
+                title={assistant.voiceMode ? 'Turn voice off' : 'Turn voice on (everything you say goes to me)'}
                 aria-label={assistant.voiceMode ? 'Turn voice off' : 'Turn voice on'}
                 className={`p-2 rounded-md border shrink-0 ${
                   assistant.voiceMode
@@ -463,7 +637,10 @@ export default function FloatingAssistant() {
             )}
             <button
               type="button"
-              onClick={() => setSpokenReplies(!assistant.spokenReplies)}
+              onClick={() => {
+                if (assistant.spokenReplies) stopSpeaking();
+                setSpokenReplies(!assistant.spokenReplies);
+              }}
               title={assistant.spokenReplies ? 'Mute spoken replies' : 'Enable spoken replies'}
               aria-label={assistant.spokenReplies ? 'Mute spoken replies' : 'Enable spoken replies'}
               className={`p-2 rounded-md border shrink-0 ${
