@@ -122,6 +122,9 @@ const HANDLERS = {
 };
 
 async function invoke(toolName, input, context) {
+  const readTools = require('./readTools');
+  // Read-only lookups never reach the orchestrator; they handle their own errors.
+  if (readTools.isReadTool(toolName)) return readTools.runReadTool(toolName, input, context);
   const handler = HANDLERS[toolName];
   if (!handler) return { ok: false, error: `unknown tool: ${toolName}` };
   try {

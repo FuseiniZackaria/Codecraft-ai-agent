@@ -55,12 +55,28 @@ class SupabaseStore {
     return data ? this._fromRow(data) : null;
   }
 
+  // Optional (all additive): limit, status (string or array), since (ISO,
+  // created_at >=), lite (only the light columns + the failure message, no
+  // payload / full result - for summaries like the assistant's read tools).
   async listTasks(options = {}) {
     const ws = options.workspaceId || options.workspace_id || null;
-    let query = this.client.from('tasks').select('*').order('created_at', { ascending: false });
+    const columns = options.lite
+      ? 'id,agent,instruction,status,created_at,updated_at,workspace_id,result_error:result->>error'
+      : '*';
+    let query = this.client.from('tasks').select(columns).order('created_at', { ascending: false });
     if (ws) query = (await canSeeLegacy(ws)) ? query.or(`workspace_id.is.null,workspace_id.eq.${ws}`) : query.eq('workspace_id', ws);
+    if (options.status) query = Array.isArray(options.status) ? query.in('status', options.status) : query.eq('status', options.status);
+    if (options.since) query = query.gte('created_at', options.since);
+    if (options.limit) query = query.limit(options.limit);
     const { data, error } = await query;
     if (error) throw new Error(`SupabaseStore.listTasks: ${error.message}`);
+    if (options.lite) {
+      return (data || []).map((row) => ({
+        id: row.id, agent: row.agent, instruction: row.instruction, status: row.status,
+        result: row.result_error ? { error: row.result_error } : null,
+        created_at: row.created_at, updated_at: row.updated_at, workspace_id: row.workspace_id || null,
+      }));
+    }
     return (data || []).map((row) => this._fromRow(row));
   }
 
@@ -147,6 +163,10 @@ class SupabaseStore {
       .order('created_at', { ascending: false })
       .limit(limit);
     if (ws) query = (await canSeeLegacy(ws)) ? query.or(`workspace_id.is.null,workspace_id.eq.${ws}`) : query.eq('workspace_id', ws);
+    // Optional filters: taskId (metadata.taskId), since / until (ISO).
+    if (options.taskId) query = query.eq('metadata->>taskId', options.taskId);
+    if (options.since) query = query.gte('created_at', options.since);
+    if (options.until) query = query.lte('created_at', options.until);
     const { data, error } = await query;
     if (error) throw new Error(`SupabaseStore.getAuditLog: ${error.message}`);
     // taskId only ever exists nested inside metadata in the database (it
@@ -249,6 +269,7 @@ class SupabaseStore {
       .select('id,name,version,author,description,status,source_type,source_input,checksum,installed_at,updated_at,workspace_id')
       .order('installed_at', { ascending: false });
     if (ws) query = (await canSeeLegacy(ws)) ? query.or(`workspace_id.is.null,workspace_id.eq.${ws}`) : query.eq('workspace_id', ws);
+    if (options.limit) query = query.limit(options.limit);
     const { data, error } = await query;
     if (error) throw new Error(`SupabaseStore.listSkills: ${error.message}`);
     return (data || []).map((r) => this._skillFromRow(r));
@@ -332,6 +353,7 @@ class SupabaseStore {
       .select('id,name,goal,schedule_type,interval_minutes,daily_time,days_of_week,enabled,last_run_at,deliver_whatsapp_enabled,deliver_whatsapp_to,workspace_id,created_at,updated_at')
       .order('created_at', { ascending: false });
     if (ws) query = (await canSeeLegacy(ws)) ? query.or(`workspace_id.is.null,workspace_id.eq.${ws}`) : query.eq('workspace_id', ws);
+    if (options.limit) query = query.limit(options.limit);
     const { data, error } = await query;
     if (error) throw new Error(`SupabaseStore.listWorkflows: ${error.message}`);
     return (data || []).map((r) => this._workflowFromRow(r));
@@ -482,11 +504,13 @@ class SupabaseStore {
 
   async listWorkflowDefinitions(options = {}) {
     const ws = options.workspaceId || options.workspace_id || null;
+    // options.lite skips the (large) graph column.
     let query = this.client
       .from('workflow_definitions')
-      .select('id,name,enabled,schedule_type,interval_minutes,daily_time,days_of_week,watch_folder,last_run_at,workspace_id,created_at,updated_at,graph')
+      .select(`id,name,enabled,schedule_type,interval_minutes,daily_time,days_of_week,watch_folder,last_run_at,workspace_id,created_at,updated_at${options.lite ? '' : ',graph'}`)
       .order('created_at', { ascending: false });
     if (ws) query = (await canSeeLegacy(ws)) ? query.or(`workspace_id.is.null,workspace_id.eq.${ws}`) : query.eq('workspace_id', ws);
+    if (options.limit) query = query.limit(options.limit);
     const { data, error } = await query;
     if (error) throw new Error(`SupabaseStore.listWorkflowDefinitions: ${error.message}`);
     return (data || []).map((r) => this._workflowDefFromRow(r));
@@ -569,9 +593,15 @@ class SupabaseStore {
     return data ? this._workflowRunFromRow(data) : null;
   }
 
-  async listWorkflowRuns(workflowId) {
-    let query = this.client.from('workflow_runs').select('*').order('started_at', { ascending: false });
+  // options (additive): workflowIds (only these workflows), since (ISO), limit,
+  // lite (no context blob).
+  async listWorkflowRuns(workflowId, options = {}) {
+    const columns = options.lite ? 'id,workflow_id,status,current_node_id,error,started_at,completed_at,workspace_id' : '*';
+    let query = this.client.from('workflow_runs').select(columns).order('started_at', { ascending: false });
     if (workflowId) query = query.eq('workflow_id', workflowId);
+    if (options.workflowIds) query = query.in('workflow_id', options.workflowIds.length ? options.workflowIds : ['00000000-0000-0000-0000-000000000000']);
+    if (options.since) query = query.gte('started_at', options.since);
+    if (options.limit) query = query.limit(options.limit);
     const { data, error } = await query;
     if (error) throw new Error(`SupabaseStore.listWorkflowRuns: ${error.message}`);
     return (data || []).map((r) => this._workflowRunFromRow(r));

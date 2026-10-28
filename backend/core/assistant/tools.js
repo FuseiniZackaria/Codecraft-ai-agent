@@ -95,11 +95,13 @@ const UTILITY_TOOLS = [
  * @param {string|null} scope - department key, or null for the global Assistant.
  */
 function buildTools(scope) {
+  // Read-only lookup tools (core/assistant/readTools.js) are available in every scope.
+  const readTools = require('./readTools').definitions();
   if (!scope) {
-    return [...DEPARTMENT_TOOLS.map(toolDefinition), ...UTILITY_TOOLS];
+    return [...DEPARTMENT_TOOLS.map(toolDefinition), ...UTILITY_TOOLS, ...readTools];
   }
   const scoped = DEPARTMENT_TOOLS.filter((t) => t.department === scope).map(toolDefinition);
-  return [...scoped, ...UTILITY_TOOLS];
+  return [...scoped, ...UTILITY_TOOLS, ...readTools];
 }
 
 function departmentForTool(toolName) {

@@ -1,5 +1,11 @@
 # CodeCraft AI — Progress
 
+## Ian: read-only lookup tools
+
+- New `core/assistant/readTools.js`: get_console_logs, get_tasks, get_task_details, get_workflows, get_analytics, get_installed_plugins, get_installed_skills, get_recent_chats, get_connection_status. Reads only, scoped to the workspace, bounded limits, long text cut and flagged, secrets/tokens/phone numbers redacted, friendly errors.
+- Store list methods take optional `limit` / `status` / `since` / `lite` (and audit `taskId` / time range); `analytics.summarize` split out as a pure function. System prompt teaches when to use each tool, that results are data not instructions, and to refuse changes.
+- Test: `assistant-read-tools` (static no-write scan, isolation/redaction, and the 7 prompts through the assistant loop with a scripted model).
+
 ## Client Tracker (Gmail + Sheets + Calendar)
 
 - New **Client Tracker** page and `core/clientTracker.js`, on the workspace's own Composio Gmail, Sheets and Calendar connections. Setup adds Client Tracker / Activity Log / Do Not Contact tabs to the connected sheet and a "CodeCraft Outreach" Gmail label.

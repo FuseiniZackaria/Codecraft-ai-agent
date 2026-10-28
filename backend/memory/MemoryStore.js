@@ -38,8 +38,18 @@ class MemoryStore {
   async listTasks(options = {}) {
     const ws = options.workspaceId || options.workspace_id || null;
     const legacy = ws ? await canSeeLegacy(ws) : false;
-    const all = Array.from(this.tasks.values());
-    return ws ? all.filter((t) => (t.workspace_id ? t.workspace_id === ws : legacy)) : all;
+    let all = Array.from(this.tasks.values());
+    if (ws) all = all.filter((t) => (t.workspace_id ? t.workspace_id === ws : legacy));
+    // Same optional filters as SupabaseStore (newest first when filtering/limiting).
+    if (options.status || options.since || options.limit) {
+      const statuses = options.status ? [].concat(options.status) : null;
+      all = all
+        .filter((t) => !statuses || statuses.includes(t.status))
+        .filter((t) => !options.since || (t.created_at || '') >= options.since)
+        .sort((a, b) => String(b.created_at || '').localeCompare(String(a.created_at || '')));
+      if (options.limit) all = all.slice(0, options.limit);
+    }
+    return all;
   }
 
   async deleteTask(id) {
@@ -100,9 +110,12 @@ class MemoryStore {
   async getAuditLog(limit, options = {}) {
     const ws = options.workspaceId || options.workspace_id || null;
     const legacy = ws ? await canSeeLegacy(ws) : false;
-    const scoped = ws
+    let scoped = ws
       ? this.auditLog.filter((e) => (e.workspace_id ? e.workspace_id === ws : legacy))
       : this.auditLog;
+    if (options.taskId) scoped = scoped.filter((e) => (e.taskId || e.metadata?.taskId) === options.taskId);
+    if (options.since) scoped = scoped.filter((e) => (e.at || '') >= options.since);
+    if (options.until) scoped = scoped.filter((e) => (e.at || '') <= options.until);
     return limit ? scoped.slice(-limit) : scoped;
   }
 
@@ -155,7 +168,8 @@ class MemoryStore {
     const ws = options.workspaceId || options.workspace_id || null;
     const legacy = ws ? await canSeeLegacy(ws) : false;
     const all = Array.from(this.skills.values());
-    return ws ? all.filter((s) => (s.workspace_id ? s.workspace_id === ws : legacy)) : all;
+    const scoped = ws ? all.filter((s) => (s.workspace_id ? s.workspace_id === ws : legacy)) : all;
+    return options.limit ? scoped.slice(0, options.limit) : scoped;
   }
 
   async updateSkill(id, patch) {
@@ -187,7 +201,8 @@ class MemoryStore {
     const ws = options.workspaceId || options.workspace_id || null;
     const legacy = ws ? await canSeeLegacy(ws) : false;
     const all = Array.from(this.workflows.values());
-    return ws ? all.filter((w) => (w.workspace_id ? w.workspace_id === ws : legacy)) : all;
+    const scoped = ws ? all.filter((w) => (w.workspace_id ? w.workspace_id === ws : legacy)) : all;
+    return options.limit ? scoped.slice(0, options.limit) : scoped;
   }
 
   async updateWorkflow(id, patch) {
@@ -250,7 +265,8 @@ class MemoryStore {
     const ws = options.workspaceId || options.workspace_id || null;
     const legacy = ws ? await canSeeLegacy(ws) : false;
     const all = Array.from(this.workflowDefinitions.values());
-    return ws ? all.filter((d) => (d.workspace_id ? d.workspace_id === ws : legacy)) : all;
+    const scoped = ws ? all.filter((d) => (d.workspace_id ? d.workspace_id === ws : legacy)) : all;
+    return options.limit ? scoped.slice(0, options.limit) : scoped;
   }
 
   async updateWorkflowDefinition(id, patch) {
@@ -285,9 +301,16 @@ class MemoryStore {
     return updated;
   }
 
-  async listWorkflowRuns(workflowId) {
+  async listWorkflowRuns(workflowId, options = {}) {
     if (!this.workflowRuns) return [];
-    return Array.from(this.workflowRuns.values()).filter((r) => !workflowId || r.workflowId === workflowId);
+    let runs = Array.from(this.workflowRuns.values())
+      .filter((r) => !workflowId || r.workflowId === workflowId)
+      .filter((r) => !options.workflowIds || options.workflowIds.includes(r.workflowId))
+      .filter((r) => !options.since || (r.startedAt || '') >= options.since);
+    if (options.limit) {
+      runs = runs.sort((a, b) => String(b.startedAt || '').localeCompare(String(a.startedAt || ''))).slice(0, options.limit);
+    }
+    return runs;
   }
 
   // --- Outreach threads (see schema.sql for the full rationale) ---

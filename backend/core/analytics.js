@@ -10,8 +10,6 @@ const AUDIT_LOG_WINDOW = 10000; // enough for meaningful aggregation without bei
  * estimate.
  */
 async function getSummary({ sinceDays = 30, workspaceId = null } = {}) {
-  const sinceMs = Date.now() - sinceDays * 24 * 60 * 60 * 1000;
-
   // Prefer a workspace scope when the caller (usually /api/analytics/summary
   // behind requireAuth) supplied one; fall back to the workflow-engine-system
   // scope for the one internal caller (workflowEngine 'decide' node) that
@@ -26,6 +24,15 @@ async function getSummary({ sinceDays = 30, workspaceId = null } = {}) {
     memory.listWorkflowRuns(), // not in the guard's LIST_METHODS watch set; left-filtered below by workflow_id
     memory.listWorkflowDefinitions(scope),
   ]);
+  return summarize({ tasks, auditLog, workflowRuns, workflowDefs, sinceDays, workspaceId });
+}
+
+/**
+ * Pure counting behind getSummary - no reads. Exported so the assistant's
+ * get_analytics tool can feed it bounded data (core/assistant/readTools.js).
+ */
+function summarize({ tasks, auditLog, workflowRuns, workflowDefs, sinceDays = 30, workspaceId = null }) {
+  const sinceMs = Date.now() - sinceDays * 24 * 60 * 60 * 1000;
   // When scoped, drop runs whose parent workflow isn't visible to this
   // workspace. workflowDefs is already scoped above.
   const visibleWorkflowIds = new Set(workflowDefs.map((d) => d.id));
@@ -62,6 +69,12 @@ async function getSummary({ sinceDays = 30, workspaceId = null } = {}) {
   for (const t of recentTasks) {
     tasksByStatus[t.status] = (tasksByStatus[t.status] || 0) + 1;
   }
+  const tasksPerDayMap = {};
+  for (const t of recentTasks) {
+    const day = String(t.created_at).slice(0, 10);
+    tasksPerDayMap[day] = (tasksPerDayMap[day] || 0) + 1;
+  }
+  const tasksPerDay = Object.entries(tasksPerDayMap).sort(([x], [y]) => x.localeCompare(y)).map(([date, count]) => ({ date, count }));
   const successCount = tasksByStatus.done || 0;
   const failCount = tasksByStatus.failed || 0;
   const successRate = successCount + failCount > 0 ? successCount / (successCount + failCount) : null;
@@ -98,6 +111,7 @@ async function getSummary({ sinceDays = 30, workspaceId = null } = {}) {
     successRate,
     avgDurationMs,
     totalTasks: recentTasks.length,
+    tasksPerDay,
     runsByStatus,
     runsByWorkflow,
     totalWorkflowRuns: recentRuns.length,
@@ -141,4 +155,4 @@ async function getRecentActivitySummary({ limit = 5, workspaceId = null } = {}) 
   return `Recent activity:\n${lines.join('\n')}`;
 }
 
-module.exports = { getSummary, getRecentActivitySummary };
+module.exports = { getSummary, summarize, getRecentActivitySummary };

@@ -180,7 +180,8 @@ function withWorkspaceGuard(store) {
         // guard only needs to read workspace options to classify the call;
         // store methods like addReflection themselves accept an options
         // argument and stamp workspace_id from it.
-        const OPT_KEYS = new Set(['workspaceId', 'system', 'scope', 'systemCaller']);
+        // Read filters (limit/status/since/...) may ride along in the same options object.
+        const OPT_KEYS = new Set(['workspaceId', 'system', 'scope', 'systemCaller', 'limit', 'status', 'since', 'until', 'taskId', 'lite']);
         let callerWs = null;
         let callerOpts = null;
         const last = args[args.length - 1];
