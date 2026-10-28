@@ -739,7 +739,10 @@ class SalesAgent extends BaseAgent {
       const sheetsWorkspaceId = task?.workspace_id || this._currentTask?.workspace_id || null;
       let sheetSaved = 0;
       let sheetDuplicates = 0;
-      if (leads.length && await googleSheets.isConfigured(sheetsWorkspaceId)) {
+      const sheetState = leads.length ? await googleSheets.sheetsStatus(sheetsWorkspaceId) : { ok: false };
+      // Connected (or half-connected) but unusable: say why instead of skipping silently.
+      if (!sheetState.ok && sheetState.attempted) warnings.push(`Google Sheet: leads not saved - ${sheetState.reason}`);
+      if (sheetState.ok) {
         for (const l of leads) {
           const p = projectLead(l);
           try {
@@ -907,6 +910,8 @@ class SalesAgent extends BaseAgent {
       if (noContactLeads.length) note += ` ${noContactLeads.length} lead(s) need manual outreach (no contact info found).`;
       if (sheetSaved || sheetDuplicates) {
         note += ` Saved ${sheetSaved} lead(s) to your Google Sheet${sheetDuplicates ? ` (${sheetDuplicates} already there)` : ''}.`;
+      } else if (sheetState.attempted || warnings.some((w) => w.startsWith('Google Sheet:'))) {
+        note += ' Leads were NOT saved to your Google Sheet - see the warning below.';
       }
       await memory.addReflection(this.role, task.id, note, { workspaceId: task?.workspace_id || this._currentTask?.workspace_id || null });
 

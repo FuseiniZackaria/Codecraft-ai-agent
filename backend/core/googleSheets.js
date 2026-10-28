@@ -156,15 +156,25 @@ async function resolveSheetId(workspaceId) {
   );
 }
 
-/** True when a save would have somewhere to go - lets callers skip quietly when Sheets isn't set up. */
-async function isConfigured(workspaceId) {
+/**
+ * Whether a save would have somewhere to go. `attempted` is true when the
+ * workspace started setting Sheets up (has a row) - callers report `reason`
+ * then, and stay quiet only for a workspace that never connected Sheets.
+ */
+async function sheetsStatus(workspaceId) {
+  const row = workspaceId ? await require('./workspaceConnections').getConnection(workspaceId, 'googlesheets') : null;
   try {
     await resolveSheetId(workspaceId);
     if (!(await sheetsConnection(workspaceId))) loadCredentials();
-    return true;
-  } catch {
-    return false;
+    return { ok: true, attempted: true, reason: null };
+  } catch (err) {
+    return { ok: false, attempted: !!row || !!process.env.LEADS_SHEET_ID, reason: err.message };
   }
+}
+
+/** True when a save would have somewhere to go. */
+async function isConfigured(workspaceId) {
+  return (await sheetsStatus(workspaceId)).ok;
 }
 
 // Google returns 403 (no access) or 404 (wrong id / not visible to the
@@ -296,6 +306,7 @@ module.exports = {
   saveLead,
   checkAccess,
   isConfigured,
+  sheetsStatus,
   parseSheetId,
   serviceAccountEmail,
   SheetsConfigError,

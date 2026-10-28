@@ -47,6 +47,9 @@ async function main() {
     composio_account_id: 'ca_A', status: 'connected', provider_meta: { composio_user_id: composio.entityFor(WS_A) },
   });
   assert.strictEqual(await googleSheets.isConfigured(WS_A), false);
+  const st = await googleSheets.sheetsStatus(WS_A);
+  assert.ok(st.attempted && /no sheet is chosen/.test(st.reason), 'half-connected is reported with a reason');
+  assert.strictEqual((await googleSheets.sheetsStatus(WS_B)).attempted, false, 'never-connected stays quiet');
   await assert.rejects(googleSheets.saveLead({ name: 'X' }, { workspaceId: WS_A }), /no sheet is chosen/);
   console.log('✓ signed in without a sheet -> "choose a sheet" message');
 
