@@ -2,7 +2,7 @@ import { NavLink } from 'react-router-dom';
 import {
   LayoutDashboard, ListChecks, MessageSquare, Workflow,
   Terminal, Package, BarChart3, Puzzle, LogOut,
-  TrendingUp, Megaphone, Headphones, Compass, Code2, Building2, X, Users, Settings as SettingsIcon, Link2,
+  TrendingUp, Megaphone, Headphones, Compass, Code2, Building2, X, Users, Settings as SettingsIcon, Link2, Contact,
 } from 'lucide-react';
 import Logo from './Logo';
 import { useStore } from '../store/useStore';
@@ -18,6 +18,7 @@ const appLinks = [
   { to: '/skills', label: 'Skills', icon: Package },
   { to: '/team', label: 'Team', icon: Users },
   { to: '/connections', label: 'Connections', icon: Link2 },
+  { to: '/client-tracker', label: 'Client Tracker', icon: Contact },
   { to: '/settings', label: 'Settings', icon: SettingsIcon },
 ];
 

@@ -317,6 +317,8 @@ module.exports = {
   checkAccess,
   isConfigured,
   sheetsStatus,
+  getClient,
+  resolveSheetId,
   parseSheetId,
   serviceAccountEmail,
   SheetsConfigError,

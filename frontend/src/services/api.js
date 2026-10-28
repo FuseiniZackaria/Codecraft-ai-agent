@@ -260,6 +260,14 @@ export const api = {
   checkComposio: (provider, connectionId) => request(`/connections/${provider}/check`, { method: 'POST', body: JSON.stringify({ connectionId }) }),
   disconnectProvider: (provider) => request(`/connections/${provider}`, { method: 'DELETE' }),
   connectSheets: (sheet) => request('/connections/googlesheets/sheet', { method: 'POST', body: JSON.stringify({ sheet }) }),
+  trackerStatus: () => request('/client-tracker/status'),
+  trackerActivity: () => request('/client-tracker/activity'),
+  trackerSetup: (settings) => request('/client-tracker/setup', { method: 'POST', body: JSON.stringify(settings) }),
+  trackerSettings: (settings) => request('/client-tracker/settings', { method: 'POST', body: JSON.stringify(settings) }),
+  trackerImport: (leads) => request('/client-tracker/import', { method: 'POST', body: JSON.stringify({ leads }) }),
+  trackerOutreach: (payload) => request('/client-tracker/outreach', { method: 'POST', body: JSON.stringify(payload) }),
+  trackerCheckReplies: () => request('/client-tracker/check-replies', { method: 'POST' }),
+  trackerFollowUps: () => request('/client-tracker/follow-ups', { method: 'POST' }),
 
   connectMCP: (url) => browserPost('/mcp/connect', { url }),
 

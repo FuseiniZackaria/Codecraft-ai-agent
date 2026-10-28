@@ -264,6 +264,10 @@ async function tick() {
   // these are structured internal maintenance jobs, not natural-language
   // goals. Both no-op unless explicitly enabled via config.
   tickOutreachAutomation(); // deliberately not awaited - runs independently of workflow ticks, same as runWorkflow() above
+
+  // Client tracker (Gmail + Sheets + Calendar): reply checks and the daily
+  // follow-up run, per workspace that turned it on.
+  require('./clientTracker').tick().catch((err) => console.warn(`[scheduler] client tracker tick failed: ${err.message}`));
 }
 
 /**

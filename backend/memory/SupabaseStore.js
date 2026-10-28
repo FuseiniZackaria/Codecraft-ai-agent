@@ -904,6 +904,17 @@ class SupabaseStore {
     if (error) throw new Error(`SupabaseStore.findConnectionByWebhookToken: ${error.message}`);
     return data || null;
   }
+
+  // Every workspace's row for one provider - for background jobs (the
+  // client tracker) that then run per workspace.
+  async listConnectionsByProvider(provider) {
+    const { data, error } = await this.client
+      .from('workspace_connections')
+      .select('*')
+      .eq('provider', provider);
+    if (error) throw new Error(`SupabaseStore.listConnectionsByProvider: ${error.message}`);
+    return data || [];
+  }
 }
 
 module.exports = SupabaseStore;

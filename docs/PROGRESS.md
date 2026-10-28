@@ -1,5 +1,11 @@
 # CodeCraft AI — Progress
 
+## Client Tracker (Gmail + Sheets + Calendar)
+
+- New **Client Tracker** page and `core/clientTracker.js`, on the workspace's own Composio Gmail, Sheets and Calendar connections. Setup adds Client Tracker / Activity Log / Do Not Contact tabs to the connected sheet and a "CodeCraft Outreach" Gmail label.
+- Outreach with an opt-out line; reply checks only on labelled threads of leads in the sheet; AI classification (interested / not interested / question / opt-out / unclear); 3 free slots from free/busy and a Meet booking; daily follow-ups (3 days, max 2); Do Not Contact on every send and import; daily cap; approval for high-value leads (`clienttracker.sendApproved`); every action logged; retries on rate limits and transient errors.
+- Scheduler runs reply checks every 15 min and follow-ups daily per workspace. Docs: `docs/client-tracker.md`. Test: `client-tracker`.
+
 ## Google Sheets through Composio
 
 - Connections → **Google Sheets** now signs in with Google through Composio (like Gmail), then asks for the sheet link. Calls run as the workspace's own Composio account (`ws_<workspace_id>`); no Google Cloud project, service account or key needed. Reconnecting keeps the chosen sheet; **Change sheet** switches it.

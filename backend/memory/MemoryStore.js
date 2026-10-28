@@ -464,6 +464,11 @@ class MemoryStore {
     }
     return null;
   }
+
+  async listConnectionsByProvider(provider) {
+    if (!this._connections) return [];
+    return Array.from(this._connections.values()).filter((c) => c.provider === provider);
+  }
 }
 
 module.exports = MemoryStore;

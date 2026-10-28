@@ -1,0 +1,8 @@
+{
+  "name": "clienttracker",
+  "version": "1.0.0",
+  "permissions": ["gmail.send"],
+  "auth": { "type": "oauth2", "provider": "composio" },
+  "actions": ["sendApproved"],
+  "events": []
+}

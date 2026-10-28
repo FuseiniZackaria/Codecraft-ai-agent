@@ -22,6 +22,7 @@ module.exports = [
   'tests/composio-connection-routes.test.js',
   'tests/sheets-save-lead.test.js',
   'tests/sheets-composio.test.js',
+  'tests/client-tracker.test.js',
   'tests/sales-lead-context.test.js',
   'tests/team-invite-isolation.test.js',
   'tests/team-phase2-6b.test.js',
