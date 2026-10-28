@@ -257,7 +257,8 @@ function parseLeadContext(instruction) {
   let nlTarget = '';
   if (!target) {
     const m = instruction.match(/find\s+(?:me\s+)?(?:\d+\s+)?(.+?)\s+(?:in|that|who)\s/i);
-    nlTarget = m ? m[1].replace(/^(?:me|some|any)\s+/i, '').trim() : '';
+    // "hotel leads" -> "hotel": the word "leads" is never part of who to find.
+    nlTarget = m ? m[1].replace(/^(?:me|some|any)\s+/i, '').replace(/\s+(?:leads?|prospects?|contacts?)$/i, '').trim() : '';
     if (GENERIC_TARGET.test(nlTarget)) nlTarget = need ? `businesses that need ${need}` : '';
   }
   const nlLocation = location || instruction.match(/\bin\s+([A-Z][a-z]+(?:[,\s]+[A-Z][a-z]+)*)/)?.[1]?.trim() || '';

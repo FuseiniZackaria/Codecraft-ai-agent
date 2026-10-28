@@ -61,3 +61,9 @@ assert.ok(q2.every((q) => !q.includes('(e.g.')), 'the example list is not pasted
 const qBiz = buildLeadQueries(parseLeadContext('Find 10 restaurants in Accra, Ghana'), platforms2);
 assert.ok(qBiz.some((q) => q.includes('google.com/maps')), 'businesses still search Google Maps');
 console.log('✓ individuals: short role searches, LinkedIn profiles, no Google Maps');
+
+const hotels = parseLeadContext("Find 5 hotel leads in Accra that need websites. I'm selling websites. Search Google Maps, Instagram, Facebook, TikTok, X (Twitter) and LinkedIn.");
+assert.strictEqual(hotels.target, 'hotel');
+assert.strictEqual(hotels.count, 5);
+assert.ok(buildLeadQueries(hotels, ['google_maps']).every((q) => !/lead/i.test(q)), 'no "lead" in searches');
+console.log('✓ "hotel leads" searches for hotels');
