@@ -6,7 +6,7 @@
 - `readPage` reads the whole page (pages over 24k characters keep the start, the end and the footer) and returns `contacts`: mailto/tel links, emails and phones in the text, "name [at] domain [dot] com" and Cloudflare-protected emails.
 - New `browser.findContacts`: if the page has no email, opens the site's contact page, then about page (or `/contact`, `/contact-us`, `/about`). Its text starts and ends with a `CONTACT DETAILS FOUND` block.
 - Browser Agent uses it for every read and lists the contact details first. Ian checks that list before saying nothing was found, and never invents technical causes (e.g. "connection hiccup").
-- Needs Chromium: `npx playwright install chromium` locally; on Render add `npx playwright install --with-deps chromium` to the build command.
+- Needs Chromium: `npx playwright install chromium` in `backend/` (locally and in the Render build command), with `PLAYWRIGHT_BROWSERS_PATH=0` on Render so it lives in `node_modules`.
 
 ## Gemini instead of Anthropic, and fast chat
 

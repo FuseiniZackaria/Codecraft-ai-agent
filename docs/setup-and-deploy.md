@@ -55,6 +55,10 @@ agent), `ASSISTANT_MODEL` / `LLM_MODEL` (optional, default `gemini-3.8-flash`),
 (optional, default `gpt-image-1`). If no provider key is set, the router
 falls back to a mock provider and every agent returns canned text.
 
+Browser agent: `PLAYWRIGHT_BROWSERS_PATH=0` (Render) keeps Chromium inside
+`node_modules`; see the Render build command in section 6. Locally, run
+`npx playwright install chromium` once in `backend/`.
+
 ### Integrations
 
 | Group | Env vars | Lives on |
@@ -154,7 +158,10 @@ Backend on `:4000`, frontend on `:5173`. Frontend auto-detects the backend.
 
 ### Backend (Render)
 
-- **Build:** `npm install --prefix backend`
+- **Build:** `npm install --prefix backend && cd backend && npx playwright install chromium`
+  (Chromium for the Browser agent; plain `install chromium`, since Render's build has no root access for system packages).
+- **Environment:** `PLAYWRIGHT_BROWSERS_PATH=0`, so Chromium is downloaded into `node_modules` during the build
+  and found there at runtime. It must be set for both, which a Render environment variable is.
 - **Start:** `npm start --prefix backend`
 - Auto-deploys on push to `main`.
 - Manual redeploy from the Render dashboard; the Events tab shows the commit
