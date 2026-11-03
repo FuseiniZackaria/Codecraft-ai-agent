@@ -58,7 +58,7 @@ function PanelMessage({ msg, tasks }) {
         )}
         {liveTask && (
           <Link
-            to="/tasks"
+            to="/work"
             className={`mt-2 flex items-center gap-1.5 text-[11px] pt-1.5 border-t ${
               isUser ? 'border-black/20 text-black/70' : 'border-[var(--color-border)] text-[var(--color-text-muted)]'
             } hover:underline w-fit`}

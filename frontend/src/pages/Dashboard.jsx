@@ -81,7 +81,7 @@ export default function Dashboard() {
         <div>
           <h2 className="text-sm font-medium text-[var(--color-text-muted)] mb-3">Live activity</h2>
           <Link
-            to="/console"
+            to="/chat/console"
             className="group flex items-center justify-between rounded-lg border border-[var(--color-border)] bg-[var(--color-surface)] p-4 hover:border-[var(--color-accent)]/40 transition-colors"
           >
             <div className="flex items-center gap-3">

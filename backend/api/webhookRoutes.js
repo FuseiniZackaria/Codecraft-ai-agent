@@ -3,6 +3,8 @@ const config = require('../config');
 const memory = require('../memory');
 const { getAgent } = require('../agents/registry');
 const connections = require('../core/workspaceConnections');
+const TwilioProvider = require('../core/whatsapp/TwilioProvider');
+const whatsappMessaging = require('../core/whatsapp/messaging');
 
 const router = express.Router();
 
@@ -93,6 +95,22 @@ router.post('/whatsapp', async (req, res) => {
   }
 });
 
+// Twilio incoming. Both routes go through the shared WhatsApp pipeline
+// (core/whatsapp/messaging.js): the message is saved to whatsapp_chat_messages
+// in the same shape as WAHA messages (so it shows in the Inbox), "stop"
+// replies are recorded, and everything else goes to the WhatsApp agent.
+async function handleTwilioIncoming(req, workspaceId) {
+  const event = TwilioProvider.handleIncomingWebhook(req);
+  if (event.type !== 'message') return;
+  await whatsappMessaging.handleIncomingMessage({
+    providerName: 'twilio',
+    sessionName: TwilioProvider.SESSION,
+    userId: null,
+    workspaceId,
+    message: event.message,
+  });
+}
+
 // Twilio incoming - workspace-scoped
 router.post('/whatsapp/twilio/:webhookToken', express.urlencoded({ extended: false }), async (req, res) => {
   res.set('Content-Type', 'text/xml');
@@ -100,13 +118,7 @@ router.post('/whatsapp/twilio/:webhookToken', express.urlencoded({ extended: fal
   try {
     const workspaceId = await resolveWorkspaceFromWebhookToken('whatsapp', req.params.webhookToken);
     if (!workspaceId) { console.warn('[webhook] whatsapp/twilio: unknown webhook token'); return; }
-    const { MessageSid, From, Body } = req.body;
-    if (!MessageSid || !From) return;
-    const fromNumber = From.replace(/^whatsapp:/, '');
-    const { isNew } = await memory.recordIncomingMessage(MessageSid, fromNumber, Body || '');
-    if (!isNew) return;
-    const agent = getAgent('whatsapp');
-    await agent.handleIncomingMessage({ from: fromNumber, body: Body || '', workspaceId });
+    await handleTwilioIncoming(req, workspaceId);
   } catch (err) {
     console.error('[webhook] whatsapp (twilio) processing failed:', err.message);
   }
@@ -117,14 +129,7 @@ router.post('/whatsapp/twilio', express.urlencoded({ extended: false }), async (
   res.set('Content-Type', 'text/xml');
   res.status(200).send('<?xml version="1.0" encoding="UTF-8"?><Response></Response>');
   try {
-    const workspaceId = await legacyWorkspaceId();
-    const { MessageSid, From, Body } = req.body;
-    if (!MessageSid || !From) return;
-    const fromNumber = From.replace(/^whatsapp:/, '');
-    const { isNew } = await memory.recordIncomingMessage(MessageSid, fromNumber, Body || '');
-    if (!isNew) return;
-    const agent = getAgent('whatsapp');
-    await agent.handleIncomingMessage({ from: fromNumber, body: Body || '', workspaceId });
+    await handleTwilioIncoming(req, await legacyWorkspaceId());
   } catch (err) {
     console.error('[webhook] whatsapp (twilio) processing failed:', err.message);
   }

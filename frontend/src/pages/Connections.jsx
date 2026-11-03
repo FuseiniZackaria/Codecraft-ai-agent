@@ -5,13 +5,14 @@ import {
   Copy, ExternalLink,
 } from 'lucide-react';
 import { api } from '../services/api';
+import WhatsAppConnectCard from '../components/WhatsAppConnectCard';
 
 const PROVIDERS = [
   { key: 'gmail',          label: 'Gmail',           icon: Mail,           composio: true,  desc: 'Read and send email on your behalf.' },
   { key: 'googlecalendar', label: 'Google Calendar',  icon: Calendar,       composio: true,  desc: 'Check availability and book calls.' },
   { key: 'github',         label: 'GitHub',           icon: GitBranch,      composio: true,  desc: 'Create repos, commit files, open PRs.' },
   { key: 'telegram',       label: 'Telegram',         icon: MessageCircle,  composio: false, desc: 'Receive and reply to Telegram messages.' },
-  { key: 'whatsapp',       label: 'WhatsApp',         icon: MessageCircle,  composio: false, desc: 'Receive and reply to WhatsApp messages.' },
+  { key: 'whatsapp',       label: 'WhatsApp Business API', icon: MessageCircle, composio: false, desc: 'Receive and reply through a Meta or Twilio business number (instead of your own phone).' },
   { key: 'googlesheets',   label: 'Google Sheets',    icon: Table2,         composio: true,  desc: 'Sales Manager saves every lead it finds as a new row.' },
 ];
 
@@ -300,7 +301,7 @@ function ComposioWizard({ provider, label, onClose, onConnected }) {
     setBusy(true); setError(null);
     try {
       const res = await api.connectComposio(provider, {
-        redirectUrl: `${window.location.origin}/connections?connected=${provider}`,
+        redirectUrl: `${window.location.origin}/toolbox/connections?connected=${provider}`,
       });
       if (res.error) throw new Error(res.error);
       if (res.adopted) {
@@ -567,6 +568,8 @@ export default function Connections() {
           <button onClick={() => setReturnNotice(null)} className="ml-auto opacity-70 hover:opacity-100"><X size={14} /></button>
         </div>
       )}
+
+      <WhatsAppConnectCard />
 
       <div className="grid md:grid-cols-2 gap-4">
         {PROVIDERS.map((p) => {

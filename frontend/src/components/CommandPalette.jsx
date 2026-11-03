@@ -4,14 +4,14 @@ import { LayoutDashboard, Building2, ListChecks, Puzzle, MessageSquare, Workflow
 import { useStore } from '../store/useStore';
 
 const actions = [
-  { label: 'Go to Overview', path: '/', icon: LayoutDashboard },
+  { label: 'Go to Overview', path: '/home', icon: LayoutDashboard },
   { label: 'Go to Departments', path: '/departments', icon: Building2 },
-  { label: 'Go to Console', path: '/console', icon: Terminal },
-  { label: 'Go to Skills', path: '/skills', icon: Package },
-  { label: 'Go to Tasks', path: '/tasks', icon: ListChecks },
+  { label: 'Go to Console', path: '/chat/console', icon: Terminal },
+  { label: 'Go to Skills', path: '/toolbox/skills', icon: Package },
+  { label: 'Go to Tasks', path: '/work', icon: ListChecks },
   { label: 'Go to Research', path: '/departments/strategy/research', icon: Search },
-  { label: 'Go to Workflows', path: '/workflows', icon: Workflow },
-  { label: 'Go to Plugins', path: '/plugins', icon: Puzzle },
+  { label: 'Go to Workflows', path: '/work/workflows', icon: Workflow },
+  { label: 'Go to Plugins', path: '/toolbox', icon: Puzzle },
   { label: 'Go to Chat', path: '/chat', icon: MessageSquare },
 ];
 
@@ -53,7 +53,7 @@ export default function CommandPalette() {
     }
     await submitGoal(query.trim());
     setPaletteOpen(false);
-    navigate('/tasks');
+    navigate('/work');
   }
 
   return (

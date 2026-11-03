@@ -68,7 +68,9 @@ app.use(cors({
     callback(new Error(`Origin "${origin}" is not allowed by CORS`));
   },
   credentials: true,
-}));app.use(express.json({ limit: '35mb' }));
+}));
+// Keep the exact request bytes: the WAHA webhook signature (HMAC) is computed over the raw body.
+app.use(express.json({ limit: '35mb', verify: (req, _res, buf) => { req.rawBody = buf; } }));
 
 // Dev-only: once per minute, print one line summarizing how many requests
 // hit each route since the last tick, so the frontend's "flood check"
@@ -103,6 +105,10 @@ console.log(`[startup] Loaded plugins: ${loadedPlugins.join(', ') || '(none)'}`)
 // from WhatsApp/Telegram/etc, which can't carry a logged-in user's token.
 // Every other route below requires a valid session.
 app.use('/webhooks',webhookLimiter , webhookRoutes);
+// WAHA (self-hosted WhatsApp) posts incoming messages here. Public like /webhooks,
+// so it must come before the /api auth middleware; every request is verified by
+// its HMAC signature (WAHA_WEBHOOK_SECRET) in api/whatsappWebhook.js.
+app.use('/api/webhooks/whatsapp', webhookLimiter, require('./api/whatsappWebhook'));
 
 // Public assistant config - name + speech-recognition variations. Zero
 // secrets, needed before login (so the Login page can show "Ian" if ever
@@ -207,11 +213,13 @@ app.use('/api/team', requireAuth, requireRole('admin'), teamRoutes);
 app.use('/api/business-profile', requireAuth, requireRole('admin'), businessProfileRoutes);
 app.use('/api/connections', requireAuth, requireRole('admin'), connectionRoutes);
 app.use('/api/client-tracker', requireAuth, requireRole('admin'), clientTrackerRoutes);
+app.use('/api/whatsapp', requireAuth, requireRole('admin'), require('./api/whatsappRoutes'));
 app.get('/health', (req, res) => res.json({ status: 'ok', plugins: loadedPlugins }));
 
 app.listen(config.port, () => {
   console.log(`CodeCraft AI backend running on http://localhost:${config.port}`);
   scheduler.start();
+  require('./core/whatsapp/outbox').start();
 });
 
 module.exports = app;

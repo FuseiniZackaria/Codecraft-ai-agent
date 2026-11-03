@@ -21,12 +21,21 @@ import Team from './pages/Team';
 import Settings from './pages/Settings';
 import Connections from './pages/Connections';
 import ClientTracker from './pages/ClientTracker';
+import WhatsAppInbox from './pages/WhatsAppInbox';
+import WhatsAppReconnectBanner from './components/WhatsAppReconnectBanner';
 import NotFound from './pages/NotFound';
 import { LogOut, WifiOff } from 'lucide-react';
 import { useStore } from './store/useStore';
 import { supabase } from './services/supabaseClient';
 import ResetPassword from './pages/ResetPassword';
+import TabbedLayout from './components/nav/TabbedLayout';
+import { REDIRECTS } from './components/nav/navConfig';
 
+/** Redirect an old URL to its new location, keeping ?query (e.g. ?connected= after a Google sign-in) and #hash. */
+function RedirectKeepingQuery({ to }) {
+  const { search, hash } = useLocation();
+  return <Navigate to={{ pathname: to, search, hash }} replace />;
+}
 
 export default function App() {
   const [session, setSession] = useState(undefined); // undefined = still checking, null = logged out
@@ -239,6 +248,7 @@ function AdminLayout({ connectionError }) {
       <Sidebar isOpen={sidebarOpen} onClose={closeSidebar} />
       <div className="flex-1 flex flex-col overflow-hidden min-w-0">
         <TopBar onOpenSidebar={() => setSidebarOpen(true)} />
+        <WhatsAppReconnectBanner />
         {connectionError && (
           <div className="flex items-center justify-center gap-2 bg-[var(--color-warning)]/10 border-b border-[var(--color-warning)]/30 px-4 py-1.5 text-xs text-[var(--color-warning)]">
             <WifiOff size={13} /> {connectionError}
@@ -246,28 +256,39 @@ function AdminLayout({ connectionError }) {
         )}
         <main className="flex-1 overflow-y-auto">
           <Routes>
-            <Route path="/" element={<Dashboard />} />
-            <Route path="/console" element={<Console />} />
-            <Route path="/skills" element={<Skills />} />
-            <Route path="/tasks" element={<Tasks />} />
-            <Route path="/workflows" element={<Workflows />} />
-            <Route path="/analytics" element={<Analytics />} />
-            <Route path="/plugins" element={<Plugins />} />
-            <Route path="/chat" element={<Chat />} />
-            <Route path="/team" element={<Team />} />
-            <Route path="/settings" element={<Settings />} />
-            <Route path="/connections" element={<Connections />} />
-            <Route path="/client-tracker" element={<ClientTracker />} />
+            {/* Tabbed sections (tabs and nav items come from components/nav/navConfig.js) */}
+            <Route path="/home" element={<TabbedLayout navKey="home" />}>
+              <Route index element={<Dashboard />} />
+              <Route path="analytics" element={<Analytics />} />
+            </Route>
+            <Route path="/chat" element={<TabbedLayout navKey="chat" fill />}>
+              <Route index element={<Chat />} />
+              <Route path="console" element={<Console />} />
+            </Route>
+            <Route path="/work" element={<TabbedLayout navKey="work" />}>
+              <Route index element={<Tasks />} />
+              <Route path="workflows" element={<Workflows />} />
+              <Route path="clients" element={<ClientTracker />} />
+              <Route path="inbox" element={<WhatsAppInbox />} />
+            </Route>
+            <Route path="/toolbox" element={<TabbedLayout navKey="toolbox" />}>
+              <Route index element={<Plugins />} />
+              <Route path="skills" element={<Skills />} />
+              <Route path="connections" element={<Connections />} />
+            </Route>
+            <Route path="/settings" element={<TabbedLayout navKey="settings" />}>
+              <Route index element={<Settings />} />
+              <Route path="team" element={<Team />} />
+            </Route>
 
             {/* Department routes */}
             <Route path="/departments" element={<Departments />} />
             <Route path="/departments/:deptKey/*" element={<DepartmentPage />} />
 
-            {/* Redirects for old URLs */}
-            <Route path="/agents" element={<Navigate to="/departments" replace />} />
-            <Route path="/outreach" element={<Navigate to="/departments/sales/outreach" replace />} />
-            <Route path="/research" element={<Navigate to="/departments/strategy/research" replace />} />
-            <Route path="/briefing-dashboard" element={<Navigate to="/departments/strategy/intelligence" replace />} />
+            {/* Old URLs -> new locations, keeping ?query and #hash */}
+            {Object.entries(REDIRECTS).map(([from, to]) => (
+              <Route key={from} path={from} element={<RedirectKeepingQuery to={to} />} />
+            ))}
 
             {/* Catch-all - a real in-app "page not found" instead of a blank <main>. */}
             <Route path="*" element={<NotFound />} />

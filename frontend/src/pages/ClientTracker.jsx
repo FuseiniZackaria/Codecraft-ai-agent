@@ -86,7 +86,7 @@ export default function ClientTracker() {
       </div>
       <p className="text-xs text-[var(--color-text-muted)]">
         Outreach, replies, follow-ups and bookings, tracked in your Google Sheet. Uses your Gmail, Google Sheets and Google Calendar
-        from <Link to="/connections" className="underline">Connections</Link>. The agent only reads threads labelled
+        from <Link to="/toolbox/connections" className="underline">Connections</Link>. The agent only reads threads labelled
         "CodeCraft Outreach" from people in your sheet.
       </p>
       {error && <div className={`${card} text-xs text-[var(--color-danger)]`}>{error}</div>}

@@ -1,5 +1,17 @@
 # CodeCraft AI — Progress
 
+## WhatsApp through WAHA (self-hosted), per admin
+
+- **Provider layer** `core/whatsapp/`: one interface (startSession, getQR, getStatus, sendMessage, sendTyping, disconnect, handleIncomingWebhook) with `WahaProvider` and `TwilioProvider` (wraps the existing Twilio code). `WHATSAPP_PROVIDER` picks it (default `waha`). `core/whatsappProvider.js` stays the entry point for owner alerts, briefings and the `whatsapp.sendMessage` tool. Missing Twilio env vars only report "not configured".
+- **WAHA:** `WAHA_BASE_URL` + `WAHA_API_KEY` (sent as `X-Api-Key` on every call), timeouts and plain-language errors; WAHA being down never crashes the server.
+- **Per admin:** each admin's session is `admin_<user id>`, stored in `whatsapp_sessions`. Inbox, replies and outreach use only the caller's session.
+- **Connect flow:** Toolbox -> Connections -> **Connect WhatsApp**: QR in a modal, polled every 3s until linked, then the number and **Disconnect**.
+- **Incoming:** `POST /api/webhooks/whatsapp` (public, before the /api auth), verified with WAHA's HMAC-SHA512 (`WAHA_WEBHOOK_SECRET`), events `message` + `session.status`. Messages from WAHA and Twilio are saved to `whatsapp_chat_messages` in one format and passed to the WhatsApp agent with their session.
+- **Auto-reply:** on by default for WAHA (`WA_AUTO_REPLY`), still behind the existing safety check (risky topics wait for approval); "typing..." plus a random 2-6s wait first.
+- **Outreach queue** `whatsapp_outbox`: per session, random 30-90s gaps, `DAILY_WA_LIMIT` per day (default 50), skips contacts who replied "stop" (`whatsapp_optouts`), every send logged. Sales-agent WhatsApp drafts and the Inbox "New message" box use it.
+- **Inbox:** Work -> **Inbox** (conversations, history, reply box). **Disconnects:** FAILED/logged-out sessions are flagged and a "Reconnect" banner shows; a 2-minute health check catches missed events.
+- **Migration:** `backend/database/migrations/0005_whatsapp_waha.sql`. Guide: `docs/whatsapp-waha-setup.md`. Test: `whatsapp-waha`.
+
 ## Outreach that targets one person, and tidier results
 
 - **Single-recipient outreach:** "draft outreach to <name / email / website>" drafts for that one person. A lead search runs only for lead-finding wording ("find leads", "find 15 hotels in Accra", "draft outreach to 10 salons"). Before, any "draft ... outreach" ran a lead search and drafted for every business it found.

@@ -1,0 +1,32 @@
+import { Outlet } from 'react-router-dom';
+import PageTabs from '../PageTabs';
+import { navItem } from './navConfig';
+import { useNavBadges } from './useNavBadges';
+
+/**
+ * A tabbed parent page: the tab bar from navConfig, then the active tab's page
+ * (the nested route) unchanged. `fill` keeps full-height pages like Chat
+ * filling the screen below the tabs instead of scrolling under them.
+ */
+export default function TabbedLayout({ navKey, fill = false }) {
+  const item = navItem(navKey);
+  const badges = useNavBadges();
+  const tabs = <PageTabs tabs={item.tabs} variant={item.tabsVariant} badges={badges} />;
+
+  if (fill) {
+    return (
+      <div className="flex flex-col h-full min-h-0">
+        <div className="shrink-0 px-4 md:px-6 pt-3 md:pt-4">{tabs}</div>
+        <div className="flex-1 min-h-0">
+          <Outlet />
+        </div>
+      </div>
+    );
+  }
+  return (
+    <div>
+      <div className="px-4 md:px-6 pt-3 md:pt-4">{tabs}</div>
+      <Outlet />
+    </div>
+  );
+}

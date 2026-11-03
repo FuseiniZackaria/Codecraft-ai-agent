@@ -31,6 +31,10 @@ const SECRETS_TO_BLANK = [
   'AI_API_KEY',
   'ANTHROPIC_API_KEY',
   'GEMINI_API_KEY',
+  // WhatsApp (WAHA)
+  'WAHA_BASE_URL',
+  'WAHA_API_KEY',
+  'WAHA_WEBHOOK_SECRET',
   // Search / web
   'TAVILY_API_KEY',
   'YOUTUBE_API_KEY',

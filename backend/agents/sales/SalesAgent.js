@@ -930,7 +930,8 @@ class SalesAgent extends BaseAgent {
             await this.createApprovalTask({
               instruction: `Send WhatsApp message to ${d.name} (${d.phone})`,
               tool: 'whatsapp.sendMessage',
-              payload: { to: d.phone, body: d.message, lead: leadRow ? projectLead(leadRow) : null },
+              // outreach: true -> with WAHA, approving queues it (30-90s gaps, daily cap, opt-outs) instead of sending at once.
+              payload: { to: d.phone, body: d.message, lead: leadRow ? projectLead(leadRow) : null, outreach: true },
               outreach: { recipientEmail: `whatsapp:${d.phone}`, companyName: d.name || null, campaign: 'lead_gen' },
             });
             whatsappDrafted++;

@@ -1,0 +1,125 @@
+const config = require('../../config');
+const activityLog = require('../activityLog');
+const store = require('./store');
+const { getProvider } = require('./index');
+const { normalizeNumber } = require('./phone');
+
+const STOP_WORDS = /^\s*(stop|stop all|unsubscribe|opt[ -]?out|cancel|quit|end)\s*[.!]*\s*$/i;
+
+// Overridable in tests so they don't wait real seconds.
+const timing = {
+  sleep: (ms) => new Promise((resolve) => setTimeout(resolve, ms)),
+  random: Math.random,
+};
+
+/** Random whole number of milliseconds between min and max. */
+function randomBetween(min, max) {
+  return Math.round(min + timing.random() * (max - min));
+}
+
+/**
+ * Send one message and record it. With `typing`, shows "typing..." and waits a
+ * random 2-6 seconds first, so a reply doesn't land the instant a message arrives.
+ * Throws on a send failure (after logging); the caller decides what that means.
+ */
+async function sendAndRecord({ sessionName, to, text, userId = null, workspaceId = null, source, typing = false }) {
+  const provider = getProvider();
+  const contactNumber = normalizeNumber(to);
+  if (!contactNumber) throw new Error(`Not a valid WhatsApp number: "${to}"`);
+  if (!text || !String(text).trim()) throw new Error('Message text is empty');
+
+  if (typing) {
+    await provider.sendTyping(sessionName, contactNumber, true);
+    await timing.sleep(randomBetween(2000, 6000));
+    await provider.sendTyping(sessionName, contactNumber, false);
+  }
+
+  let result;
+  try {
+    result = await provider.sendMessage(sessionName, contactNumber, text);
+  } catch (err) {
+    console.warn(`[whatsapp] send failed (${provider.name}/${sessionName} -> ${contactNumber}, ${source}): ${err.message}`);
+    await activityLog.record('WhatsApp', 'send_failed', contactNumber, { session: sessionName, source, error: err.message, workspaceId }).catch(() => {});
+    throw err;
+  }
+
+  await store.saveMessage({
+    provider: provider.name, sessionName, userId, workspaceId, direction: 'out',
+    contactNumber, text, waMessageId: result.id, source,
+  }).catch((err) => console.warn(`[whatsapp] sent but not saved: ${err.message}`));
+  await activityLog.record('WhatsApp', 'message_sent', contactNumber, { session: sessionName, source, workspaceId }).catch(() => {});
+  console.log(`[whatsapp] sent (${provider.name}/${sessionName} -> ${contactNumber}, ${source})`);
+  return result;
+}
+
+/**
+ * Save an incoming message and pass it to the WhatsApp agent. "stop" (and
+ * similar) records an opt-out instead, so outreach skips that contact.
+ * Never throws - a webhook must always get its 200.
+ */
+async function handleIncomingMessage({ providerName, sessionName, userId = null, workspaceId = null, message }) {
+  try {
+    let isNew;
+    try {
+      ({ isNew } = await store.saveMessage({
+        provider: providerName, sessionName, userId, workspaceId, direction: 'in',
+        contactNumber: message.contactNumber, contactName: message.contactName,
+        text: message.text, waMessageId: message.waMessageId, timestamp: message.timestamp, source: 'contact',
+      }));
+    } catch (err) {
+      // e.g. migration 0005 not run yet: keep answering customers, de-duplicating the old way.
+      console.warn(`[whatsapp] message not saved to whatsapp_chat_messages (${err.message}) - replying anyway`);
+      ({ isNew } = await require('../../memory').recordIncomingMessage(message.waMessageId || `${message.contactNumber}:${Date.now()}`, message.contactNumber, message.text || ''));
+    }
+    if (!isNew) return { handled: false, reason: 'duplicate' };
+
+    if (STOP_WORDS.test(message.text || '')) {
+      await store.addOptOut(sessionName, message.contactNumber);
+      await activityLog.record('WhatsApp', 'contact_opted_out', message.contactNumber, { session: sessionName, workspaceId }).catch(() => {});
+      console.log(`[whatsapp] ${message.contactNumber} opted out of outreach on ${sessionName}`);
+      return { handled: true, optedOut: true };
+    }
+
+    if (!message.text || message.text === '[media message]') return { handled: true, routed: false };
+
+    // Lazy require: agents/registry -> agents -> core modules would otherwise be circular.
+    const agent = require('../../agents/registry').getAgent('whatsapp');
+    await agent.handleIncomingMessage({
+      from: message.contactNumber,
+      body: message.text,
+      workspaceId,
+      session: providerName === 'waha' ? sessionName : null,
+      userId,
+    });
+    return { handled: true, routed: true };
+  } catch (err) {
+    console.error(`[whatsapp] incoming message from ${message?.contactNumber} not processed: ${err.message}`);
+    return { handled: false, error: err.message };
+  }
+}
+
+/**
+ * Record a WAHA session status change. FAILED, or STOPPED while it was linked
+ * (and not by the admin pressing Disconnect), flags it for the Reconnect banner.
+ */
+async function handleSessionStatus({ sessionName, status, phoneNumber, pushName }) {
+  try {
+    const row = await store.getSessionByName(sessionName);
+    if (!row) return;
+    const lost = status === 'FAILED' || (status === 'STOPPED' && row.status === 'WORKING' && !row.disconnected_by_user);
+    const fields = { status, last_status_at: new Date().toISOString() };
+    if (status === 'WORKING') Object.assign(fields, { needs_reconnect: false, disconnected_by_user: false, last_error: null });
+    if (lost) Object.assign(fields, { needs_reconnect: true, last_error: `WhatsApp session ${status.toLowerCase()}` });
+    if (phoneNumber) fields.phone_number = phoneNumber;
+    if (pushName) fields.push_name = pushName;
+    await store.updateSession(sessionName, fields);
+    if (lost) {
+      console.warn(`[whatsapp] session ${sessionName} is ${status} - admin needs to reconnect`);
+      await activityLog.record('WhatsApp', 'session_lost', sessionName, { status, workspaceId: row.workspace_id }).catch(() => {});
+    }
+  } catch (err) {
+    console.error(`[whatsapp] could not record status ${status} for ${sessionName}: ${err.message}`);
+  }
+}
+
+module.exports = { sendAndRecord, handleIncomingMessage, handleSessionStatus, randomBetween, STOP_WORDS, timing };

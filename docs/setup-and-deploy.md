@@ -65,6 +65,7 @@ Browser agent: `PLAYWRIGHT_BROWSERS_PATH=0` (Render) keeps Chromium inside
 |---|---|---|
 | Google Sheets lead storage | `GOOGLE_SERVICE_ACCOUNT_JSON` (key JSON) or `GOOGLE_SERVICE_ACCOUNT_FILE` (key path), `LEADS_SHEET_ID` (owner-workspace fallback) — see [connecting-accounts.md](connecting-accounts.md#google-sheets-lead-storage) | Render |
 | Composio (Gmail, Google Calendar, Reddit, GitHub) | `COMPOSIO_API_KEY`, `COMPOSIO_USER_ID`, `COMPOSIO_GMAIL_CONNECTED_ACCOUNT_ID`, `COMPOSIO_REDDIT_CONNECTED_ACCOUNT_ID`, `COMPOSIO_GITHUB_CONNECTED_ACCOUNT_ID` (the pinned ids are used only by the app owner's workspace; every other workspace connects its own account) | Render |
+| WhatsApp (WAHA, default) | `WHATSAPP_PROVIDER` (`waha`/`twilio`), `WAHA_BASE_URL`, `WAHA_API_KEY`, `WAHA_WEBHOOK_SECRET`, `WAHA_WEBHOOK_BASE_URL` (optional on Render), `WHATSAPP_DEFAULT_COUNTRY_CODE`, `DAILY_WA_LIMIT`, `WA_OUTREACH_MIN_GAP_MS`, `WA_OUTREACH_MAX_GAP_MS`, `WA_AUTO_REPLY` - see [whatsapp-waha-setup.md](whatsapp-waha-setup.md) | Render |
 | WhatsApp (Meta) | `WHATSAPP_PHONE_NUMBER_ID`, `WHATSAPP_ACCESS_TOKEN`, `WHATSAPP_WEBHOOK_VERIFY_TOKEN` | Render |
 | WhatsApp (Twilio) | `TWILIO_ACCOUNT_SID`, `TWILIO_AUTH_TOKEN`, `TWILIO_WHATSAPP_FROM` | Render |
 | Telegram | `TELEGRAM_BOT_TOKEN`, `TELEGRAM_WEBHOOK_SECRET` | Render |

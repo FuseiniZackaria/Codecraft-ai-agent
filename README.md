@@ -48,7 +48,8 @@ Three services run together:
 - A Supabase project (free tier is enough to start)
 - Optional integrations the agents can use once configured:
   - Composio for Gmail / Google Calendar / Reddit / GitHub
-  - WhatsApp (Meta Cloud API or Twilio Sandbox)
+  - WhatsApp: your own phone through a self-hosted WAHA server (default), or
+    Meta Cloud API / Twilio Sandbox. See [WhatsApp (WAHA)](#whatsapp-waha) below.
   - Telegram Bot API
   - Tavily (web search), YouTube Data API, OpenAI (image generation)
   - Playwright + a browser extension token for the Browser agent
@@ -72,12 +73,55 @@ cp frontend/.env.example frontend/.env
 # One-time: run SQL migrations in the Supabase SQL Editor
 #   backend/database/migrations/0001_workspaces_phase1.sql
 #   backend/database/migrations/0002_backfill_null_workspace.sql  (manual, see docs/runbooks.md)
+#   backend/database/migrations/0005_whatsapp_waha.sql            (WhatsApp tables)
 
 npm run dev              # backend on :4000, frontend on :5173
 ```
 
 Open `http://localhost:5173` and sign in with a Supabase user that has the
 `admin` role (see [docs/setup-guide.md](docs/setup-guide.md)).
+
+---
+
+## WhatsApp (WAHA)
+
+Each admin links their own WhatsApp by scanning a QR code (Toolbox →
+Connections → **Connect WhatsApp**), through [WAHA](https://waha.devlike.pro),
+a self-hosted WhatsApp HTTP API. Incoming messages are saved, shown in
+Work → **Inbox**, and answered by the WhatsApp agent (sent automatically after
+a safety check; risky topics wait for approval). Outreach is queued and sent
+30-90 seconds apart, up to `DAILY_WA_LIMIT` per day, skipping anyone who
+replied "stop". The existing Twilio code still works with `WHATSAPP_PROVIDER=twilio`.
+
+Run WAHA locally (Docker Desktop):
+
+```bash
+docker run -it -p 3000:3000 -e WAHA_API_KEY=your-api-key devlikeapro/waha
+```
+
+Then run `backend/database/migrations/0005_whatsapp_waha.sql` in the Supabase
+SQL Editor and set these in `backend/.env` (and on Render):
+
+| Variable | Required | What it is |
+|---|---|---|
+| `WHATSAPP_PROVIDER` | no (default `waha`) | `waha` or `twilio` |
+| `WAHA_BASE_URL` | yes for WAHA | WAHA's address as the backend reaches it, e.g. `http://localhost:3000` |
+| `WAHA_API_KEY` | yes for WAHA | Same value as the container's `WAHA_API_KEY`; sent as `X-Api-Key` |
+| `WAHA_WEBHOOK_SECRET` | yes to receive messages | Random string WAHA signs webhooks with (HMAC-SHA512) |
+| `WAHA_WEBHOOK_BASE_URL` | yes to receive messages | This backend's public URL (falls back to `RENDER_EXTERNAL_URL`) |
+| `WHATSAPP_DEFAULT_COUNTRY_CODE` | no (default `233`) | Added to local numbers like `024…` |
+| `DAILY_WA_LIMIT` | no (default `50`) | Outreach messages per WhatsApp account per day |
+| `WA_OUTREACH_MIN_GAP_MS` / `WA_OUTREACH_MAX_GAP_MS` | no (30000 / 90000) | Random gap between outreach sends |
+| `WA_AUTO_REPLY` | no (default `true`) | `false` = every reply waits for approval |
+
+Full beginner guide (Docker Desktop, ngrok, Supabase, Oracle Cloud free
+server, troubleshooting): [docs/whatsapp-waha-setup.md](docs/whatsapp-waha-setup.md).
+
+> WAHA drives WhatsApp Web on a normal WhatsApp account. That is not
+> WhatsApp's official Business API: messaging people who don't know you, or
+> sending in bulk, can get the number banned. Use a number you can afford to
+> lose for outreach, keep the daily limit low, and prefer contacts who expect
+> to hear from you.
 
 ---
 

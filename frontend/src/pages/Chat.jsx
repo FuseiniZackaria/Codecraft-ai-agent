@@ -120,7 +120,7 @@ function Bubble({ msg }) {
 
         {liveTask && (
           <Link
-            to="/tasks"
+            to="/work"
             className={`mt-2 flex items-center gap-1.5 text-xs pt-2 border-t ${
               isUser ? 'border-black/20' : 'border-[var(--color-border)]'
             } ${isUser ? 'text-black/70' : 'text-[var(--color-text-muted)]'} hover:underline w-fit`}

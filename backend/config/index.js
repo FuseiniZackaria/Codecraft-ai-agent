@@ -76,6 +76,27 @@ module.exports = {
     phoneNumberId: process.env.WHATSAPP_PHONE_NUMBER_ID || null,
     accessToken: process.env.WHATSAPP_ACCESS_TOKEN || null,
     webhookVerifyToken: process.env.WHATSAPP_WEBHOOK_VERIFY_TOKEN || null,
+    // "waha" (self-hosted WhatsApp Web, one session per admin) or "twilio"
+    // (the Twilio / Meta setup above). Anything else falls back to "waha".
+    provider: (process.env.WHATSAPP_PROVIDER || 'waha').toLowerCase() === 'twilio' ? 'twilio' : 'waha',
+    // Country code used when a number is written locally ("024..." -> "23324...").
+    defaultCountryCode: (process.env.WHATSAPP_DEFAULT_COUNTRY_CODE || '233').replace(/\D/g, ''),
+    // Outreach: max messages per WhatsApp session per day, and the random gap between sends.
+    dailyLimit: Number(process.env.DAILY_WA_LIMIT) || 50,
+    outreachMinGapMs: Number(process.env.WA_OUTREACH_MIN_GAP_MS) || 30_000,
+    outreachMaxGapMs: Number(process.env.WA_OUTREACH_MAX_GAP_MS) || 90_000,
+    // Replies to incoming messages: auto-send (after the safety check) unless set to "false".
+    autoReply: process.env.WA_AUTO_REPLY !== 'false',
+  },
+  waha: {
+    // Self-hosted WAHA (docker image devlikeapro/waha). Unset = WAHA features report "not configured".
+    baseUrl: (process.env.WAHA_BASE_URL || '').replace(/\/$/, '') || null,
+    apiKey: process.env.WAHA_API_KEY || null,
+    // Shared secret WAHA signs webhooks with (HMAC-SHA512). Required to accept incoming messages.
+    webhookSecret: process.env.WAHA_WEBHOOK_SECRET || null,
+    // Public URL of THIS backend that WAHA can reach (Render URL, or an ngrok URL locally).
+    publicBackendUrl: (process.env.WAHA_WEBHOOK_BASE_URL || process.env.RENDER_EXTERNAL_URL || process.env.BASE_URL || '').replace(/\/$/, '') || null,
+    timeoutMs: Number(process.env.WAHA_TIMEOUT_MS) || 15_000,
   },
   twilio: {
     accountSid: process.env.TWILIO_ACCOUNT_SID || null,

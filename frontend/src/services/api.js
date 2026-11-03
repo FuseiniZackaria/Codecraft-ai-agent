@@ -256,6 +256,16 @@ export const api = {
   connectWhatsApp: (data) => request('/connections/whatsapp/connect', { method: 'POST', body: JSON.stringify(data) }),
   testWhatsApp: (to) => request('/connections/whatsapp/test', { method: 'POST', body: JSON.stringify({ to }) }),
   disconnectWhatsApp: () => request('/connections/whatsapp', { method: 'DELETE' }),
+  // WhatsApp through WAHA: each admin's own linked phone (backend/api/whatsappRoutes.js)
+  getWhatsappSession: () => request('/whatsapp/session'),
+  startWhatsappSession: () => request('/whatsapp/session/start', { method: 'POST' }),
+  disconnectWhatsappSession: () => request('/whatsapp/session/disconnect', { method: 'POST' }),
+  getWhatsappConversations: () => request('/whatsapp/conversations'),
+  getWhatsappMessages: (number) => request(`/whatsapp/conversations/${encodeURIComponent(number)}/messages`),
+  replyWhatsapp: (number, text) =>
+    request(`/whatsapp/conversations/${encodeURIComponent(number)}/reply`, { method: 'POST', body: JSON.stringify({ text }) }),
+  queueWhatsappOutreach: (recipients) =>
+    request('/whatsapp/outreach', { method: 'POST', body: JSON.stringify({ recipients }) }),
   connectComposio: (provider, data) => request(`/connections/${provider}/connect`, { method: 'POST', body: JSON.stringify(data || {}) }),
   checkComposio: (provider, connectionId) => request(`/connections/${provider}/check`, { method: 'POST', body: JSON.stringify({ connectionId }) }),
   disconnectProvider: (provider) => request(`/connections/${provider}`, { method: 'DELETE' }),

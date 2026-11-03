@@ -12,10 +12,11 @@ const notifications = require('../../core/notifications');
  * loop. Drafts a reply and spawns it as its own pending_approval task,
  * same safety pattern as every other channel - no unsupervised auto-send.
  *
- * If config.autoReply.whatsapp.enabled is on, a drafted reply ADDITIONALLY
- * gets run through classifyReplySafety() - only genuinely low-risk replies
- * get auto-approved through the exact same approveTask() path a human
- * click would use. Off by default - everything stays exactly as before.
+ * If auto-reply is on, a drafted reply ADDITIONALLY gets run through
+ * classifyReplySafety() - only genuinely low-risk replies get auto-approved
+ * through the exact same approveTask() path a human click would use. For
+ * WAHA (a linked phone) auto-reply is on by default (WA_AUTO_REPLY); for
+ * Twilio/Meta it stays opt-in (WHATSAPP_AUTO_REPLY_ENABLED).
  *
  * Whenever a message ends up NOT auto-sent, the owner gets pinged directly
  * (see core/notifications.js) so they don't have to keep checking the
@@ -31,7 +32,14 @@ class WhatsAppAgent extends BaseAgent {
     });
   }
 
-  async handleIncomingMessage({ from, body, workspaceId: wsFromWebhook }) {
+  /**
+   * @param {object} msg
+   * @param {string} msg.from - customer's number
+   * @param {string} msg.body - their message
+   * @param {string} [msg.workspaceId]
+   * @param {string} [msg.session] - WAHA session it arrived on; the reply goes out from the same one
+   */
+  async handleIncomingMessage({ from, body, workspaceId: wsFromWebhook, session = null }) {
     const workspaceId = wsFromWebhook || null;
 
     const provider = selectProvider({});
@@ -49,12 +57,16 @@ class WhatsAppAgent extends BaseAgent {
     const approvalTask = await this.createApprovalTask({
       instruction: `Reply on WhatsApp to ${from}`,
       tool: 'whatsapp.sendMessage',
-      payload: { to: from, body: draft },
+      payload: session ? { to: from, body: draft, session } : { to: from, body: draft },
       workspaceId,
     });
 
+    // WAHA (a linked phone): replies auto-send by default (WA_AUTO_REPLY=false turns it off).
+    // Twilio/Meta: the original opt-in (WHATSAPP_AUTO_REPLY_ENABLED). Either way the
+    // safety check below decides; anything it doesn't pass waits for approval.
+    const autoReplyOn = session ? config.whatsapp.autoReply : config.autoReply.whatsapp.enabled;
     let autoSent = false;
-    if (config.autoReply.whatsapp.enabled) {
+    if (autoReplyOn) {
       const safety = await classifyReplySafety({ channel: 'whatsapp', incomingMessage: body, draftReply: draft, workspaceId });
       await activityLog.record(this.role, safety.safe ? 'auto_reply_approved' : 'auto_reply_blocked', from, {
         approvalTaskId: approvalTask.id,
