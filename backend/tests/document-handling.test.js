@@ -60,9 +60,9 @@ async function main() {
   const imageAttachment = { mediaType: 'image/png', data: 'ZmFrZQ==', filename: 'photo.png' };
   await chat.handleMessage('Check both', [], [imageAttachment, docxAttachment]);
   assert(Array.isArray(capturedCall.content), 'should use the multimodal content path when a native attachment is present');
-  const textBlock = capturedCall.content.find((b) => b.type === 'text');
+  const textBlock = capturedCall.content.find((p) => typeof p.text === 'string');
   assert(textBlock.text.includes('This is the document content'), 'extracted docx text should be folded into the trailing text block');
-  assert(capturedCall.content.some((b) => b.type === 'image'), 'the image should still be sent as a real multimodal block');
+  assert(capturedCall.content.some((p) => p.inlineData?.mimeType === 'image/png'), 'the image should still be sent as a real multimodal block');
   console.log('✓ mixed image + docx attachments are both handled correctly in the same message');
 
   const result4 = await chat.handleMessage('Read this', [], [{ mediaType: 'application/zip', data: 'ZmFrZQ==', filename: 'archive.zip' }]);

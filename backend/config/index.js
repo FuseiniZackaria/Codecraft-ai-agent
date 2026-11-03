@@ -28,13 +28,23 @@ module.exports = {
     // Real providers read keys from env. If absent, router falls back to the
     // mock provider so the system is runnable out of the box.
     openaiKey: process.env.OPENAI_API_KEY || null,
-    aiApiKey: process.env.AI_API_KEY || null,
+    // Google Gemini key shared with Ian (assistant.apiKey below).
+    geminiKey: process.env.GEMINI_API_KEY || null,
+    model: process.env.LLM_MODEL || 'gemini-3.8-flash',
+    // Used for Ian and the agents when the main model is rate-limited (429),
+    // overloaded (5xx) or slower than firstChunkTimeoutMs to start answering.
+    fallbackModel: process.env.LLM_FALLBACK_MODEL || 'gemini-3.5-flash-lite',
+    firstChunkTimeoutMs: Number(process.env.LLM_FIRST_CHUNK_TIMEOUT_MS) || 10000,
+    // The last model tried has nothing to switch to, so it gets longer.
+    lastAttemptTimeoutMs: Number(process.env.LLM_LAST_ATTEMPT_TIMEOUT_MS) || 45000,
+    // After the main model fails, go straight to the fallback for this long.
+    cooldownMs: Number(process.env.LLM_COOLDOWN_MS) || 120000,
   },
   assistant: {
-    // Anthropic SDK key - fall back to AI_API_KEY so existing deployments
-    // keep working with no .env change.
-    apiKey: process.env.ANTHROPIC_API_KEY || process.env.AI_API_KEY || null,
-    model: process.env.ASSISTANT_MODEL || 'claude-sonnet-5-5',
+    // Google Gemini key (aistudio.google.com/apikey) for Ian. Without it Ian
+    // falls back to the keyword router, same as before.
+    apiKey: process.env.GEMINI_API_KEY || null,
+    model: process.env.ASSISTANT_MODEL || 'gemini-3.8-flash',
     maxTokens: Number(process.env.ASSISTANT_MAX_TOKENS) || 1024,
     dailyUsdCap: Number(process.env.ASSISTANT_DAILY_USD_CAP ?? 5),
     historyLimit: Number(process.env.ASSISTANT_HISTORY_LIMIT) || 30,

@@ -11,28 +11,30 @@ process.env.CC_TESTING = '1';
 process.env.WORKSPACE_GUARD_MODE = 'enforce';
 
 const assert = require('assert');
-const Anthropic = require('@anthropic-ai/sdk');
 
 const WS_A = 'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa';
 const WS_B = 'bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb';
 
-// Scripted Anthropic stream: turn 1 asks for a department task, turn 2 ends the conversation.
-function scriptedStream(turns) {
+// Scripted Gemini stream: turn 1 asks for a department task, turn 2 ends the conversation.
+// Installed in place of the SDK's GoogleGenAI before the assistant module loads.
+function installScriptedGemini(turns) {
   let call = 0;
-  return function stream() {
-    const turn = turns[Math.min(call++, turns.length - 1)];
-    return {
-      async *[Symbol.asyncIterator]() {
-        for (const block of turn.content) {
-          if (block.type === 'tool_use') yield { type: 'content_block_start', content_block: block };
-          if (block.type === 'text') yield { type: 'content_block_delta', delta: { type: 'text_delta', text: block.text } };
-        }
-      },
-      async finalMessage() {
-        return { content: turn.content, stop_reason: turn.stop_reason, usage: turn.usage };
-      },
-    };
-  };
+  const sdkPath = require.resolve('@google/genai');
+  const realSdk = require(sdkPath);
+  class ScriptedGoogleGenAI {
+    constructor() {
+      this.models = {
+        generateContentStream: async () => {
+          const turn = turns[Math.min(call++, turns.length - 1)];
+          return (async function* () {
+            for (const part of turn.parts) yield { candidates: [{ content: { role: 'model', parts: [part] } }] };
+            yield { candidates: [{ content: { role: 'model', parts: [] }, finishReason: 'STOP' }], usageMetadata: turn.usage };
+          })();
+        },
+      };
+    }
+  }
+  require.cache[sdkPath].exports = { ...realSdk, GoogleGenAI: ScriptedGoogleGenAI };
 }
 
 async function main() {
@@ -43,25 +45,21 @@ async function main() {
   const memory = require('../memory');
   const { readShadowLog, clearShadowLog } = require('../memory/workspaceGuard');
   const usage = require('../core/assistant/usage');
+  installScriptedGemini([
+    {
+      usage: { promptTokenCount: 1000, candidatesTokenCount: 200 },
+      parts: [{ functionCall: { id: 'fc_1', name: 'run_strategy_task', args: { instruction: 'Outline a launch plan for next month' } } }],
+    },
+    {
+      usage: { promptTokenCount: 1500, candidatesTokenCount: 100 },
+      parts: [{ text: 'Done - the plan is ready.' }],
+    },
+  ]);
   const { runAssistant } = require('../core/assistant');
   const { loadPlugins } = require('../core/pluginLoader');
   loadPlugins();
 
-  config.assistant.model = 'claude-sonnet-5-5';
-  // The assistant builds its own client; patch the shared Messages prototype so every instance streams the script.
-  const MessagesProto = Object.getPrototypeOf(new Anthropic({ apiKey: 'test-key' }).messages);
-  MessagesProto.stream = scriptedStream([
-    {
-      stop_reason: 'tool_use',
-      usage: { input_tokens: 1000, output_tokens: 200 },
-      content: [{ type: 'tool_use', id: 'tu_1', name: 'run_strategy_task', input: { instruction: 'Outline a launch plan for next month' } }],
-    },
-    {
-      stop_reason: 'end_turn',
-      usage: { input_tokens: 1500, output_tokens: 100 },
-      content: [{ type: 'text', text: 'Done - the plan is ready.' }],
-    },
-  ]);
+  config.assistant.model = 'gemini-3.8-flash';
 
   clearShadowLog();
   const result = await runAssistant({ message: 'Make me a launch plan', workspaceId: WS_A });

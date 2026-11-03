@@ -223,28 +223,28 @@ const PLAN = [
   [/delete my last task/i, []],
 ];
 
-function fakeAnthropic(log) {
-  return class FakeAnthropic {
+function fakeGemini(log) {
+  return class FakeGoogleGenAI {
     constructor() {
-      this.messages = {
-        stream: (params) => {
-          log.systemText = params.system.map((b) => b.text).join('\n');
-          log.toolNames = params.tools.map((t) => t.name);
-          const last = params.messages[params.messages.length - 1];
-          let content;
-          if (typeof last.content === 'string') {
-            const plan = PLAN.find(([re]) => re.test(last.content))[1];
-            content = plan.length
-              ? plan.map(([name, input], i) => ({ type: 'tool_use', id: `tu${log.calls.length}_${i}`, name, input }))
-              : [{ type: 'text', text: 'These lookups are read-only, so I can\'t delete tasks. You can delete it on the Tasks page.' }];
+      this.models = {
+        generateContentStream: async (params) => {
+          log.systemText = params.config.systemInstruction.parts.map((p) => p.text).join('\n');
+          log.toolNames = params.config.tools[0].functionDeclarations.map((t) => t.name);
+          const last = params.contents[params.contents.length - 1];
+          let parts;
+          if (typeof last.parts[0].text === 'string') {
+            const plan = PLAN.find(([re]) => re.test(last.parts[0].text))[1];
+            parts = plan.length
+              ? plan.map(([name, args], i) => ({ functionCall: { id: `fc${log.calls.length}_${i}`, name, args } }))
+              : [{ text: 'These lookups are read-only, so I can\'t delete tasks. You can delete it on the Tasks page.' }];
             if (plan.length) plan.forEach(([name]) => log.calls.push(name));
           } else {
-            const results = last.content.map((b) => JSON.parse(b.content));
+            const results = last.parts.map((p) => p.functionResponse.response);
             log.results.push(...results);
-            content = [{ type: 'text', text: `Summary: ${JSON.stringify(results).slice(0, 4000)}` }];
+            parts = [{ text: `Summary: ${JSON.stringify(results).slice(0, 4000)}` }];
           }
-          const final = { content, stop_reason: content.some((b) => b.type === 'tool_use') ? 'tool_use' : 'end_turn', usage: { input_tokens: 10, output_tokens: 5 } };
-          return { async *[Symbol.asyncIterator]() {}, finalMessage: async () => final };
+          const chunk = { candidates: [{ content: { role: 'model', parts }, finishReason: 'STOP' }], usageMetadata: { promptTokenCount: 10, candidatesTokenCount: 5 } };
+          return (async function* () { yield chunk; })();
         },
       };
     }
@@ -252,10 +252,10 @@ function fakeAnthropic(log) {
 }
 
 async function throughIan() {
-  const sdkPath = require.resolve('@anthropic-ai/sdk');
-  require(sdkPath);
+  const sdkPath = require.resolve('@google/genai');
+  const realSdk = require(sdkPath);
   const log = { calls: [], results: [] };
-  require.cache[sdkPath].exports = fakeAnthropic(log);
+  require.cache[sdkPath].exports = { ...realSdk, GoogleGenAI: fakeGemini(log) };
   require('../config').assistant.apiKey = 'test-key';
 
   const memory = require('../memory');

@@ -9,7 +9,7 @@
  * The `complete` method is defined as an accessor pair so that when a test
  * assigns `mockProvider.complete = fn` to stub a response, we ALSO flip
  * CC_FORCE_MOCK_PROVIDER=1 on the environment. Without that flag, router.js
- * would pick aiProvider (whenever AI_API_KEY is set in .env) and the stub
+ * would pick aiProvider (whenever GEMINI_API_KEY is set in .env) and the stub
  * would never run. The flag only lasts the lifetime of this Node process -
  * each test file runs in its own process via scripts/run-tests.js, so it
  * never leaks across tests. Call `mockProvider.restore()` to go back to
@@ -21,7 +21,7 @@ const defaultComplete = async ({ prompt, content }) => {
   return {
     provider: 'mock',
     text: `[mock response] Task understood: "${preview}". ` +
-          `(Configure OPENAI_API_KEY or AI_API_KEY to use a real model.)`,
+          `(Configure GEMINI_API_KEY to use a real model.)`,
     costEstimate: 0,
     inputTokens: 0,
     outputTokens: 0,

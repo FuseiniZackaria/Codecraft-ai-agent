@@ -3,10 +3,16 @@ const config = require('../../config');
 /**
  * Per-million-token USD prices. Keep this table narrow - only the models the
  * Assistant actually calls. Prompt-cache reads are ~10% of normal input;
- * cache writes are ~1.25x. Verify in the current Anthropic pricing page if
- * you add a model here.
+ * cache writes are ~1.25x. Verify in the current pricing page if you add a
+ * model here.
+ *
+ * Gemini on the free tier costs nothing; these are the paid-tier rates
+ * (ai.google.dev/gemini-api/docs/pricing, rising to $1.50 / $7.50 on
+ * 2027-01-01) so the daily cap still means something if billing is on.
  */
 const PRICING = {
+  'gemini-3.8-flash':    { input: 0.75, output: 3.75 },
+  'gemini-3.5-flash-lite': { input: 0.30, output: 2.50 }, // fallback model
   'claude-sonnet-5-5':   { input: 2.0,  output: 10.0 },
   'claude-opus-5-5':     { input: 4.0,  output: 20.0 },
   'claude-haiku-4-5':    { input: 1.0,  output: 5.0  },

@@ -5,6 +5,7 @@ const toolRegistry = require('../tools/ToolRegistry');
 const composio = require('../core/composio');
 const chat = require('../core/chat');
 const { runAssistant } = require('../core/assistant');
+const { startTimer } = require('../core/debugTiming');
 const assistantUsage = require('../core/assistant/usage');
 const whatsappProvider = require('../core/whatsappProvider');
 const telegramProvider = require('../core/telegramProvider');
@@ -112,8 +113,13 @@ router.get('/chat/history', async (req, res) => {
 
 // Streaming conversational endpoint - one SSE connection per message, closed
 // on done. Falls back to the keyword-classifier chat.handleMessage() if the
-// Assistant can't run (daily cap hit, no API key, SDK error).
+// Assistant can't run (daily cap hit, no API key, SDK error). When Gemini
+// itself is down (both models rate-limited/overloaded) the fallback would hit
+// the same wall, so it's skipped and the reason is shown straight away.
+// The turn is saved after 'done' so the database write never delays the reply.
 router.post('/chat/stream', async (req, res) => {
+  const timer = startTimer('chat/stream');
+  timer.mark('route entry');
   const { message, scope, attachments, voice } = req.body || {};
   if (!message && !(attachments || []).length) {
     return res.status(400).json({ error: '"message" or an attachment is required' });
@@ -135,35 +141,54 @@ router.post('/chat/stream', async (req, res) => {
     try {
       const workspaceId = req.user?.workspaceId || null;
       const result = await chat.handleMessage(message || '', [], attachments, { workspaceId });
+      timer.mark('attachment reply');
       send({ type: 'text_delta', text: result.reply });
-      await persistTurn(message || '', attachments, result.reply, result.task?.id || null, workspaceId);
       send({ type: 'done', task_ids: result.task ? [result.task.id] : [], fallback: 'attachments' });
+      res.end();
+      await persistTurn(message || '', attachments, result.reply, result.task?.id || null, workspaceId);
+      timer.mark('saved turn');
     } catch (err) {
       send({ type: 'error', error: err.message });
+      res.end();
     }
-    return res.end();
+    return;
   }
 
   let accumulated = '';
   const tasksForTurn = [];
 
+  let firstText = true;
   try {
     const result = await runAssistant({
       message,
       scope: scope || null,
       voice: !!voice,
       workspaceId: req.user?.workspaceId || null,
+      timer,
       onEvent: (event) => {
-        if (event.type === 'text_delta') accumulated += event.text;
+        if (event.type === 'text_delta') {
+          if (firstText) { timer.mark('first text sent to browser'); firstText = false; }
+          accumulated += event.text;
+        }
         if (event.type === 'tool_end' && event.result?.task_id) tasksForTurn.push(event.result.task_id);
         send(event);
       },
     });
     accumulated = accumulated || result.reply;
     for (const id of result.taskIds) if (!tasksForTurn.includes(id)) tasksForTurn.push(id);
-    await persistTurn(message, [], accumulated, tasksForTurn[0] || null, req.user?.workspaceId || null);
     send({ type: 'done', task_ids: tasksForTurn, usage: result.usage });
+    res.end();
+    timer.mark('done sent');
+    await persistTurn(message, [], accumulated, tasksForTurn[0] || null, req.user?.workspaceId || null);
+    timer.mark('saved turn');
+    return;
   } catch (err) {
+    timer.mark('assistant failed', { code: err.code || null, status: err.status || null, attempts: err.attempts || null });
+    if (err.code === 'GEMINI_UNAVAILABLE') {
+      console.warn(`[chat/stream] ${err.message}`);
+      send({ type: 'error', error: err.message });
+      return res.end();
+    }
     const isCap = err.code === 'DAILY_CAP_REACHED';
     if (isCap) {
       send({ type: 'notice', text: 'Daily spend cap reached - using fallback routing until midnight.' });
@@ -174,19 +199,22 @@ router.post('/chat/stream', async (req, res) => {
     try {
       const workspaceId = req.user?.workspaceId || null;
       const history = await memory.listChatMessages(30, { workspaceId });
+      timer.mark('fallback: loaded history', { rows: history.length });
       const historyForFallback = history
         .filter((m) => m.content && m.content.trim().length > 0)
         .map((m) => ({ role: m.role, content: m.content }));
       const result = await chat.handleMessage(message, historyForFallback, [], { workspaceId });
+      timer.mark('fallback: reply ready');
       send({ type: 'text_delta', text: result.reply });
-      await persistTurn(message, [], result.reply, result.task?.id || null, workspaceId);
       send({ type: 'done', task_ids: result.task ? [result.task.id] : [], fallback: isCap ? 'daily_cap' : 'assistant_error' });
+      res.end();
+      await persistTurn(message, [], result.reply, result.task?.id || null, workspaceId);
+      timer.mark('fallback: saved turn');
     } catch (fallbackErr) {
       send({ type: 'error', error: fallbackErr.message });
+      res.end();
     }
   }
-
-  res.end();
 });
 
 async function persistTurn(userMessage, attachments, assistantReply, taskId, workspaceId = null) {

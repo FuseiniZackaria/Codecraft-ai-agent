@@ -1,5 +1,23 @@
 # CodeCraft AI — Progress
 
+## Browser: reliable contact details
+
+- `browserSession.navigate` waits for the full load and network quiet, scrolls slowly to the bottom (window or inner scroll container) so footers and lazy sections render, then pauses. A navigation interrupted by a previous error page is retried once.
+- `readPage` reads the whole page (pages over 24k characters keep the start, the end and the footer) and returns `contacts`: mailto/tel links, emails and phones in the text, "name [at] domain [dot] com" and Cloudflare-protected emails.
+- New `browser.findContacts`: if the page has no email, opens the site's contact page, then about page (or `/contact`, `/contact-us`, `/about`). Its text starts and ends with a `CONTACT DETAILS FOUND` block.
+- Browser Agent uses it for every read and lists the contact details first. Ian checks that list before saying nothing was found, and never invents technical causes (e.g. "connection hiccup").
+- Needs Chromium: `npx playwright install chromium` locally; on Render add `npx playwright install --with-deps chromium` to the build command.
+
+## Gemini instead of Anthropic, and fast chat
+
+- Ian and every agent run on Google Gemini (`@google/genai`), one key: `GEMINI_API_KEY`. `ASSISTANT_MODEL` / `LLM_MODEL` default to `gemini-3.8-flash`. `@anthropic-ai/sdk` removed; `AI_API_KEY` / `ANTHROPIC_API_KEY` are no longer read.
+- New `core/providers/gemini.js`: SDK retries off; if a model hasn't started answering in 10s or returns 429/5xx, switch to `LLM_FALLBACK_MODEL` (`gemini-3.5-flash-lite`). A failed model goes last for 2 minutes; the last model tried gets 45s. Both down -> a clear error instead of a long wait.
+- Chat (`/chat/stream`): Ian loads cap, history and system prompt in parallel; greetings ("hi", "thanks Ian") get no tools; the turn is saved after `done` is sent; when Gemini is down the fallback router is skipped. Usage is priced per model actually used.
+- `DEBUG=chat` logs per-step timings (Supabase loads, each model call with model/tools/thinking/attempts, tool calls, saving).
+- Measured: "hi" went from 258s (or a hang, then a 503) to ~2s.
+- **Render:** set `GEMINI_API_KEY` before deploying, or agents fall back to mock replies and Ian to the keyword router.
+- Test: `gemini-fallback`; Ian tests now script Gemini instead of Anthropic.
+
 ## Ian: read-only lookup tools
 
 - New `core/assistant/readTools.js`: get_console_logs, get_tasks, get_task_details, get_workflows, get_analytics, get_installed_plugins, get_installed_skills, get_recent_chats, get_connection_status. Reads only, scoped to the workspace, bounded limits, long text cut and flagged, secrets/tokens/phone numbers redacted, friendly errors.

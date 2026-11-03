@@ -42,7 +42,8 @@ const DEPARTMENT_TOOLS = [
     name: 'run_development_task',
     description:
       'Run a Development & Operations task: build a website/app/system (writes real files to a sandboxed workspace), create a GitHub repo, ' +
-      'find/open/delete files on the user\'s own computer (within allowed folders), or browse a specific website. ' +
+      'find/open/delete files on the user\'s own computer (within allowed folders), or browse a specific website ' +
+      '(reads the whole site page, and its contact/about page when needed, and returns every email and phone number found). ' +
       'GitHub repo creation and file deletion create pending_approval tasks.',
     department: 'development',
   },

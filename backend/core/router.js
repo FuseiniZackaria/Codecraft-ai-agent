@@ -14,7 +14,7 @@ const registry = {
 
 function availableProviders() {
   const available = ['mock'];
-  if (config.llm.aiApiKey) available.push('ai');
+  if (config.llm.geminiKey) available.push('ai');
   // additional providers would be added here the same way.
   return available;
 }

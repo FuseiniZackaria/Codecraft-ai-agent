@@ -30,6 +30,7 @@ const SECRETS_TO_BLANK = [
   'OPENAI_API_KEY',
   'AI_API_KEY',
   'ANTHROPIC_API_KEY',
+  'GEMINI_API_KEY',
   // Search / web
   'TAVILY_API_KEY',
   'YOUTUBE_API_KEY',

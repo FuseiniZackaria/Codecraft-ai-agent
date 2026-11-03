@@ -6,8 +6,8 @@ class BrowserAgent extends BaseAgent {
     super({
       key: 'browser',
       role: 'Browser Agent',
-      goals: ['Navigate to specific web pages the user names and report back what is actually there - read-only, no clicking or form submission yet'],
-      tools: ['browser.navigate', 'browser.readPage', 'browser.screenshot'],
+      goals: ['Navigate to specific web pages the user names and report back what is actually there, including every contact detail on the site - read-only, no clicking or form submission yet'],
+      tools: ['browser.navigate', 'browser.readPage', 'browser.findContacts', 'browser.screenshot'],
     });
   }
 
@@ -23,7 +23,7 @@ class BrowserAgent extends BaseAgent {
           '(add "https://" if the user wrote a bare domain like "example.com"). Use "screenshot" only when ' +
           'the user explicitly asks to SEE, capture, or take a screenshot/picture of the page - otherwise ' +
           'default to "read" (get the actual text content and summarize it), which covers checking if a site ' +
-          'is up, reading its content, or describing what is on it.',
+          'is up, reading its content, describing what is on it, or finding its contact details.',
         prompt: `Current message: ${task.instruction}`,
       });
       const match = result.text.match(/\{[\s\S]*\}/);
@@ -59,18 +59,23 @@ class BrowserAgent extends BaseAgent {
       ];
     }
 
+    // findContacts loads the page fully (scrolls to the footer), reads all of
+    // it, and - if there's no email on it - opens the site's contact/about
+    // page too. Its text starts and ends with a CONTACT DETAILS FOUND block.
     return [
-      { type: 'tool_call', tool: 'browser.navigate', args: { url: extracted.url } },
-      { type: 'tool_call', tool: 'browser.readPage', args: {} },
+      { type: 'tool_call', tool: 'browser.findContacts', args: { url: extracted.url } },
       {
         type: 'llm_call',
-        maxTokens: 800,
+        maxTokens: 1000,
         instruction:
-          'The previous step\'s result is a JSON object: "url", "title", "text" (the page\'s visible text ' +
-          'content, possibly truncated), "truncated" (true if the page had more text than shown). Summarize ' +
-          'what this page actually says for the user in a friendly, concise way - report the page title and ' +
-          'the substance of its content. If "truncated" is true, mention the page had more content than what ' +
-          'was reviewed. Never claim to have seen images/layout/visual design - only the text content was read.',
+          `The user asked: "${task.instruction}"\n\n` +
+          'The previous step is the text of the website (one or more pages, each starting with "PAGE: <url>"), ' +
+          'with a "=== CONTACT DETAILS FOUND ===" block at the start and end. Reply in this order:\n' +
+          '1. A line "Contact details:" followed by every email and phone number from that block, copied exactly ' +
+          'as written - never shorten, guess, or invent one. If the block says "none found" for both, write ' +
+          '"Contact details: none found on <the pages checked>".\n' +
+          '2. A short, friendly summary of what the site says, answering the user\'s question.\n' +
+          'Only the text content was read - never claim to have seen images, layout or visual design.',
       },
     ];
   }

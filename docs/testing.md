@@ -16,7 +16,7 @@ npm test
 
 What the runner (`backend/scripts/run-tests.js`) does before loading any test:
 
-- Blanks every external credential: `SUPABASE_*`, `OPENAI_*`, `ANTHROPIC_*`,
+- Blanks every external credential: `SUPABASE_*`, `OPENAI_*`, `ANTHROPIC_*`, `GEMINI_API_KEY`,
   `AI_API_KEY`, `TAVILY_*`, `YOUTUBE_*`, `COMPOSIO_*`, `WHATSAPP_*`, `TWILIO_*`,
   `TELEGRAM_*`, `BROWSER_EXTENSION_TOKEN`, `OUTREACH_*`, `AUTO_REPLY_*`.
 - Sets `CC_TESTING=1`, `CC_FORCE_MEMORY_STORE=1`, `CC_FORCE_MOCK_PROVIDER=1`,

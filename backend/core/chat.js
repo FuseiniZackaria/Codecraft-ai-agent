@@ -50,15 +50,11 @@ async function buildSystemPrompt(facts, workspaceId = null) {
 
 const ALLOWED_ATTACHMENT_TYPES = ['image/jpeg', 'image/png', 'image/gif', 'image/webp', 'application/pdf'];
 
+// Gemini parts: images and PDFs both go inline as base64 with their MIME type.
 function buildMultimodalContent(message, attachments) {
-  const blocks = attachments.map((a) => {
-    if (a.mediaType === 'application/pdf') {
-      return { type: 'document', source: { type: 'base64', media_type: a.mediaType, data: a.data } };
-    }
-    return { type: 'image', source: { type: 'base64', media_type: a.mediaType, data: a.data } };
-  });
-  blocks.push({ type: 'text', text: message || 'What is this?' });
-  return blocks;
+  const parts = attachments.map((a) => ({ inlineData: { mimeType: a.mediaType, data: a.data } }));
+  parts.push({ text: message || 'What is this?' });
+  return parts;
 }
 
 /**
