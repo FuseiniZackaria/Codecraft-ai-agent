@@ -98,7 +98,7 @@ async function runAssistant({ message, scope = null, voice = false, workspaceId 
   const contents = [...history, { role: 'user', parts: [{ text: message }] }];
 
   const collectedTaskIds = [];
-  const context = { history, collectedTaskIds, workspaceId };
+  const context = { history, collectedTaskIds, workspaceId, userMessage: message };
   const totalUsage = { input_tokens: 0, output_tokens: 0, cache_read_input_tokens: 0, cache_creation_input_tokens: 0 };
   const usageByModel = new Map(); // model -> usage, so each model is priced at its own rate
 

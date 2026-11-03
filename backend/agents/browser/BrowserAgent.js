@@ -70,12 +70,19 @@ class BrowserAgent extends BaseAgent {
         instruction:
           `The user asked: "${task.instruction}"\n\n` +
           'The previous step is the text of the website (one or more pages, each starting with "PAGE: <url>"), ' +
-          'with a "=== CONTACT DETAILS FOUND ===" block at the start and end. Reply in this order:\n' +
-          '1. A line "Contact details:" followed by every email and phone number from that block, copied exactly ' +
-          'as written - never shorten, guess, or invent one. If the block says "none found" for both, write ' +
-          '"Contact details: none found on <the pages checked>".\n' +
-          '2. A short, friendly summary of what the site says, answering the user\'s question.\n' +
-          'Only the text content was read - never claim to have seen images, layout or visual design.',
+          'with a "=== CONTACT DETAILS FOUND ===" block at the start and end. Write a short, clean summary in ' +
+          'this exact markdown format, about 120 words in total:\n\n' +
+          '**What they do:** one or two plain sentences.\n\n' +
+          '**Key points:**\n- three to five bullets, only the most important things (main services or offers, who they ' +
+          'serve, anything that answers the user\'s question). One short line each.\n\n' +
+          '**Contact:** one line - every email and phone number from the CONTACT DETAILS FOUND block, copied exactly ' +
+          '(never shorten, guess or invent one), then other channels the page names in a few words. Example: ' +
+          '"info@example.com · no phone listed · also LinkedIn and WhatsApp". If the block says "none found" for ' +
+          'both, write "No email or phone number found on <the pages checked>".\n\n' +
+          'Leave everything else out: menus, buttons, FAQs, slogans, quotes, long lists, project or product ' +
+          'catalogues, footer credits and copyright lines. Don\'t paste text from the page or repeat the ' +
+          'CONTACT DETAILS FOUND block. Only the text content was read - never claim to have seen images, ' +
+          'layout or visual design.',
       },
     ];
   }

@@ -63,7 +63,7 @@ async function main() {
   const leadDefinition = { ...definition, id: uuid(), name: leadEntry.name, graph: leadEntry.graph };
   await memory.saveWorkflowDefinition(leadDefinition);
   const restoreLead = stub(async ({ prompt }) => {
-    if ((prompt || '').includes('draft a short, genuinely personalized outreach email')) {
+    if ((prompt || '').includes('genuinely personalized outreach email')) {
       return { text: JSON.stringify({ to: 'lead@example.com', subject: 'Hi', body: 'Intro message.' }), provider: 'mock', costEstimate: 0 };
     }
     return { text: 'Acme Corp\nBeta Inc\nGamma LLC', provider: 'mock', costEstimate: 0 };

@@ -1,5 +1,14 @@
 # CodeCraft AI — Progress
 
+## Outreach that targets one person, and tidier results
+
+- **Single-recipient outreach:** "draft outreach to <name / email / website>" drafts for that one person. A lead search runs only for lead-finding wording ("find leads", "find 15 hotels in Accra", "draft outreach to 10 salons"). Before, any "draft ... outreach" ran a lead search and drafted for every business it found.
+- **Professional drafts:** 150-220 words in four paragraphs (specific opening, who we are, 2-3 concrete benefits, a 20-minute call), formal tone, the business profile's signature, only real facts about the recipient. Lead-search drafts now get the business profile too.
+- **No stray search:** a single draft searches the web only when the request lacks an email or a description, and then searches the recipient's name and domain, not the whole sentence.
+- **Lead emails cleaned:** contact-data-site addresses (LeadIQ, ZoomInfo, Apollo, ...) are dropped with a warning; trailing dots trimmed.
+- **Ian:** asks what to offer when the user hasn't said; passes known facts into the draft request; reuses a website or research lookup from the last 10 minutes unless the user says recheck/refresh/again (follow-ups ~3s instead of ~30s); never concludes anything from a failed check.
+- **Task view:** browser page reads show as a small card (page, pages checked, contacts) instead of raw page text; email drafts show as To / Subject / body instead of JSON. Website summaries follow a short fixed format (what they do, 3-5 key points, one contact line), and Ian gets the summary rather than the raw page.
+
 ## Browser: reliable contact details
 
 - `browserSession.navigate` waits for the full load and network quiet, scrolls slowly to the bottom (window or inner scroll container) so footers and lazy sections render, then pauses. A navigation interrupted by a previous error page is retried once.

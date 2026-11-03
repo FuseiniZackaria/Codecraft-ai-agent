@@ -4,6 +4,24 @@ const config = require('../../config');
 const { selectProvider } = require('../../core/router');
 const toolRegistry = require('../../tools/ToolRegistry');
 const googleSheets = require('../../core/googleSheets');
+const { businessContextLine } = require('../../core/businessContext');
+
+// How every outreach email is written - single-lead drafts and lead-gen drafts alike.
+const OUTREACH_STYLE =
+  'Write it as a professional business email, like a consultant writing to a prospective client. ' +
+  'Body of 150-220 words in four short paragraphs:\n' +
+  '1. Opening: address them by name ("Dear <name>,") and show you know their work with one or two concrete facts ' +
+  'about what they do.\n' +
+  '2. Who we are: our business name and what we do, from the business context, in one or two sentences.\n' +
+  '3. The value for them: two or three specific ways what we offer would help their work, each tied to something ' +
+  'they actually do. No vague claims, no invented numbers, results or client names.\n' +
+  '4. Call to action: propose a 20-minute call this week or next and invite them to reply with a convenient time.\n' +
+  'Tone: courteous, confident and formal. No slang, emojis or exclamation marks; no hype ("game-changer", ' +
+  '"revolutionary"); no casual phrases ("hey", "just reaching out", "no-pressure chat", "I\'d love to"). ' +
+  'Subject: specific and professional, under 9 words. ' +
+  'Sign-off: "Kind regards," then the Signature from the business context exactly as written; if there is no ' +
+  'signature, the owner\'s name and title, business name and contact details from the business context. ' +
+  'Never leave a placeholder like [Your Name].';
 
 function applicantProfileLine() {
   const p = config.applicant || {};
@@ -39,9 +57,29 @@ const SCAM_INDICATORS = [
   'commission only', 'mlm', 'network marketing',
 ];
 
+// Contact-data and directory sites list placeholder or other companies'
+// addresses on their pages (e.g. address.support@leadiq.com) - never a lead's own email.
+const DATA_BROKER_EMAIL_DOMAINS = [
+  'leadiq.com', 'zoominfo.com', 'rocketreach.co', 'rocketreach.com', 'apollo.io', 'signalhire.com',
+  'contactout.com', 'lusha.com', 'seamless.ai', 'crunchbase.com', 'dnb.com', 'kompass.com',
+  'domain.com', 'email.com', 'sentry.io', 'wixpress.com',
+];
+
+/** A usable lead email, or null: trims trailing punctuation and drops data-broker/placeholder addresses. */
+function cleanEmail(email) {
+  const e = String(email || '').trim().replace(/[.,;:)\]]+$/, '').toLowerCase();
+  if (!/^[^@\s]+@[^@\s]+\.[a-z]{2,}$/.test(e)) return null;
+  const domain = e.split('@')[1];
+  if (DATA_BROKER_EMAIL_DOMAINS.some((d) => domain === d || domain.endsWith(`.${d}`))) return null;
+  return e;
+}
+
 function extractEmail(text) {
-  const match = (text || '').match(/[\w.+-]+@[\w-]+\.[\w.-]+/);
-  return match ? match[0] : null;
+  for (const m of (text || '').match(/[\w.+-]+@[\w-]+\.[\w.-]+/g) || []) {
+    const email = cleanEmail(m);
+    if (email) return email;
+  }
+  return null;
 }
 
 // The "who to find / what I sell" header for the lead extractors.
@@ -165,11 +203,38 @@ const LEAD_GEN_KEYWORDS = [
 const LEAD_GEN_PATTERNS = [
   /find\s+\d+\s+/,
   /find\s+\w+\s+in\s+/,
-  /draft\s+.*outreach/,
 ];
+// Bulk wording: "draft outreach to 10 salons", "...to restaurants in Accra", "...to my leads".
+const BULK_TARGET = /\b(\d+|some|several|multiple|all|every|leads|prospects|businesses|companies|shops|stores|restaurants|hotels|salons|clinics|schools|people)\b/i;
+
+/**
+ * True when the request names one specific recipient - an email address, a
+ * website, or "to <Name>" - so it's single-lead outreach, not a lead hunt.
+ */
+function hasSpecificRecipient(instruction) {
+  const text = String(instruction || '');
+  if (extractEmail(text)) return true;
+  if (/(?<![@\w.-])(?:[a-z0-9-]+\.)+(?:com|tech|io|co|org|net|gh|ai|dev|app|biz|info)\b/i.test(text)) return true;
+  const named = /\b(?:to|for)\s+([A-Z][\w'&.-]*(?:\s+[A-Z][\w'&.-]*){0,4})/.exec(text);
+  return !!named && !BULK_TARGET.test(named[1]);
+}
+/** A focused search for one outreach recipient: their name, plus their site's domain if known. */
+function recipientQuery(instruction) {
+  const text = String(instruction || '');
+  const name = /\b(?:to|for)\s+([A-Z][\w'&.-]*(?:\s+[A-Z][\w'&.-]*){0,4})/.exec(text)?.[1];
+  const email = extractEmail(text);
+  const domain = email ? email.split('@')[1] : /(?<![@\w.-])((?:[a-z0-9-]+\.)+[a-z]{2,})\b/i.exec(text)?.[1];
+  const freeMail = /^(gmail|yahoo|hotmail|outlook|icloud|aol)\./i.test(domain || '');
+  const parts = [name && `"${name}"`, domain && !freeMail && domain].filter(Boolean);
+  return parts.length ? parts.join(' ') : text;
+}
+
 function isLeadGenGoal(instruction) {
   const lower = instruction.toLowerCase();
-  return LEAD_GEN_KEYWORDS.some((k) => lower.includes(k)) || LEAD_GEN_PATTERNS.some((p) => p.test(lower));
+  if (LEAD_GEN_KEYWORDS.some((k) => lower.includes(k)) || LEAD_GEN_PATTERNS.some((p) => p.test(lower))) return true;
+  // "Draft outreach ..." is a lead hunt only when no one specific is named:
+  // "draft outreach to Essandoh Perry at info@..." is a single email.
+  return /draft\s+.*outreach/.test(lower) && !hasSpecificRecipient(instruction);
 }
 
 // Job-opportunity lead-gen is checked SEPARATELY and takes priority over the
@@ -453,17 +518,30 @@ class SalesAgent extends BaseAgent {
     }
 
     const draftInstruction =
-      'Based on anything above, draft a short, genuinely personalized outreach email (not generic) ' +
-      'introducing our business to this lead. Keep it under 120 words, no hard sell. ' +
-      'Respond with ONLY a JSON object: {"to": "email or null if not found", "subject": "...", "body": "..."}';
+      `The request: "${task.instruction}"\n\n` +
+      'Based on the request and anything above, draft a genuinely personalized outreach email (not generic) ' +
+      'to the person or business named in the request, introducing our business.\n\n' +
+      `${OUTREACH_STYLE}\n\n` +
+      'Facts:\n' +
+      '- Use only facts stated in the request or clearly about THIS recipient in the search results above. ' +
+      'Ignore results about other people or companies.\n' +
+      '- Never claim they lack a website, online presence or anything else unless the request or results say so. ' +
+      'If the request says what to offer, pitch that; otherwise pick what fits what they actually do.\n\n' +
+      'Respond with ONLY a JSON object: {"to": "email or null if not found", "subject": "...", "body": "..."} ' +
+      '(use \\n\\n between paragraphs in "body").';
 
-    if (config.search.tavilyKey) {
+    // Search only when the request is missing what a draft needs (an email, or
+    // anything about who they are). Searching the whole sentence pulls in
+    // unrelated people with similar names, so search the recipient instead.
+    const knownEmail = extractEmail(task.instruction);
+    const words = task.instruction.split(/\s+/).filter(Boolean).length;
+    if (config.search.tavilyKey && (!knownEmail || words < 15)) {
       return [
-        { type: 'tool_call', tool: 'websearch.search', args: { query: task.instruction } },
-        { type: 'llm_call', maxTokens: 1024, instruction: draftInstruction },
+        { type: 'tool_call', tool: 'websearch.search', args: { query: recipientQuery(task.instruction) } },
+        { type: 'llm_call', maxTokens: 2000, instruction: draftInstruction },
       ];
     }
-    return [{ type: 'llm_call', maxTokens: 1024, instruction: draftInstruction }];
+    return [{ type: 'llm_call', maxTokens: 2000, instruction: draftInstruction }];
   }
 
   async reflect(task, results) {
@@ -729,6 +807,13 @@ class SalesAgent extends BaseAgent {
           } catch { /* non-fatal */ }
           continue;
         }
+        // Trailing dots and contact-data-site addresses never reach a draft.
+        if (l.email) {
+          const email = cleanEmail(l.email);
+          if (!email) warnings.push(`Ignored email "${l.email}" for "${l.name}" - not the business's own address.`);
+          l.email = email;
+          if (!email) l.emailSource = null;
+        }
         kept.push(l);
       }
       leads = kept;
@@ -772,12 +857,14 @@ class SalesAgent extends BaseAgent {
       if (emailLeads.length) {
         try {
           const provider = selectProvider({});
+          const businessLine = await businessContextLine(task?.workspace_id || this._currentTask?.workspace_id || null);
           const draftResult = await provider.complete({
-            maxTokens: 3000,
+            maxTokens: Math.min(16000, 2000 + emailLeads.length * 700),
             system:
-              'For each lead below, draft a short (under 100 words), genuinely personalized outreach ' +
-              'email. Mention something real and specific about that business. Friendly, professional ' +
-              'tone suited to Ghanaian small-business owners. Respond with ONLY a JSON array: ' +
+              `${businessLine}For each lead below, draft a genuinely personalized outreach email. Use only what the ` +
+              'lead data says about that business - never claim they lack something unless the data says so.\n\n' +
+              `${OUTREACH_STYLE}\n\n` +
+              'Respond with ONLY a JSON array (use \\n\\n between paragraphs in "body"): ' +
               '[{"name": "...", "email": "...", "subject": "...", "body": "..."}]',
             prompt: JSON.stringify(emailLeads.map((l) => ({
               name: l.name, email: l.email, type: l.type, location: l.location,
