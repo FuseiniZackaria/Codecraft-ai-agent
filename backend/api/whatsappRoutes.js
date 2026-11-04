@@ -5,6 +5,7 @@ const { getProvider, isSharedNumberProvider, sessionNameForUser, webhookUrl } = 
 const messaging = require('../core/whatsapp/messaging');
 const outbox = require('../core/whatsapp/outbox');
 const { normalizeNumber } = require('../core/whatsapp/phone');
+const WahaProvider = require('../core/whatsapp/WahaProvider');
 
 /**
  * /api/whatsapp - signed-in admins only (mounted behind requireAuth in server.js).
@@ -68,13 +69,22 @@ router.get('/session', async (req, res) => {
     if (row && live.status !== row.status && live.status !== 'NOT_FOUND') {
       await messaging.handleSessionStatus({ sessionName, ...live });
     }
-    // The session was linked through another backend (e.g. local testing, now Render):
-    // point WAHA's webhook at this one so incoming messages arrive here.
+    // Repair the session's own webhook if incoming messages can't reach this
+    // backend: it points somewhere else, or it's signed with a key other than
+    // the current WAHA_WEBHOOK_SECRET (none, or an older one) - WAHA keeps the
+    // key it was given at connect time, whatever the env vars say later.
     const hook = webhookUrl();
-    if (provider.name === 'waha' && hook && live.status === 'WORKING' && Array.isArray(live.webhooks) && !live.webhooks.includes(hook)) {
-      console.log(`[whatsapp] updating ${sessionName} webhook to ${hook}`);
+    const wrongUrl = Array.isArray(live.webhooks) && !live.webhooks.includes(hook);
+    const staleKey = provider.name === 'waha' && WahaProvider.staleWebhooks(live.rawWebhooks || [], hook).length > 0;
+    if (provider.name === 'waha' && hook && live.status === 'WORKING' && (wrongUrl || staleKey)) {
+      console.log(`[whatsapp] updating ${sessionName} webhook to ${hook}${staleKey ? ' (re-registering it with the current WAHA_WEBHOOK_SECRET)' : ''}`);
       await provider.startSession(sessionName, { webhookUrl: hook, metadata: { 'user.id': req.user.id } })
         .catch((err) => console.warn(`[whatsapp] webhook update failed: ${err.message}`));
+      const again = await provider.getStatus(sessionName).catch(() => null);
+      const fixed = !!again && again.webhooks.includes(hook) && WahaProvider.staleWebhooks(again.rawWebhooks || [], hook).length === 0;
+      console.log(fixed
+        ? `[whatsapp] webhook for ${sessionName} repaired - WAHA now signs with the current WAHA_WEBHOOK_SECRET`
+        : `[whatsapp] webhook for ${sessionName} could NOT be repaired - check the WAHA service logs`);
     }
     const fresh = row ? await store.getSessionByName(sessionName) : null;
     const qr = live.status === 'SCAN_QR_CODE' ? await provider.getQR(sessionName).catch(() => null) : null;

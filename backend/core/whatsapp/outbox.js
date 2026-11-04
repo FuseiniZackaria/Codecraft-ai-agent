@@ -129,6 +129,12 @@ function start() {
   timer.unref?.();
   healthTimer.unref?.();
   console.log(`[whatsapp] provider ${config.whatsapp.provider}; outreach queue started (daily limit ${config.whatsapp.dailyLimit}/session)`);
+  const secret = config.waha.webhookSecret;
+  if (config.whatsapp.provider === 'waha' && !secret) {
+    console.warn('[whatsapp] WAHA_WEBHOOK_SECRET is not set - incoming WhatsApp messages will be rejected');
+  } else if (secret && secret !== secret.trim()) {
+    console.warn('[whatsapp] WAHA_WEBHOOK_SECRET starts or ends with a space - WAHA must use exactly the same value (including the space), or remove it in both places');
+  }
 }
 
 function stop() {

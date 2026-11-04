@@ -44,6 +44,11 @@ global.fetch = async (url, init = {}) => {
     if (init.method === 'PUT') { s.config = JSON.parse(init.body).config; return json(200, s); }
     return json(200, s);
   }
+  const lidMatch = u.pathname.match(/^\/api\/[^/]+\/lids\/(.+)$/);
+  if (lidMatch) {
+    const lid = decodeURIComponent(lidMatch[1]);
+    return json(200, { lid, pn: lid === '777000111@lid' ? '233200000061@c.us' : null });
+  }
   if (/\/auth\/qr$/.test(u.pathname)) return json(200, { mimetype: 'image/png', data: 'UVJDT0RF' });
   if (u.pathname === '/api/sendText') return json(201, { id: `wamid-${calls.length}` });
   if (u.pathname === '/api/startTyping' || u.pathname === '/api/stopTyping') return json(200, {});
@@ -112,7 +117,7 @@ const WS = 'wwwwwwww-wwww-wwww-wwww-wwwwwwwwwwww';
   };
   const ok = waha.handleIncomingWebhook(signed(msgEvent));
   assert.strictEqual(ok.type, 'message');
-  assert.deepStrictEqual(Object.keys(ok.message).sort(), ['contactName', 'contactNumber', 'text', 'timestamp', 'waMessageId']);
+  assert.deepStrictEqual(Object.keys(ok.message).sort(), ['contactName', 'contactNumber', 'lid', 'text', 'timestamp', 'waMessageId']);
   assert.strictEqual(ok.message.contactNumber, '233200000001');
   assert.strictEqual(ok.message.contactName, 'Ama');
   assert.strictEqual(waha.handleIncomingWebhook(signed(msgEvent, 'wrong-secret')).type, 'rejected');
@@ -286,6 +291,122 @@ const WS = 'wwwwwwww-wwww-wwww-wwww-wwwwwwwwwwww';
     registry.getAgent = realGetAgent;
     server.close();
     console.log('✓ webhook route: 200 at once; the same message delivered 3 times is handled once (memory + database); bad signature 401');
+  }
+
+  // 9g. Senders named by a private linked id (@lid) instead of a phone number
+  {
+    // Phone number included by WAHA in its extra fields
+    const withAlt = waha.handleIncomingWebhook(signed({
+      event: 'message', session: sessionA, me: { id: '233500000000@c.us' },
+      payload: { id: 'lid-1', from: '555000222@lid', fromMe: false, body: 'Hello', timestamp: 1767000000, _data: { Info: { SenderAlt: '233200000060@s.whatsapp.net', Chat: '555000222@lid' } } },
+    }));
+    assert.strictEqual(withAlt.type, 'message', '@lid messages are no longer dropped');
+    assert.strictEqual(withAlt.message.contactNumber, '233200000060');
+    assert.strictEqual(withAlt.message.lid, '555000222@lid');
+
+    // No phone in the payload: the webhook route looks it up with WAHA's lids API
+    const noAlt = waha.handleIncomingWebhook(signed({
+      event: 'message', session: sessionA, me: { id: '233500000000@c.us' },
+      payload: { id: 'lid-2', from: '777000111@lid', fromMe: false, body: 'Hi there', timestamp: 1767000000 },
+    }));
+    assert.strictEqual(noAlt.message.contactNumber, null);
+    assert.strictEqual(await waha.resolveLid(sessionA, '777000111@lid'), '233200000061');
+    assert.strictEqual(await waha.resolveLid(sessionA, '999@lid'), null);
+
+    const http = require('http');
+    const express = require('express');
+    const app = express();
+    app.use(express.json({ verify: (req, _res, buf) => { req.rawBody = buf; } }));
+    app.use('/api/webhooks/whatsapp', require('../api/whatsappWebhook'));
+    const server = await new Promise((resolve) => { const s = app.listen(0, () => resolve(s)); });
+    const post = (body) => new Promise((resolve, reject) => {
+      const raw = Buffer.from(JSON.stringify(body));
+      const req = http.request({
+        host: '127.0.0.1', port: server.address().port, path: '/api/webhooks/whatsapp', method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'Content-Length': raw.length, 'X-Webhook-Hmac': crypto.createHmac('sha512', 'test-webhook-secret').update(raw).digest('hex') },
+      }, (res) => { res.resume(); res.on('end', () => resolve(res.statusCode)); });
+      req.on('error', reject);
+      req.end(raw);
+    });
+    const hits = [];
+    registry.getAgent = () => ({ handleIncomingMessage: async (m) => { hits.push(m); } });
+    assert.strictEqual(await post({ event: 'message', session: sessionA, payload: { id: 'lid-3', from: '777000111@lid', fromMe: false, body: 'Do you deliver?', timestamp: 1767000000 } }), 200);
+    await new Promise((r) => setTimeout(r, 300));
+    assert.strictEqual(hits.length, 1, 'the @lid message reached the agent');
+    assert.strictEqual(hits[0].from, '233200000061', 'with the real phone number, so the reply goes to the right chat');
+    registry.getAgent = realGetAgent;
+    server.close();
+
+    // A webhook registered without the signature key is detected (the session check then re-registers it)
+    wahaSessions.get(sessionA).config.webhooks[0].hmac = null;
+    assert.deepStrictEqual((await waha.getStatus(sessionA)).unsignedWebhooks, ['https://backend.example.com/api/webhooks/whatsapp']);
+    wahaSessions.get(sessionA).config.webhooks[0].hmac = { key: 'test-webhook-secret' };
+    console.log('✓ @lid senders: phone number taken from the message or looked up via WAHA; unsigned webhooks detected');
+  }
+
+  // 9h. Signatures exactly as WAHA makes them, through the route as server.js mounts it (express.raw)
+  {
+    // WAHA's own documented example (docs: Events -> HMAC authentication)
+    const savedSecret = config.waha.webhookSecret;
+    config.waha.webhookSecret = 'my-secret-key';
+    const docBody = Buffer.from('{"event":"message","session":"default","engine":"WEBJS"}');
+    const docSig = '208f8a55dde9e05519e898b10b89bf0d0b3b0fdf11fdbf09b6b90476301b98d8097c462b2b17a6ce93b6b47a136cf2e78a33a63f6752c2c1631777076153fa89';
+    assert.strictEqual(waha.verifySignature(docBody, docSig, 'sha512'), true, "WAHA's documented example verifies");
+    assert.strictEqual(waha.verifySignature(docBody, docSig.toUpperCase(), 'SHA512'), true, 'case-insensitive hex and algorithm name');
+    assert.strictEqual(waha.verifySignature(Buffer.from('{"event":"message", "session":"default","engine":"WEBJS"}'), docSig), false, 'one extra space in the body = rejected (raw bytes matter)');
+    config.waha.webhookSecret = savedSecret;
+
+    const http = require('http');
+    const express = require('express');
+    const app = express();
+    app.use('/api/webhooks/whatsapp', express.raw({ type: () => true, limit: '5mb' }), require('../api/whatsappWebhook'));
+    app.use(express.json());
+    const server = await new Promise((resolve) => { const s = app.listen(0, () => resolve(s)); });
+    const send = ({ raw, contentType = 'application/json', secret = 'test-webhook-secret', fp }) => new Promise((resolve, reject) => {
+      const headers = {
+        'Content-Type': contentType,
+        'Content-Length': raw.length,
+        'X-Webhook-Hmac': crypto.createHmac('sha512', secret).update(raw).digest('hex'),
+        'X-Webhook-Hmac-Algorithm': 'sha512',
+      };
+      if (fp) headers[waha.FINGERPRINT_HEADER] = fp;
+      const req = http.request({ host: '127.0.0.1', port: server.address().port, path: '/api/webhooks/whatsapp', method: 'POST', headers }, (res) => {
+        res.resume();
+        res.on('end', () => resolve(res.statusCode));
+      });
+      req.on('error', reject);
+      req.end(raw);
+    });
+    // WAHA-style body: pretty-printed JSON with unicode - would break if the body were re-stringified
+    const raw = Buffer.from(JSON.stringify({
+      event: 'message', session: sessionA, engine: 'GOWS',
+      payload: { id: 'hmac-1', from: '233200000070@c.us', fromMe: false, body: 'Akwaaba! Ɛte sɛn? 👋', timestamp: 1767000000 },
+    }, null, 2));
+    registry.getAgent = () => ({ handleIncomingMessage: async () => {} });
+    assert.strictEqual(await send({ raw, fp: waha.secretFingerprint() }), 200, 'real WAHA-style signed payload accepted');
+    assert.strictEqual(await send({ raw: Buffer.from(raw.toString().replace('hmac-1', 'hmac-2')), contentType: 'text/plain' }), 200, 'accepted whatever the content type');
+    assert.strictEqual(await send({ raw: Buffer.from(raw.toString().replace('hmac-1', 'hmac-3')), secret: 'an-old-secret', fp: 'aaaaaaaaaaaa' }), 401, 'signed with an old key = rejected');
+    registry.getAgent = realGetAgent;
+    server.close();
+
+    // Session webhook registered with an old secret is found, so Connections re-registers it
+    const hookUrl = 'https://backend.example.com/api/webhooks/whatsapp';
+    const current = { url: hookUrl, hmac: { key: 'test-webhook-secret' }, customHeaders: [{ name: waha.FINGERPRINT_HEADER, value: waha.secretFingerprint() }] };
+    assert.deepStrictEqual(waha.staleWebhooks([current], hookUrl), [], 'current key: nothing to repair');
+    assert.deepStrictEqual(waha.staleWebhooks([{ ...current, hmac: { key: 'old-secret' } }], hookUrl), [hookUrl], 'old key shown by WAHA');
+    assert.deepStrictEqual(waha.staleWebhooks([{ ...current, hmac: { key: '***' }, customHeaders: [{ name: waha.FINGERPRINT_HEADER, value: 'aaaaaaaaaaaa' }] }], hookUrl), [hookUrl], 'masked key, old fingerprint');
+    assert.deepStrictEqual(waha.staleWebhooks([{ url: hookUrl, hmac: { key: '***' } }], hookUrl), [hookUrl], 'registered before fingerprints existed');
+    assert.deepStrictEqual(waha.staleWebhooks([{ url: hookUrl, hmac: null }], hookUrl), [hookUrl], 'no key at all');
+
+    // startSession re-registers it with the current key + fingerprint and keeps the session running
+    wahaSessions.get(sessionA).config.webhooks = [{ url: hookUrl, hmac: { key: 'old-secret' } }];
+    wahaSessions.get(sessionA).status = 'WORKING';
+    await waha.startSession(sessionA, { webhookUrl: hookUrl });
+    const fixedHook = wahaSessions.get(sessionA).config.webhooks[0];
+    assert.strictEqual(fixedHook.hmac.key, 'test-webhook-secret');
+    assert.strictEqual(fixedHook.customHeaders[0].value, waha.secretFingerprint());
+    assert.deepStrictEqual(waha.staleWebhooks([fixedHook], hookUrl), []);
+    console.log('✓ HMAC: WAHA\'s documented example and a real WAHA-style payload verify over the raw bytes (any content type); old keys are rejected, detected and re-registered');
   }
 
   // 9f. Single-session mode (the default, WAHA_MULTI_SESSION unset): every admin shares

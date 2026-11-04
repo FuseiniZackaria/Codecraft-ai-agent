@@ -5,8 +5,8 @@
 -- messages aren't saved for the Inbox and the WAHA connect button can't save
 -- the session.
 --
--- Note: the older table "whatsapp_messages" (id, from_number, body) is a
--- different, pre-existing de-duplication table and is left untouched.
+-- Note: "whatsapp_messages" (id, from_number, body) is the older
+-- de-duplication table; it is only created here if it doesn't exist yet.
 
 begin;
 
@@ -35,7 +35,7 @@ create index if not exists whatsapp_sessions_user on whatsapp_sessions (user_id)
 -- Every incoming and outgoing WhatsApp message, the same shape for WAHA and Twilio.
 create table if not exists whatsapp_chat_messages (
   id              uuid primary key,
-  provider        text not null,                -- 'waha' | 'twilio'
+  provider        text not null,                -- 'waha' | 'twilio' | 'meta'
   session_name    text,
   user_id         uuid,                         -- the admin whose WhatsApp it is (null for workspace-level Twilio)
   workspace_id    uuid,
@@ -69,6 +69,15 @@ create table if not exists whatsapp_outbox (
 create index if not exists whatsapp_outbox_queue on whatsapp_outbox (status, created_at);
 create index if not exists whatsapp_outbox_sent on whatsapp_outbox (session_name, status, sent_at);
 
+-- Older de-duplication table (message id -> seen). The backend falls back to it
+-- if a message can't be saved above; it already exists in most databases.
+create table if not exists whatsapp_messages (
+  id           text primary key,
+  from_number  text not null,
+  body         text,
+  created_at   timestamptz default now()
+);
+
 -- Contacts who replied "stop": outreach skips them.
 create table if not exists whatsapp_optouts (
   session_name    text not null,
@@ -84,8 +93,12 @@ alter table whatsapp_sessions      enable row level security;
 alter table whatsapp_chat_messages enable row level security;
 alter table whatsapp_outbox        enable row level security;
 alter table whatsapp_optouts       enable row level security;
+alter table whatsapp_messages      enable row level security;
 
 commit;
+
+-- Tell Supabase's API about the new tables right away.
+NOTIFY pgrst, 'reload schema';
 
 -- Check it worked (should list 4 tables):
 -- select table_name from information_schema.tables

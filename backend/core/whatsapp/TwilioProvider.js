@@ -59,6 +59,7 @@ function handleIncomingWebhook(req) {
     sessionName: SESSION,
     message: {
       waMessageId: MessageSid,
+      lid: null,
       contactNumber,
       contactName: ProfileName || null,
       text: Body || '',

@@ -69,7 +69,13 @@ app.use(cors({
   },
   credentials: true,
 }));
-// Keep the exact request bytes: the WAHA webhook signature (HMAC) is computed over the raw body.
+// WAHA (self-hosted WhatsApp) posts incoming messages here. Mounted BEFORE the
+// JSON parser with express.raw(), so the route sees the exact bytes WAHA signed
+// (HMAC-SHA512 over the raw body), whatever content type it sends. Public like
+// /webhooks; every request is verified by its signature (WAHA_WEBHOOK_SECRET).
+app.use('/api/webhooks/whatsapp', webhookLimiter, express.raw({ type: () => true, limit: '5mb' }), require('./api/whatsappWebhook'));
+
+// Keep the exact request bytes for any other route that needs them.
 app.use(express.json({ limit: '35mb', verify: (req, _res, buf) => { req.rawBody = buf; } }));
 
 // Dev-only: once per minute, print one line summarizing how many requests
@@ -105,10 +111,6 @@ console.log(`[startup] Loaded plugins: ${loadedPlugins.join(', ') || '(none)'}`)
 // from WhatsApp/Telegram/etc, which can't carry a logged-in user's token.
 // Every other route below requires a valid session.
 app.use('/webhooks',webhookLimiter , webhookRoutes);
-// WAHA (self-hosted WhatsApp) posts incoming messages here. Public like /webhooks,
-// so it must come before the /api auth middleware; every request is verified by
-// its HMAC signature (WAHA_WEBHOOK_SECRET) in api/whatsappWebhook.js.
-app.use('/api/webhooks/whatsapp', webhookLimiter, require('./api/whatsappWebhook'));
 
 // Public assistant config - name + speech-recognition variations. Zero
 // secrets, needed before login (so the Login page can show "Ian" if ever

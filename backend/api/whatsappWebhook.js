@@ -35,7 +35,24 @@ function logFailure(reason, details = {}) {
   activityLog.record('WhatsApp', 'webhook_failed', details.sessionName || 'waha', { reason, ...details }).catch(() => {});
 }
 
+// Temporary: one diagnostic line per delivery while webhooks are being set up.
+// Turn off with WAHA_WEBHOOK_DEBUG=false. Never includes the secret or the signature.
+const DEBUG = process.env.WAHA_WEBHOOK_DEBUG !== 'false';
+
 router.post('/', (req, res) => {
+  // server.js mounts this route with express.raw(), so req.body is the exact
+  // bytes WAHA signed. Keep them for the HMAC check, then parse the JSON.
+  if (Buffer.isBuffer(req.body)) {
+    req.rawBody = req.body;
+    try {
+      req.body = req.rawBody.length ? JSON.parse(req.rawBody.toString('utf8')) : {};
+    } catch (err) {
+      logFailure(`body is not valid JSON (${req.headers['content-type'] || 'no content-type'}): ${err.message}`);
+      return res.sendStatus(400);
+    }
+  }
+  if (DEBUG) console.log(`[webhook] whatsapp (waha) signature check: ${JSON.stringify(WahaProvider.inspectSignature(req))}`);
+
   let event;
   try {
     event = WahaProvider.handleIncomingWebhook(req);
@@ -44,13 +61,23 @@ router.post('/', (req, res) => {
     return res.sendStatus(400);
   }
   if (event.type === 'rejected') {
-    console.warn(`[webhook] whatsapp (waha) rejected: ${event.reason}`);
+    const why = WahaProvider.inspectSignature(req);
+    console.warn(`[webhook] whatsapp (waha) rejected: ${event.reason}${why.source.includes('OLD secret') ? ' - this delivery comes from a session webhook registered with an older secret; open Toolbox -> Connections to repair it' : ''}`);
     activityLog.record('WhatsApp', 'webhook_rejected', 'waha', { reason: event.reason }).catch(() => {});
     return res.sendStatus(401);
+  }
+  if (event.type === 'ignored') {
+    // Logged so a webhook that arrives but is deliberately skipped (groups, channels,
+    // your own messages) is visible in the logs instead of vanishing.
+    console.log(`[webhook] whatsapp (waha) ignored: ${event.reason}`);
+    return res.sendStatus(200);
   }
   if (event.type === 'message' && seenRecently(event.message.waMessageId)) {
     console.log(`[webhook] whatsapp (waha): repeat delivery of ${event.message.waMessageId} ignored`);
     return res.sendStatus(200);
+  }
+  if (event.type === 'message') {
+    console.log(`[webhook] whatsapp (waha) message ${event.message.waMessageId} on ${event.sessionName}`);
   }
   res.sendStatus(200);
 
@@ -64,8 +91,19 @@ router.post('/', (req, res) => {
 
       const session = await store.getSessionByName(event.sessionName);
       if (!session) {
-        logFailure(`message for unknown session ${event.sessionName}`, { sessionName: event.sessionName });
+        logFailure(`message for unknown session ${event.sessionName} - click Connect WhatsApp again so CodeCraft knows this session`, { sessionName: event.sessionName });
         return;
+      }
+      // Sender given as a private linked id (@lid): look up their phone number.
+      if (!event.message.contactNumber && event.message.lid) {
+        event.message.contactNumber = await WahaProvider.resolveLid(event.sessionName, event.message.lid).catch((err) => {
+          console.warn(`[webhook] whatsapp (waha) lid lookup failed: ${err.message}`);
+          return null;
+        });
+        if (!event.message.contactNumber) {
+          logFailure(`couldn't find the phone number behind ${event.message.lid} - WhatsApp didn't share it`, { sessionName: event.sessionName });
+          return;
+        }
       }
       const result = await messaging.handleIncomingMessage({
         providerName: 'waha',

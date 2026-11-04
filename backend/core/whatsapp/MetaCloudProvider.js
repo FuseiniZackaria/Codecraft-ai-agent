@@ -68,6 +68,7 @@ function handleIncomingWebhook(req) {
         if (!contactNumber) continue;
         messages.push({
           waMessageId: msg.id,
+          lid: null,
           contactNumber,
           contactName: names[msg.from] || null,
           text: msg.text?.body || '',
