@@ -99,6 +99,12 @@ module.exports = {
     // WAHA (image devlikeapro/waha) running as its own Render web service. Unset = WAHA features report "not configured".
     baseUrl: (process.env.WAHA_BASE_URL || '').replace(/\/$/, '') || null,
     apiKey: process.env.WAHA_API_KEY || null,
+    // Single-session mode (default): every admin uses this one WAHA session; only
+    // one admin can have it connected at a time. Works on any WAHA version.
+    sessionName: (process.env.WAHA_SESSION_NAME || 'default').trim() || 'default',
+    // "true": one session per admin (admin_<id>), each with their own WhatsApp
+    // and private chats. Needs WAHA 2026.6.1+ (or WAHA Plus on older versions).
+    multiSession: process.env.WAHA_MULTI_SESSION === 'true',
     // Shared secret WAHA signs webhooks with (HMAC-SHA512). Required to accept incoming messages.
     webhookSecret: process.env.WAHA_WEBHOOK_SECRET || null,
     // Public URL of THIS backend that WAHA posts incoming messages to. Defaults to Render's own address.

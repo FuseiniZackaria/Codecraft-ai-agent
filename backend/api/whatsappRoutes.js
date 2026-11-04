@@ -23,6 +23,28 @@ function viewer(req) {
   return { userId: req.user.id, workspaceId: req.user.workspaceId || null };
 }
 
+const IN_USE_MESSAGE =
+  'WhatsApp is already connected by another admin. Only one admin can link WhatsApp at a time on this setup - ' +
+  'ask them to disconnect it first (or turn on WAHA_MULTI_SESSION so each admin gets their own).';
+const SCAN_WINDOW_MS = 5 * 60 * 1000; // a QR scan in progress reserves the shared session this long
+
+/**
+ * Single-session mode only: the shared session's row when ANOTHER admin has it
+ * connected (or is scanning its QR right now), else null. A shared session that
+ * was disconnected can be taken over by any admin.
+ */
+async function heldByOther(req, provider, sessionName) {
+  if (config.waha.multiSession || provider.name !== 'waha') return null;
+  const row = await store.getSessionByName(sessionName);
+  if (!row || row.user_id === req.user.id) return null;
+  const live = await provider.getStatus(sessionName).catch(() => null);
+  const status = live && live.status !== 'NOT_FOUND' ? live.status : row.status;
+  if (status === 'WORKING') return row;
+  const recent = Date.now() - new Date(row.updated_at || 0).getTime() < SCAN_WINDOW_MS;
+  if (['STARTING', 'SCAN_QR_CODE'].includes(status) && recent) return row;
+  return null;
+}
+
 function fail(res, err, status = 502) {
   console.warn(`[whatsapp] ${err.message}`);
   res.status(err.status === 401 ? 502 : status).json({ error: err.message });
@@ -36,6 +58,9 @@ router.get('/session', async (req, res) => {
   if (!provider.isConfigured()) return res.json({ ...base, status: 'NOT_CONFIGURED' });
 
   try {
+    if (await heldByOther(req, provider, sessionName)) {
+      return res.json({ ...base, status: 'IN_USE', inUse: true, message: IN_USE_MESSAGE });
+    }
     const row = provider.name === 'waha' ? await store.getSessionByUser(req.user.id) : null;
     if (provider.name === 'waha' && !row) return res.json({ ...base, status: 'NOT_STARTED' });
 
@@ -80,6 +105,7 @@ router.post('/session/start', async (req, res) => {
   const sessionName = sessionNameFor(req);
   const hook = webhookUrl();
   try {
+    if (await heldByOther(req, provider, sessionName)) return res.status(409).json({ error: IN_USE_MESSAGE });
     const status = await provider.startSession(sessionName, {
       webhookUrl: hook,
       metadata: { 'user.id': req.user.id, 'user.email': req.user.email || '', 'workspace.id': req.user.workspaceId || '' },
@@ -109,6 +135,10 @@ router.post('/session/disconnect', async (req, res) => {
   const provider = getProvider();
   const sessionName = sessionNameFor(req);
   try {
+    const row = provider.name === 'waha' ? await store.getSessionByName(sessionName) : null;
+    if (row && row.user_id !== req.user.id) {
+      return res.status(403).json({ error: 'Only the admin who connected this WhatsApp can disconnect it.' });
+    }
     await store.updateSession(sessionName, { disconnected_by_user: true }).catch(() => {});
     await provider.disconnect(sessionName);
     await store.updateSession(sessionName, { status: 'STOPPED', needs_reconnect: false, phone_number: null, last_error: null });
@@ -166,7 +196,10 @@ router.post('/outreach', async (req, res) => {
   if (!list.length) return res.status(400).json({ error: 'Add at least one recipient.' });
   try {
     const session = await store.getSessionByUser(req.user.id);
-    if (!session) return res.status(400).json({ error: 'Connect WhatsApp first.' });
+    if (!session) {
+      const other = await heldByOther(req, getProvider(), sessionNameFor(req));
+      return res.status(400).json({ error: other ? IN_USE_MESSAGE : 'Connect WhatsApp first.' });
+    }
     const result = await outbox.enqueue({ sessionName: session.session_name, userId: req.user.id, workspaceId: req.user.workspaceId || null, recipients: list });
     res.json({ ...result, dailyLimit: config.whatsapp.dailyLimit });
   } catch (err) {

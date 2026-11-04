@@ -1,5 +1,10 @@
 # CodeCraft AI — Progress
 
+## WhatsApp: shared session by default, pinned GOWS image
+
+- **Single-session mode (default):** every admin uses one WAHA session, `WAHA_SESSION_NAME` (default `default`). Only one admin can have it connected; others get "already connected by another admin" (409 on connect, 403 on disconnect) until it's disconnected, then any admin can take it over. `WAHA_MULTI_SESSION=true` keeps per-admin `admin_<id>` sessions. `whatsapp_sessions.user_id` is no longer unique (one admin can own a row per mode).
+- **WAHA image pinned** to `devlikeapro/waha:gows-2026.10.1` (amd64, for Render) in the guide. Since WAHA 2026.6.1 the former Plus features (multiple sessions, webhook HMAC and retries) are in the free Core image, so the 10s x 12 webhook retries work; duplicate deliveries are dropped by our own handling regardless.
+
 ## WhatsApp: WAHA on Render, safeguards, Meta option
 
 - **Hosting:** WAHA runs as its own Render web service (image `devlikeapro/waha`, Starter, `WHATSAPP_DEFAULT_ENGINE=GOWS`, 1 GB disk at `/app/.sessions`); the backend stays on Render free. Local Docker / Oracle / ngrok steps removed. Guide rewritten: `docs/whatsapp-waha-setup.md`.

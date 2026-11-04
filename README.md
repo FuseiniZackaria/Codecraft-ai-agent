@@ -85,11 +85,13 @@ Open `http://localhost:5173` and sign in with a Supabase user that has the
 
 ## WhatsApp (WAHA)
 
-Each admin links their own WhatsApp by scanning a QR code (Toolbox →
-Connections → **Connect WhatsApp**), through [WAHA](https://waha.devlike.pro),
-a WhatsApp HTTP API that runs as its own Render web service (image
-`devlikeapro/waha`, Starter plan, with a 1 GB disk at `/app/.sessions` so the
-WhatsApp login survives restarts). Incoming messages are saved, shown in
+An admin links WhatsApp by scanning a QR code (Toolbox → Connections →
+**Connect WhatsApp**), through [WAHA](https://waha.devlike.pro), a WhatsApp HTTP
+API that runs as its own Render web service (image
+`devlikeapro/waha:gows-2026.10.1`, Starter plan, with a 1 GB disk at
+`/app/.sessions` so the WhatsApp login survives restarts). By default the app
+has one shared WhatsApp (WAHA session `default`) that one admin connects at a
+time; `WAHA_MULTI_SESSION=true` gives every admin their own. Incoming messages are saved, shown in
 Work → **Inbox**, and answered by the WhatsApp agent (sent automatically after
 a safety check; risky topics wait for approval).
 
@@ -109,6 +111,8 @@ Render service:
 | `WHATSAPP_PROVIDER` | no (default `waha`) | `waha` (your own phone), `twilio`, or `meta` (official WhatsApp Cloud API) |
 | `WAHA_BASE_URL` | yes for WAHA | The WAHA Render service's https address |
 | `WAHA_API_KEY` | yes for WAHA | Same long random key as on the WAHA service; sent as `X-Api-Key` |
+| `WAHA_SESSION_NAME` | no (default `default`) | The shared WAHA session in single-session mode |
+| `WAHA_MULTI_SESSION` | no (default `false`) | `true` = one WhatsApp per admin (`admin_<id>` sessions; needs WAHA 2026.6.1+) |
 | `WAHA_WEBHOOK_SECRET` | yes to receive messages | Random string WAHA signs incoming messages with (HMAC-SHA512); backend only |
 | `WAHA_WEBHOOK_BASE_URL` | no | This backend's public URL; on Render it uses `RENDER_EXTERNAL_URL` automatically |
 | `WHATSAPP_DEFAULT_COUNTRY_CODE` | no (default `233`) | Added to local numbers like `024…` |

@@ -84,6 +84,7 @@ export default function WhatsAppConnectCard() {
   if (loading) badge = <span className="flex items-center gap-1 text-xs text-[var(--color-text-muted)]"><Loader2 size={13} className="animate-spin" /> Checking…</span>;
   else if (linked) badge = <span className="flex items-center gap-1 text-xs font-medium text-emerald-600"><CheckCircle2 size={13} /> Connected</span>;
   else if (session?.needsReconnect || status === 'FAILED') badge = <span className="flex items-center gap-1 text-xs font-medium text-[var(--color-danger)]"><AlertCircle size={13} /> Needs reconnect</span>;
+  else if (status === 'IN_USE') badge = <span className="flex items-center gap-1 text-xs font-medium text-[var(--color-text-muted)]"><AlertCircle size={13} /> Connected by another admin</span>;
   else if (status === 'UNREACHABLE') badge = <span className="flex items-center gap-1 text-xs font-medium text-[var(--color-warning)]"><AlertCircle size={13} /> WhatsApp server offline</span>;
   else badge = <span className="flex items-center gap-1 text-xs text-[var(--color-text-muted)]"><AlertCircle size={13} /> Not connected</span>;
 
@@ -119,9 +120,10 @@ export default function WhatsAppConnectCard() {
         </p>
       )}
       {status === 'UNREACHABLE' && <p className="text-xs text-[var(--color-warning)]">{session.error}</p>}
+      {status === 'IN_USE' && <p className="text-xs text-[var(--color-text-muted)]">{session.message}</p>}
       {error && <p className="text-xs text-[var(--color-danger)]">{error}</p>}
 
-      {!isTwilio && session?.configured && (
+      {!isTwilio && session?.configured && status !== 'IN_USE' && (
         <div className="flex gap-2">
           {linked ? (
             <button

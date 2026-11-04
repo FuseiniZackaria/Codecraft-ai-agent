@@ -10,10 +10,12 @@
 
 begin;
 
--- One WAHA session per admin (session_name is built from the admin's user id).
+-- WAHA sessions. Single-session mode (default): one row, session_name "default"
+-- (WAHA_SESSION_NAME), owned by the admin who connected it. With
+-- WAHA_MULTI_SESSION=true: one row per admin, session_name "admin_<user id>".
 create table if not exists whatsapp_sessions (
   session_name          text primary key,
-  user_id               uuid not null unique,
+  user_id               uuid not null,             -- the admin who connected it
   workspace_id          uuid,
   status                text not null default 'STOPPED',   -- STOPPED | STARTING | SCAN_QR_CODE | WORKING | FAILED
   phone_number          text,                              -- connected number, e.g. 233241234567
@@ -25,6 +27,10 @@ create table if not exists whatsapp_sessions (
   created_at            timestamptz not null default now(),
   updated_at            timestamptz not null default now()
 );
+-- An admin may own a row in each mode, so user_id is not unique (drops the
+-- constraint if an earlier version of this migration created it).
+alter table whatsapp_sessions drop constraint if exists whatsapp_sessions_user_id_key;
+create index if not exists whatsapp_sessions_user on whatsapp_sessions (user_id);
 
 -- Every incoming and outgoing WhatsApp message, the same shape for WAHA and Twilio.
 create table if not exists whatsapp_chat_messages (

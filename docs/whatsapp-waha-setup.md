@@ -19,8 +19,15 @@ Your customer  <->  WhatsApp  <->  WAHA (Render, $7/month)  <->  CodeCraft backe
 - **Backend service** (you have it already): stays on Render's free plan. It
   sleeps after 15 minutes without visitors; an incoming WhatsApp message wakes
   it up, which takes about 30-60 seconds the first time. WAHA keeps retrying
-  delivery for about 2 minutes, so nothing is lost - the first reply after a
-  quiet period is just a bit slower.
+  delivery every 10 seconds for about 2 minutes (a WAHA feature included in the
+  free version from 2026.6.1, so in the image below), so nothing is lost - the
+  first reply after a quiet period is just a bit slower. If a message ever
+  arrives twice, CodeCraft notices and handles it only once.
+- **One shared WhatsApp.** By default the whole app has one WhatsApp number:
+  one admin connects it, and everyone's agents use it. While it's connected,
+  other admins see *"Connected by another admin"* instead of a Connect button.
+  (If you later want each admin to have their own WhatsApp, set
+  `WAHA_MULTI_SESSION=true` on the backend - the image below supports it.)
 
 > **Use a spare WhatsApp number.** WAHA is not WhatsApp's official Business API.
 > WhatsApp can ban numbers that message lots of strangers. CodeCraft protects
@@ -60,8 +67,13 @@ Like renting a small always-on computer that runs WAHA.
 1. Open https://dashboard.render.com and sign in.
 2. Click **+ New** (top right) → **Web Service**.
 3. Choose **Existing Image** (instead of a Git repository).
-4. **Image URL:** type `docker.io/devlikeapro/waha:latest` and click **Connect**.
-   (No credentials needed - it's a public image.)
+4. **Image URL:** type `docker.io/devlikeapro/waha:gows-2026.10.1` and click
+   **Connect**. (No credentials needed - it's a public image.)
+
+   Why this exact name: `gows` is WAHA's light engine built into a small image,
+   and the version number "pins" it - like ordering a specific edition of a book
+   instead of "whatever's newest", so an update can never surprise you. To
+   update later, you change the number yourself (see "Keeping it running").
 5. Fill in the form:
    - **Name:** `codecraft-waha` (any name; it becomes part of the web address)
    - **Region:** the same region as your backend service (check your backend's
@@ -80,13 +92,19 @@ Like renting a small always-on computer that runs WAHA.
    | `WHATSAPP_SWAGGER_USERNAME` | `admin` |
    | `WHATSAPP_SWAGGER_PASSWORD` | the same password |
 
-   Why: `GOWS` is WAHA's light engine - the default one runs a whole Chrome
-   browser, which is too heavy for the Starter plan's memory. `PORT=3000` tells
-   Render which door WAHA listens on. The dashboard user/password protect
-   WAHA's own web page.
-7. **Add the disk** - open **Advanced** → **Add Disk**:
+   Why:
+   - `WHATSAPP_DEFAULT_ENGINE=GOWS` makes sure WAHA uses the light engine - the
+     other engine runs a whole Chrome browser, too heavy for the Starter plan.
+   - `PORT=3000` tells Render which "door" WAHA listens on.
+   - The dashboard and Swagger usernames/passwords lock WAHA's own web pages.
+     Without them, WAHA makes up random ones and prints them in its log; with
+     them, only you can open the dashboard. (The API itself is locked by
+     `WAHA_API_KEY` either way.)
+7. **Add the disk** - open **Advanced** → **Add Disk**. The disk is like a USB
+   stick plugged into WAHA where your WhatsApp login is kept:
    - **Name:** `waha-sessions`
-   - **Mount Path:** `/app/.sessions` (type it exactly, including the dot)
+   - **Mount Path:** `/app/.sessions` (type it exactly, including the dot - the
+     GOWS image keeps its logins in the same folder)
    - **Size:** `1` GB
 8. Leave **Health Check Path** empty. Click **Deploy Web Service**.
 
@@ -172,13 +190,15 @@ Like opening WhatsApp Web on a new computer - except the "computer" is WAHA.
 **Check it worked:**
 - On the phone, **Linked devices** lists a new device.
 - In the WAHA dashboard (`https://YOUR-WAHA-ADDRESS/dashboard`) a session named
-  `admin_...` shows **WORKING**.
+  `default` shows **WORKING**.
 - **Survives restarts:** on the WAHA service page click **Manual Deploy →
   Restart service**. After it's Live again, the card still says **Connected**
   with no new scan. (That's the disk doing its job.)
 
-Each admin who signs in connects their own WhatsApp the same way; they only
-ever see their own chats.
+Only one admin connects WhatsApp. Other admins see *"Connected by another
+admin"* on this card; the chats show in the Inbox of the admin who connected it.
+To hand it over, that admin clicks **Disconnect**, then the other admin clicks
+**Connect WhatsApp** and scans.
 
 ## Step 5. Test receiving and auto-replies
 
@@ -213,7 +233,7 @@ ever see their own chats.
    auto-replies work again.
 
 **Check it worked:** the backend **Logs** show lines like
-`[whatsapp] sent (waha/admin_... -> 233..., outreach)`,
+`[whatsapp] sent (waha/default -> 233..., outreach)`,
 `[whatsapp] 233... opted out` and `[whatsapp] 233... opted back in`.
 
 ---
@@ -223,8 +243,12 @@ ever see their own chats.
 - **WhatsApp disconnected?** (you logged out on the phone, or the phone was
   offline for about 2 weeks) - a red **"WhatsApp was disconnected"** banner
   appears in CodeCraft. Click **Reconnect** and scan again.
-- **Updating WAHA:** WAHA service page → **Manual Deploy → Deploy latest
-  reference**. Your login stays on the disk.
+- **Updating WAHA:** look up the newest `gows-` tag at
+  https://hub.docker.com/r/devlikeapro/waha/tags?name=gows (use one without
+  `arm` in the name, e.g. `gows-2026.11.1`). On the WAHA service page →
+  **Settings** → **Image URL**, change the version number, click **Save
+  Changes**, then **Manual Deploy → Deploy latest reference**. Your login stays
+  on the disk.
 - **Costs:** WAHA Starter $7/month + the 1 GB disk (Render charges disks per GB;
   check **Billing**). The backend stays free. Upgrading the backend later
   removes the wake-up delay and keeps the outreach queue running all the time.
@@ -239,6 +263,7 @@ ever see their own chats.
 | Card: **"WhatsApp server offline"** / "Can't reach WAHA at ..." | WAHA service down, or wrong address | WAHA service must show **Live**; `WAHA_BASE_URL` must be its exact https address, no `/` at the end |
 | "WAHA rejected the API key" | The two `WAHA_API_KEY` values differ | Copy the same key into both services, save both |
 | QR window stays on "Preparing QR code..." | WAHA still starting | Wait 30 seconds; check the WAHA service **Logs**; close the window and click Connect again |
+| Card says "Connected by another admin" | Single-session mode: another admin has WhatsApp connected | Ask them to click **Disconnect** first, or set `WAHA_MULTI_SESSION=true` on the backend so each admin has their own |
 | Scanned, but the card never shows Connected | Phone offline, or the code expired | Make sure the phone has internet; close and click Connect again |
 | Messages never appear in the Inbox | Incoming messages aren't reaching the backend | Backend **Logs**: look for `[webhook] whatsapp (waha) rejected` - the webhook secret changed after you connected. Click **Disconnect**, then **Connect** and scan again (this re-registers the secret) |
 | Inbox empty and logs say `relation "whatsapp_chat_messages" does not exist` | Migration not run | Step 2 |

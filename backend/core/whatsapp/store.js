@@ -36,11 +36,14 @@ function startOfToday() {
 
 // ---------- sessions ----------
 
+/**
+ * The session this admin uses (the shared one in single-session mode, their own
+ * with WAHA_MULTI_SESSION=true) - but only if they are the one who connected it.
+ */
 async function getSessionByUser(userId) {
-  if (!db()) return mem.sessions.find((s) => s.user_id === userId) || null;
-  const { data, error } = await db().from('whatsapp_sessions').select('*').eq('user_id', userId).maybeSingle();
-  check(error, 'getSessionByUser');
-  return data;
+  const { sessionNameForUser } = require('./index');
+  const row = await getSessionByName(sessionNameForUser(userId));
+  return row && row.user_id === userId ? row : null;
 }
 
 async function getSessionByName(sessionName) {

@@ -29,8 +29,13 @@ function isSharedNumberProvider(name = config.whatsapp.provider) {
   return name === 'twilio' || name === 'meta';
 }
 
-/** WAHA session name for an admin: letters, digits and underscores only. */
+/**
+ * WAHA session an admin uses. Single-session mode (default): the one shared
+ * WAHA_SESSION_NAME ("default"). WAHA_MULTI_SESSION=true: their own
+ * "admin_<user id>" (letters, digits and underscores only).
+ */
 function sessionNameForUser(userId) {
+  if (!config.waha.multiSession) return config.waha.sessionName;
   return `admin_${String(userId).replace(/[^a-zA-Z0-9]/g, '')}`;
 }
 

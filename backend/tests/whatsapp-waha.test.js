@@ -13,6 +13,7 @@ process.env.WAHA_BASE_URL = 'http://waha.test';
 process.env.WAHA_API_KEY = 'test-api-key';
 process.env.WAHA_WEBHOOK_SECRET = 'test-webhook-secret';
 process.env.WAHA_WEBHOOK_BASE_URL = 'https://backend.example.com';
+process.env.WAHA_MULTI_SESSION = 'true'; // most checks use per-admin sessions; block 9f covers single-session mode
 process.env.DAILY_WA_LIMIT = '2';
 process.env.TWILIO_ACCOUNT_SID = '';
 process.env.TWILIO_AUTH_TOKEN = '';
@@ -285,6 +286,56 @@ const WS = 'wwwwwwww-wwww-wwww-wwww-wwwwwwwwwwww';
     registry.getAgent = realGetAgent;
     server.close();
     console.log('✓ webhook route: 200 at once; the same message delivered 3 times is handled once (memory + database); bad signature 401');
+  }
+
+  // 9f. Single-session mode (the default, WAHA_MULTI_SESSION unset): every admin shares
+  //     the "default" session and only one admin can have it connected at a time.
+  {
+    config.waha.multiSession = false;
+    assert.strictEqual(sessionNameForUser(USER_A), 'default');
+    assert.strictEqual(sessionNameForUser(USER_B), 'default');
+
+    const http = require('http');
+    const express = require('express');
+    const app = express();
+    app.use(express.json());
+    app.use((req, _res, next) => { req.user = { id: req.headers['x-test-user'], email: '', workspaceId: WS }; next(); });
+    app.use('/api/whatsapp', require('../api/whatsappRoutes'));
+    const server = await new Promise((resolve) => { const s = app.listen(0, () => resolve(s)); });
+    const api = (method, path, user) => new Promise((resolve, reject) => {
+      const req = http.request({ host: '127.0.0.1', port: server.address().port, path: `/api/whatsapp${path}`, method, headers: { 'x-test-user': user, 'Content-Type': 'application/json' } }, (res) => {
+        let body = '';
+        res.on('data', (c) => { body += c; });
+        res.on('end', () => resolve({ status: res.statusCode, body: body ? JSON.parse(body) : null }));
+      });
+      req.on('error', reject);
+      req.end(method === 'POST' ? '{}' : undefined);
+    });
+
+    // Admin A connects the shared session
+    assert.strictEqual((await api('POST', '/session/start', USER_A)).status, 200);
+    assert.ok(wahaSessions.has('default'), 'WAHA session is named "default"');
+    wahaSessions.get('default').status = 'WORKING';
+    wahaSessions.get('default').me = { id: '233500000001@c.us', pushName: 'Shop' };
+    assert.strictEqual((await api('GET', '/session', USER_A)).body.status, 'WORKING');
+
+    // Admin B is blocked with a clear message, sees "in use", and can't disconnect A
+    const blocked = await api('POST', '/session/start', USER_B);
+    assert.strictEqual(blocked.status, 409);
+    assert.ok(/already connected by another admin/.test(blocked.body.error));
+    assert.strictEqual((await api('GET', '/session', USER_B)).body.status, 'IN_USE');
+    assert.strictEqual((await api('POST', '/session/disconnect', USER_B)).status, 403);
+    assert.strictEqual((await store.getSessionByName('default')).user_id, USER_A, 'still A\'s');
+
+    // Once A disconnects, B can take it over
+    assert.strictEqual((await api('POST', '/session/disconnect', USER_A)).status, 200);
+    assert.strictEqual((await api('POST', '/session/start', USER_B)).status, 200);
+    assert.strictEqual((await store.getSessionByName('default')).user_id, USER_B);
+    assert.strictEqual((await api('GET', '/session', USER_A)).body.status, 'IN_USE', 'now A sees it in use (B is scanning)');
+
+    server.close();
+    config.waha.multiSession = true;
+    console.log('✓ single-session mode: everyone shares "default"; a second admin is blocked with a clear message until the first disconnects');
   }
 
   // 10. Disconnects flag the session for the Reconnect banner
