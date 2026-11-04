@@ -3,7 +3,7 @@ const config = require('../../config');
 const { normalizeNumber, toChatId } = require('./phone');
 
 /**
- * WhatsApp through a self-hosted WAHA server (docker image devlikeapro/waha).
+ * WhatsApp through WAHA (image devlikeapro/waha), deployed as its own Render web service.
  * One WAHA session = one linked WhatsApp account (one admin).
  *
  * Every call sends the X-Api-Key header and has a timeout. Failures throw a
@@ -62,7 +62,9 @@ function sessionConfig({ webhookUrl, metadata }) {
       url: webhookUrl,
       events: ['message', 'session.status'],
       ...(config.waha.webhookSecret ? { hmac: { key: config.waha.webhookSecret } } : {}),
-      retries: { policy: 'exponential', delaySeconds: 2, attempts: 5 },
+      // A sleeping free-plan backend takes ~30-60s to wake: keep retrying for ~2 minutes.
+      // Retries are safe - the backend drops messages it has already seen.
+      retries: { policy: 'constant', delaySeconds: 10, attempts: 12 },
     }]
     : [];
   return { webhooks, metadata: metadata || {} };

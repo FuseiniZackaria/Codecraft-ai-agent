@@ -76,25 +76,32 @@ module.exports = {
     phoneNumberId: process.env.WHATSAPP_PHONE_NUMBER_ID || null,
     accessToken: process.env.WHATSAPP_ACCESS_TOKEN || null,
     webhookVerifyToken: process.env.WHATSAPP_WEBHOOK_VERIFY_TOKEN || null,
-    // "waha" (self-hosted WhatsApp Web, one session per admin) or "twilio"
-    // (the Twilio / Meta setup above). Anything else falls back to "waha".
-    provider: (process.env.WHATSAPP_PROVIDER || 'waha').toLowerCase() === 'twilio' ? 'twilio' : 'waha',
+    // "waha" (self-hosted WhatsApp Web, one session per admin), "twilio", or
+    // "meta" (official WhatsApp Cloud API, the vars above). Anything else -> "waha".
+    provider: ['twilio', 'meta'].includes((process.env.WHATSAPP_PROVIDER || '').toLowerCase())
+      ? process.env.WHATSAPP_PROVIDER.toLowerCase()
+      : 'waha',
     // Country code used when a number is written locally ("024..." -> "23324...").
     defaultCountryCode: (process.env.WHATSAPP_DEFAULT_COUNTRY_CODE || '233').replace(/\D/g, ''),
     // Outreach: max messages per WhatsApp session per day, and the random gap between sends.
-    dailyLimit: Number(process.env.DAILY_WA_LIMIT) || 50,
-    outreachMinGapMs: Number(process.env.WA_OUTREACH_MIN_GAP_MS) || 30_000,
-    outreachMaxGapMs: Number(process.env.WA_OUTREACH_MAX_GAP_MS) || 90_000,
+    dailyLimit: Number(process.env.DAILY_WA_LIMIT) || 20,
+    // Never below 20s, whatever the env says - fast sending is what gets numbers banned.
+    outreachMinGapMs: Math.max(20_000, Number(process.env.WA_OUTREACH_MIN_GAP_MS) || 30_000),
+    outreachMaxGapMs: Math.max(20_000, Number(process.env.WA_OUTREACH_MAX_GAP_MS) || 90_000),
+    // Outreach only to contacts who messaged this number first (or sent START). "false" turns it off - not advised.
+    outreachRequireConsent: process.env.WA_OUTREACH_REQUIRE_CONSENT !== 'false',
     // Replies to incoming messages: auto-send (after the safety check) unless set to "false".
     autoReply: process.env.WA_AUTO_REPLY !== 'false',
+    // Auto-replies to one contact per hour (stops endless back-and-forth with another bot).
+    autoReplyMaxPerContactPerHour: Number(process.env.WA_AUTO_REPLY_MAX_PER_CONTACT_HOUR) || 5,
   },
   waha: {
-    // Self-hosted WAHA (docker image devlikeapro/waha). Unset = WAHA features report "not configured".
+    // WAHA (image devlikeapro/waha) running as its own Render web service. Unset = WAHA features report "not configured".
     baseUrl: (process.env.WAHA_BASE_URL || '').replace(/\/$/, '') || null,
     apiKey: process.env.WAHA_API_KEY || null,
     // Shared secret WAHA signs webhooks with (HMAC-SHA512). Required to accept incoming messages.
     webhookSecret: process.env.WAHA_WEBHOOK_SECRET || null,
-    // Public URL of THIS backend that WAHA can reach (Render URL, or an ngrok URL locally).
+    // Public URL of THIS backend that WAHA posts incoming messages to. Defaults to Render's own address.
     publicBackendUrl: (process.env.WAHA_WEBHOOK_BASE_URL || process.env.RENDER_EXTERNAL_URL || process.env.BASE_URL || '').replace(/\/$/, '') || null,
     timeoutMs: Number(process.env.WAHA_TIMEOUT_MS) || 15_000,
   },

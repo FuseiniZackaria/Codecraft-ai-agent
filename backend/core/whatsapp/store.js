@@ -119,9 +119,9 @@ async function saveMessage(msg) {
   return { isNew: true, message: row };
 }
 
-/** Messages an admin may see: their own session's, plus workspace-level Twilio messages (no session). */
+/** Messages an admin may see: their own session's, plus workspace-level Twilio/Meta messages (shared business number). */
 function visibleTo(m, { userId, workspaceId }) {
-  return m.user_id === userId || (!m.user_id && m.provider === 'twilio' && workspaceId && m.workspace_id === workspaceId);
+  return m.user_id === userId || (!m.user_id && ['twilio', 'meta'].includes(m.provider) && workspaceId && m.workspace_id === workspaceId);
 }
 
 async function recentMessagesFor(viewer, limit = 1000) {
@@ -130,7 +130,7 @@ async function recentMessagesFor(viewer, limit = 1000) {
   }
   let q = db().from('whatsapp_chat_messages').select('*').order('sent_at', { ascending: false }).limit(limit);
   q = viewer.workspaceId
-    ? q.or(`user_id.eq.${viewer.userId},and(user_id.is.null,provider.eq.twilio,workspace_id.eq.${viewer.workspaceId})`)
+    ? q.or(`user_id.eq.${viewer.userId},and(user_id.is.null,provider.in.(twilio,meta),workspace_id.eq.${viewer.workspaceId})`)
     : q.eq('user_id', viewer.userId);
   const { data, error } = await q;
   check(error, 'recentMessagesFor');
@@ -163,7 +163,7 @@ async function listMessages(viewer, contactNumber, limit = 200) {
     ? await (async () => {
       let q = db().from('whatsapp_chat_messages').select('*').eq('contact_number', contactNumber).order('sent_at', { ascending: false }).limit(limit);
       q = viewer.workspaceId
-        ? q.or(`user_id.eq.${viewer.userId},and(user_id.is.null,provider.eq.twilio,workspace_id.eq.${viewer.workspaceId})`)
+        ? q.or(`user_id.eq.${viewer.userId},and(user_id.is.null,provider.in.(twilio,meta),workspace_id.eq.${viewer.workspaceId})`)
         : q.eq('user_id', viewer.userId);
       const { data, error } = await q;
       check(error, 'listMessages');
@@ -194,6 +194,42 @@ async function addOptOut(sessionName, contactNumber, reason = 'replied stop') {
     { onConflict: 'session_name,contact_number' }
   );
   check(error, 'addOptOut');
+}
+
+/** "START" after "STOP": the contact may be messaged again. */
+async function removeOptOut(sessionName, contactNumber) {
+  if (!db()) {
+    const i = mem.optouts.findIndex((o) => o.session_name === sessionName && o.contact_number === contactNumber);
+    if (i >= 0) mem.optouts.splice(i, 1);
+    return;
+  }
+  const { error } = await db().from('whatsapp_optouts').delete().eq('session_name', sessionName).eq('contact_number', contactNumber);
+  check(error, 'removeOptOut');
+}
+
+// ---------- consent and rate limits ----------
+
+/** True when this contact has messaged this WhatsApp number at least once (consent for outreach). */
+async function hasMessagedFirst(sessionName, contactNumber) {
+  if (!db()) return mem.messages.some((m) => m.session_name === sessionName && m.contact_number === contactNumber && m.direction === 'in');
+  const { count, error } = await db().from('whatsapp_chat_messages').select('id', { count: 'exact', head: true })
+    .eq('session_name', sessionName).eq('contact_number', contactNumber).eq('direction', 'in');
+  check(error, 'hasMessagedFirst');
+  return (count || 0) > 0;
+}
+
+/** Messages sent to one contact since `sinceIso`, optionally only from some sources (e.g. ['auto_reply']). */
+async function countSentToContact(sessionName, contactNumber, sinceIso, sources = null) {
+  if (!db()) {
+    return mem.messages.filter((m) => m.session_name === sessionName && m.contact_number === contactNumber && m.direction === 'out'
+      && m.sent_at >= sinceIso && (!sources || sources.includes(m.source))).length;
+  }
+  let q = db().from('whatsapp_chat_messages').select('id', { count: 'exact', head: true })
+    .eq('session_name', sessionName).eq('contact_number', contactNumber).eq('direction', 'out').gte('sent_at', sinceIso);
+  if (sources) q = q.in('source', sources);
+  const { count, error } = await q;
+  check(error, 'countSentToContact');
+  return count || 0;
 }
 
 // ---------- outbox ----------
@@ -272,7 +308,7 @@ function _resetMemory() {
 module.exports = {
   getSessionByUser, getSessionByName, upsertSession, updateSession, listWorkingSessions,
   saveMessage, listConversations, listMessages,
-  isOptedOut, addOptOut,
+  isOptedOut, addOptOut, removeOptOut, hasMessagedFirst, countSentToContact,
   enqueueOutreach, nextQueuedPerSession, updateOutbox, countSentToday, listOutbox,
   _resetMemory,
 };

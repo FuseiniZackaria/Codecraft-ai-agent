@@ -22,6 +22,18 @@ let timer = null;
 let healthTimer = null;
 let ticking = false;
 
+/**
+ * Why this contact can't get outreach right now, or null if they can:
+ * they replied STOP, or (with consent required) they've never messaged this number.
+ */
+async function blockedReason(sessionName, contactNumber) {
+  if (await store.isOptedOut(sessionName, contactNumber)) return 'replied STOP';
+  if (config.whatsapp.outreachRequireConsent && !(await store.hasMessagedFirst(sessionName, contactNumber))) {
+    return "hasn't messaged your WhatsApp first (outreach only goes to people who contacted you or sent START)";
+  }
+  return null;
+}
+
 /** Queue outreach messages for one admin's session. Returns { queued, rejected }. */
 async function enqueue({ sessionName, userId, workspaceId, recipients }) {
   const rows = [];
@@ -29,10 +41,13 @@ async function enqueue({ sessionName, userId, workspaceId, recipients }) {
   for (const r of recipients || []) {
     const contactNumber = normalizeNumber(r.number);
     const text = String(r.text || '').trim();
-    if (!contactNumber) rejected.push({ number: r.number, reason: 'not a valid phone number' });
-    else if (!text) rejected.push({ number: r.number, reason: 'empty message' });
+    if (!contactNumber) { rejected.push({ number: r.number, reason: 'not a valid phone number' }); continue; }
+    if (!text) { rejected.push({ number: r.number, reason: 'empty message' }); continue; }
+    const blocked = await blockedReason(sessionName, contactNumber);
+    if (blocked) rejected.push({ number: r.number, reason: blocked });
     else rows.push({ sessionName, userId, workspaceId, contactNumber, text });
   }
+  if (rejected.length) console.log(`[whatsapp.outbox] not queued on ${sessionName}: ${rejected.map((x) => `${x.number} (${x.reason})`).join(', ')}`);
   await store.enqueueOutreach(rows);
   if (rows.length) console.log(`[whatsapp.outbox] queued ${rows.length} message(s) on ${sessionName}`);
   return { queued: rows.length, rejected };
@@ -42,10 +57,12 @@ async function processItem(item) {
   const session = await store.getSessionByName(item.session_name);
   if (!session || session.status !== 'WORKING') return; // wait until it's linked again
 
-  if (await store.isOptedOut(item.session_name, item.contact_number)) {
-    await store.updateOutbox(item.id, { status: 'skipped', error: 'contact replied stop' });
-    await activityLog.record('WhatsApp', 'outreach_skipped', item.contact_number, { session: item.session_name, reason: 'opted out', workspaceId: item.workspace_id }).catch(() => {});
-    console.log(`[whatsapp.outbox] skipped ${item.contact_number} (opted out)`);
+  // Checked again at send time: they may have replied STOP after this was queued.
+  const blocked = await blockedReason(item.session_name, item.contact_number);
+  if (blocked) {
+    await store.updateOutbox(item.id, { status: 'skipped', error: blocked });
+    await activityLog.record('WhatsApp', 'outreach_skipped', item.contact_number, { session: item.session_name, reason: blocked, workspaceId: item.workspace_id }).catch(() => {});
+    console.log(`[whatsapp.outbox] skipped ${item.contact_number} (${blocked})`);
     return;
   }
 

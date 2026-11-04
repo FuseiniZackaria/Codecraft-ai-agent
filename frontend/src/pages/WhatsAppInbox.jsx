@@ -34,7 +34,7 @@ function NewMessage({ onQueued }) {
     try {
       const res = await api.queueWhatsappOutreach([{ number: number.trim(), text: text.trim() }]);
       if (!res.queued) throw new Error(res.rejected?.[0]?.reason || 'Not queued');
-      setNotice({ ok: true, text: `Queued. It goes out within about 30-90 seconds (limit ${res.dailyLimit} a day; anyone who replied "stop" is skipped).` });
+      setNotice({ ok: true, text: `Queued. It goes out within about 30-90 seconds (limit ${res.dailyLimit} a day).` });
       setNumber('');
       setText('');
       setTimeout(onQueued, 95_000);
@@ -72,6 +72,10 @@ function NewMessage({ onQueued }) {
         </button>
         <button type="button" onClick={() => setOpen(false)} className="px-2 py-2 text-sm text-[var(--color-text-muted)]">Cancel</button>
       </div>
+      <p className="text-[11px] text-[var(--color-text-muted)]">
+        To protect your number, this only works for people who have messaged your WhatsApp before and haven't replied STOP.
+        Messages go out one at a time, 30-90 seconds apart.
+      </p>
       {notice && <p className={`text-xs ${notice.ok ? 'text-emerald-600' : 'text-[var(--color-danger)]'}`}>{notice.text}</p>}
     </form>
   );

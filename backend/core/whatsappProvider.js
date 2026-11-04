@@ -11,10 +11,14 @@ const metaDirect = require('./whatsappDirect');
  *            else a working session in opts.workspaceId, else any working one.
  *   twilio - the original behaviour: Twilio when TWILIO_* is set, otherwise
  *            Meta's direct API when WHATSAPP_PHONE_NUMBER_ID/ACCESS_TOKEN are.
+ *   meta   - Meta's official WhatsApp Cloud API only.
  */
 function activeProvider() {
   if (config.whatsapp.provider === 'waha') {
     return config.waha.baseUrl ? { name: 'waha', client: null } : null;
+  }
+  if (config.whatsapp.provider === 'meta') {
+    return config.whatsapp.phoneNumberId && config.whatsapp.accessToken ? { name: 'meta', client: metaDirect } : null;
   }
   if (config.twilio.accountSid && config.twilio.authToken) return { name: 'twilio', client: twilio };
   if (config.whatsapp.phoneNumberId && config.whatsapp.accessToken) return { name: 'meta', client: metaDirect };

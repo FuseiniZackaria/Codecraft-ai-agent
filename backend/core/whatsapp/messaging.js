@@ -4,7 +4,24 @@ const store = require('./store');
 const { getProvider } = require('./index');
 const { normalizeNumber } = require('./phone');
 
-const STOP_WORDS = /^\s*(stop|stop all|unsubscribe|opt[ -]?out|cancel|quit|end)\s*[.!]*\s*$/i;
+// The whole message must be the keyword: "cancel my order" must not unsubscribe anyone.
+const STOP_WORDS = /^\s*(stop|stop all|unsubscribe|opt[ -]?out)\s*[.!]*\s*$/i;
+const START_WORDS = /^\s*(start|unstop|subscribe|opt[ -]?in)\s*[.!]*\s*$/i;
+
+const STOP_NOTICE = "You won't receive any more messages from us on WhatsApp. Reply START if you change your mind.";
+const START_NOTICE = "You're subscribed again - we'll reply to your messages here. Reply STOP at any time to opt out.";
+
+// Sends that may still reach a contact who replied STOP: the admin's own
+// hand-typed reply, and the one-time STOP/START confirmation.
+const ALLOWED_AFTER_STOP = new Set(['manual', 'optout_notice']);
+
+class OptedOutError extends Error {
+  constructor(contactNumber) {
+    super(`${contactNumber} replied STOP, so nothing is sent automatically until they reply START.`);
+    this.name = 'OptedOutError';
+    this.code = 'OPTED_OUT';
+  }
+}
 
 // Overridable in tests so they don't wait real seconds.
 const timing = {
@@ -27,6 +44,11 @@ async function sendAndRecord({ sessionName, to, text, userId = null, workspaceId
   const contactNumber = normalizeNumber(to);
   if (!contactNumber) throw new Error(`Not a valid WhatsApp number: "${to}"`);
   if (!text || !String(text).trim()) throw new Error('Message text is empty');
+
+  // Every send passes here, so no path (agent, auto-reply, outreach, alerts) can message someone who said STOP.
+  if (!ALLOWED_AFTER_STOP.has(source) && (await store.isOptedOut(sessionName, contactNumber).catch(() => false))) {
+    throw new OptedOutError(contactNumber);
+  }
 
   if (typing) {
     await provider.sendTyping(sessionName, contactNumber, true);
@@ -73,20 +95,49 @@ async function handleIncomingMessage({ providerName, sessionName, userId = null,
     }
     if (!isNew) return { handled: false, reason: 'duplicate' };
 
-    if (STOP_WORDS.test(message.text || '')) {
+    const text = message.text || '';
+    const optedOut = await store.isOptedOut(sessionName, message.contactNumber);
+    const notice = (body) => sendAndRecord({ sessionName, to: message.contactNumber, text: body, userId, workspaceId, source: 'optout_notice' })
+      .catch((err) => console.warn(`[whatsapp] opt-out notice not sent to ${message.contactNumber}: ${err.message}`));
+
+    if (STOP_WORDS.test(text)) {
+      if (optedOut) return { handled: true, optedOut: true, reason: 'already opted out' }; // confirm only once
       await store.addOptOut(sessionName, message.contactNumber);
       await activityLog.record('WhatsApp', 'contact_opted_out', message.contactNumber, { session: sessionName, workspaceId }).catch(() => {});
-      console.log(`[whatsapp] ${message.contactNumber} opted out of outreach on ${sessionName}`);
+      console.log(`[whatsapp] ${message.contactNumber} opted out on ${sessionName}`);
+      await notice(STOP_NOTICE);
       return { handled: true, optedOut: true };
     }
 
-    if (!message.text || message.text === '[media message]') return { handled: true, routed: false };
+    if (START_WORDS.test(text)) {
+      if (optedOut) {
+        await store.removeOptOut(sessionName, message.contactNumber);
+        await activityLog.record('WhatsApp', 'contact_opted_in', message.contactNumber, { session: sessionName, workspaceId }).catch(() => {});
+        console.log(`[whatsapp] ${message.contactNumber} opted back in on ${sessionName}`);
+        await notice(START_NOTICE);
+      }
+      return { handled: true, optedIn: true };
+    }
+
+    // Opted out: their message is saved (it shows in the Inbox) but nothing replies automatically.
+    if (optedOut) return { handled: true, routed: false, reason: 'opted out' };
+
+    if (!text || text === '[media message]') return { handled: true, routed: false };
+
+    // Rate limit: a contact (or another bot) can't keep the auto-reply going forever.
+    const hourAgo = new Date(Date.now() - 60 * 60 * 1000).toISOString();
+    const recentReplies = await store.countSentToContact(sessionName, message.contactNumber, hourAgo, ['auto_reply']).catch(() => 0);
+    if (recentReplies >= config.whatsapp.autoReplyMaxPerContactPerHour) {
+      console.warn(`[whatsapp] ${message.contactNumber}: ${recentReplies} auto-replies in the last hour - not replying again (rate limit)`);
+      await activityLog.record('WhatsApp', 'auto_reply_rate_limited', message.contactNumber, { session: sessionName, workspaceId }).catch(() => {});
+      return { handled: true, routed: false, reason: 'rate limited' };
+    }
 
     // Lazy require: agents/registry -> agents -> core modules would otherwise be circular.
     const agent = require('../../agents/registry').getAgent('whatsapp');
     await agent.handleIncomingMessage({
       from: message.contactNumber,
-      body: message.text,
+      body: text,
       workspaceId,
       session: providerName === 'waha' ? sessionName : null,
       userId,
@@ -122,4 +173,7 @@ async function handleSessionStatus({ sessionName, status, phoneNumber, pushName 
   }
 }
 
-module.exports = { sendAndRecord, handleIncomingMessage, handleSessionStatus, randomBetween, STOP_WORDS, timing };
+module.exports = {
+  sendAndRecord, handleIncomingMessage, handleSessionStatus, randomBetween,
+  STOP_WORDS, START_WORDS, STOP_NOTICE, START_NOTICE, OptedOutError, timing,
+};

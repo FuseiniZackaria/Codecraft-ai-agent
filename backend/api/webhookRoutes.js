@@ -4,6 +4,7 @@ const memory = require('../memory');
 const { getAgent } = require('../agents/registry');
 const connections = require('../core/workspaceConnections');
 const TwilioProvider = require('../core/whatsapp/TwilioProvider');
+const MetaCloudProvider = require('../core/whatsapp/MetaCloudProvider');
 const whatsappMessaging = require('../core/whatsapp/messaging');
 
 const router = express.Router();
@@ -47,26 +48,29 @@ router.get('/whatsapp', (req, res) => {
   res.sendStatus(403);
 });
 
+// Incoming Meta (official Cloud API) messages. Both routes go through the shared
+// WhatsApp pipeline, like Twilio below: saved in the common format (Inbox),
+// "stop"/"start" handled, everything else to the WhatsApp agent.
+async function handleMetaIncoming(req, workspaceId) {
+  const { messages } = MetaCloudProvider.handleIncomingWebhook(req);
+  for (const message of messages) {
+    await whatsappMessaging.handleIncomingMessage({
+      providerName: 'meta',
+      sessionName: MetaCloudProvider.SESSION,
+      userId: null,
+      workspaceId,
+      message,
+    });
+  }
+}
+
 // Incoming Meta messages - workspace-scoped
 router.post('/whatsapp/:webhookToken', async (req, res) => {
   res.sendStatus(200);
   try {
     const workspaceId = await resolveWorkspaceFromWebhookToken('whatsapp', req.params.webhookToken);
     if (!workspaceId) { console.warn('[webhook] whatsapp: unknown webhook token'); return; }
-
-    const entries = req.body?.entry || [];
-    for (const entry of entries) {
-      for (const change of entry.changes || []) {
-        const messages = change.value?.messages || [];
-        for (const msg of messages) {
-          if (msg.type !== 'text') continue;
-          const { isNew } = await memory.recordIncomingMessage(msg.id, msg.from, msg.text?.body || '');
-          if (!isNew) continue;
-          const agent = getAgent('whatsapp');
-          await agent.handleIncomingMessage({ from: msg.from, body: msg.text?.body || '', workspaceId });
-        }
-      }
-    }
+    await handleMetaIncoming(req, workspaceId);
   } catch (err) {
     console.error('[webhook] whatsapp processing failed:', err.message);
   }
@@ -76,20 +80,7 @@ router.post('/whatsapp/:webhookToken', async (req, res) => {
 router.post('/whatsapp', async (req, res) => {
   res.sendStatus(200);
   try {
-    const workspaceId = await legacyWorkspaceId();
-    const entries = req.body?.entry || [];
-    for (const entry of entries) {
-      for (const change of entry.changes || []) {
-        const messages = change.value?.messages || [];
-        for (const msg of messages) {
-          if (msg.type !== 'text') continue;
-          const { isNew } = await memory.recordIncomingMessage(msg.id, msg.from, msg.text?.body || '');
-          if (!isNew) continue;
-          const agent = getAgent('whatsapp');
-          await agent.handleIncomingMessage({ from: msg.from, body: msg.text?.body || '', workspaceId });
-        }
-      }
-    }
+    await handleMetaIncoming(req, await legacyWorkspaceId());
   } catch (err) {
     console.error('[webhook] whatsapp processing failed:', err.message);
   }

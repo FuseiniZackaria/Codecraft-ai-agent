@@ -1,5 +1,12 @@
 # CodeCraft AI — Progress
 
+## WhatsApp: WAHA on Render, safeguards, Meta option
+
+- **Hosting:** WAHA runs as its own Render web service (image `devlikeapro/waha`, Starter, `WHATSAPP_DEFAULT_ENGINE=GOWS`, 1 GB disk at `/app/.sessions`); the backend stays on Render free. Local Docker / Oracle / ngrok steps removed. Guide rewritten: `docs/whatsapp-waha-setup.md`.
+- **Sleeping backend:** WAHA retries webhooks every 10s for ~2 minutes (12 attempts); the webhook answers 200 at once and drops repeat deliveries (recent ids in memory + unique id in the database); rejected/failed webhooks go to the console and the activity log (`webhook_rejected`, `webhook_failed`).
+- **Safeguards:** outreach only to contacts who messaged first (`WA_OUTREACH_REQUIRE_CONSENT`, checked when queuing and before sending); STOP sends one confirmation then blocks every automatic send (manual replies allowed) until START; "cancel"/"quit"/"end" no longer opt out; auto-replies capped per contact per hour (`WA_AUTO_REPLY_MAX_PER_CONTACT_HOUR`, default 5); outreach gaps never below 20s; `DAILY_WA_LIMIT` default 20.
+- **Swappable provider:** `MetaCloudProvider` (official WhatsApp Cloud API) joins WAHA and Twilio behind the same interface (`WHATSAPP_PROVIDER=meta`); Meta and Twilio webhooks use the shared pipeline (Inbox, STOP/START).
+
 ## WhatsApp through WAHA (self-hosted), per admin
 
 - **Provider layer** `core/whatsapp/`: one interface (startSession, getQR, getStatus, sendMessage, sendTyping, disconnect, handleIncomingWebhook) with `WahaProvider` and `TwilioProvider` (wraps the existing Twilio code). `WHATSAPP_PROVIDER` picks it (default `waha`). `core/whatsappProvider.js` stays the entry point for owner alerts, briefings and the `whatsapp.sendMessage` tool. Missing Twilio env vars only report "not configured".

@@ -1,7 +1,7 @@
 const express = require('express');
 const config = require('../config');
 const store = require('../core/whatsapp/store');
-const { getProvider, sessionNameForUser, webhookUrl } = require('../core/whatsapp');
+const { getProvider, isSharedNumberProvider, sessionNameForUser, webhookUrl } = require('../core/whatsapp');
 const messaging = require('../core/whatsapp/messaging');
 const outbox = require('../core/whatsapp/outbox');
 const { normalizeNumber } = require('../core/whatsapp/phone');
@@ -13,9 +13,10 @@ const { normalizeNumber } = require('../core/whatsapp/phone');
  */
 const router = express.Router();
 
-// Twilio has one shared account, not per-admin sessions.
+// Twilio and Meta use one shared business number, not per-admin sessions.
 function sessionNameFor(req) {
-  return getProvider().name === 'twilio' ? 'twilio' : sessionNameForUser(req.user.id);
+  const provider = getProvider();
+  return isSharedNumberProvider(provider.name) ? provider.SESSION : sessionNameForUser(req.user.id);
 }
 
 function viewer(req) {
@@ -72,9 +73,9 @@ router.get('/session', async (req, res) => {
 router.post('/session/start', async (req, res) => {
   const provider = getProvider();
   if (!provider.isConfigured()) {
-    return res.status(400).json({ error: provider.name === 'waha' ? 'WAHA is not configured on the server (WAHA_BASE_URL).' : 'Twilio is not configured (TWILIO_ACCOUNT_SID / TWILIO_AUTH_TOKEN).' });
+    return res.status(400).json({ error: { waha: 'WAHA is not configured on the server (WAHA_BASE_URL).', twilio: 'Twilio is not configured (TWILIO_ACCOUNT_SID / TWILIO_AUTH_TOKEN).', meta: 'Meta WhatsApp is not configured (WHATSAPP_PHONE_NUMBER_ID / WHATSAPP_ACCESS_TOKEN).' }[provider.name] });
   }
-  if (provider.name === 'twilio') return res.json(await provider.getStatus());
+  if (isSharedNumberProvider(provider.name)) return res.json(await provider.getStatus());
 
   const sessionName = sessionNameFor(req);
   const hook = webhookUrl();
@@ -145,7 +146,7 @@ router.post('/conversations/:number/reply', async (req, res) => {
   try {
     await messaging.sendAndRecord({
       sessionName: sessionNameFor(req), to: number, text,
-      userId: getProvider().name === 'twilio' ? null : req.user.id,
+      userId: isSharedNumberProvider() ? null : req.user.id,
       workspaceId: req.user.workspaceId || null, source: 'manual',
     });
     res.json({ sent: true });

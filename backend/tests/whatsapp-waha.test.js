@@ -140,7 +140,6 @@ const WS = 'wwwwwwww-wwww-wwww-wwww-wwwwwwwwwwww';
   assert.strictEqual(stop.optedOut, true);
   assert.strictEqual(routed.length, 1, 'duplicates and "stop" never reach the agent');
   assert.strictEqual(await store.isOptedOut(sessionA, '233200000001'), true);
-  registry.getAgent = realGetAgent;
   console.log('✓ incoming: saved, routed with its session; duplicates dropped; "STOP" records an opt-out');
 
   // 7. Replies: typing first, a random 2-6s wait, then the message; saved as outgoing
@@ -161,42 +160,132 @@ const WS = 'wwwwwwww-wwww-wwww-wwww-wwwwwwwwwwww';
   assert.deepStrictEqual(convB.map((c) => c.contactNumber), ['233200000099'], "B sees only B's chats");
   console.log("✓ per-admin isolation: each admin sees only their own session's conversations");
 
-  // 9. Outreach queue: invalid numbers rejected, opted-out skipped, 30-90s gaps, daily cap
+  // 9. Outreach queue: consent required, invalid/opted-out rejected, STOP after queuing skipped, 30-90s gaps, daily cap
+  const incomingFrom = (n, id) => store.saveMessage({ provider: 'waha', sessionName: sessionA, userId: USER_A, workspaceId: WS, direction: 'in', contactNumber: n, text: 'hello', waMessageId: id });
+  for (const n of ['233200000011', '233200000012', '233200000013', '233200000014', '233200000020']) await incomingFrom(n, `consent-${n}`);
   calls.length = 0;
   const queued = await outbox.enqueue({
     sessionName: sessionA, userId: USER_A, workspaceId: WS,
     recipients: [
-      { number: '0200000001', text: 'Offer' },  // opted out above
+      { number: '0200000001', text: 'Offer' },  // replied STOP above
+      { number: '0200000077', text: 'Offer' },  // never messaged us: no consent
       { number: '0200000011', text: 'Offer' },
       { number: '0200000012', text: 'Offer' },
       { number: '0200000013', text: 'Offer' },
+      { number: '0200000014', text: 'Offer' },
       { number: 'not-a-number', text: 'Offer' },
     ],
   });
   assert.strictEqual(queued.queued, 4);
-  assert.strictEqual(queued.rejected.length, 1);
+  const why = Object.fromEntries(queued.rejected.map((r) => [r.number, r.reason]));
+  assert.strictEqual(why['0200000001'], 'replied STOP');
+  assert.ok(/hasn't messaged your WhatsApp first/.test(why['0200000077']), 'strangers are not messaged');
+  assert.ok(why['not-a-number']);
   const runTick = async () => { outbox._nextSendAt.clear(); await outbox.tick(); };
-  await runTick(); // opted-out contact: skipped, nothing sent
-  await runTick(); // send 1
+  await runTick(); // send 11
   const gap = outbox._nextSendAt.get(sessionA) - Date.now();
   assert.ok(gap >= 29_000 && gap <= 90_000, `gap ${gap}ms`);
   await outbox.tick(); // gap not over: nothing happens
   assert.strictEqual(calls.filter((c) => c.path === '/api/sendText').length, 1, 'waits for the gap');
-  await runTick(); // send 2 (daily limit is 2)
-  await runTick(); // limit reached: held until tomorrow
+  await runTick(); // send 12 (daily limit is 2)
+  await store.addOptOut(sessionA, '233200000013'); // replies STOP after being queued
+  await runTick(); // 13: skipped at send time
+  await runTick(); // 14: daily limit reached, held until tomorrow
   const rows = await store.listOutbox(USER_A);
   const by = (n) => rows.find((r) => r.contact_number === n).status;
-  assert.strictEqual(by('233200000001'), 'skipped');
   assert.strictEqual(by('233200000011'), 'sent');
   assert.strictEqual(by('233200000012'), 'sent');
-  assert.strictEqual(by('233200000013'), 'queued');
+  assert.strictEqual(by('233200000013'), 'skipped');
+  assert.strictEqual(by('233200000014'), 'queued');
   assert.ok(outbox._nextSendAt.get(sessionA) > Date.now() + 60_000, 'resumes tomorrow');
-  // Sales-agent outreach approvals go into the same queue instead of sending at once
+  // Sales-agent outreach approvals go into the same queue (and the same consent rule)
   const plugin = require('../plugins/whatsapp/actions/sendMessage');
   const queuedViaTool = await plugin.run({ to: '0200000020', body: 'Lead offer', outreach: true }, { workspaceId: WS });
   assert.strictEqual(queuedViaTool.status, 'queued');
-  assert.ok((await store.listOutbox(USER_A)).some((r) => r.contact_number === '233200000020' && r.status === 'queued'));
-  console.log(`✓ outreach: opted-out skipped, ${Math.round(gap / 1000)}s gap between sends, daily limit (2) holds the rest until tomorrow`);
+  await assert.rejects(plugin.run({ to: '0200000078', body: 'Cold offer', outreach: true }, { workspaceId: WS }), /hasn't messaged/);
+  console.log(`✓ outreach: only to people who messaged first; STOP before or after queuing is respected; ${Math.round(gap / 1000)}s gap; daily limit (2) holds the rest`);
+
+  // 9b. STOP / START and the opt-out guard on every send
+  registry.getAgent = () => ({ handleIncomingMessage: async (m) => { routed.push(m); } });
+  const C = '233200000030';
+  const msg = (id, text) => ({ providerName: 'waha', sessionName: sessionA, userId: USER_A, workspaceId: WS, message: { waMessageId: id, contactNumber: C, contactName: 'Kofi', text, timestamp: new Date().toISOString() } });
+  calls.length = 0;
+  routed.length = 0;
+  assert.strictEqual((await messaging.handleIncomingMessage(msg('s-1', 'Stop'))).optedOut, true);
+  assert.strictEqual(calls.filter((c) => c.path === '/api/sendText' && c.body.text === messaging.STOP_NOTICE).length, 1, 'one STOP confirmation');
+  await messaging.handleIncomingMessage(msg('s-2', 'STOP'));
+  assert.strictEqual(calls.filter((c) => c.path === '/api/sendText').length, 1, 'no second confirmation');
+  assert.strictEqual((await messaging.handleIncomingMessage(msg('s-3', 'how much is a website?'))).reason, 'opted out');
+  assert.strictEqual(routed.length, 0, 'no auto-reply after STOP');
+  await assert.rejects(messaging.sendAndRecord({ sessionName: sessionA, to: C, text: 'auto', source: 'auto_reply' }), (e) => e.code === 'OPTED_OUT');
+  await assert.rejects(messaging.sendAndRecord({ sessionName: sessionA, to: C, text: 'promo', source: 'outreach' }), (e) => e.code === 'OPTED_OUT');
+  await messaging.sendAndRecord({ sessionName: sessionA, to: C, text: 'Hi Kofi, sure - here are our prices.', source: 'manual' }); // admin can still answer by hand
+  assert.strictEqual((await messaging.handleIncomingMessage(msg('s-4', 'cancel my order'))).reason, 'opted out', '"cancel my order" is not an opt-out keyword');
+  assert.strictEqual((await messaging.handleIncomingMessage(msg('s-5', 'START'))).optedIn, true);
+  assert.strictEqual(await store.isOptedOut(sessionA, C), false);
+  assert.ok(calls.some((c) => c.path === '/api/sendText' && c.body.text === messaging.START_NOTICE), 'START confirmed');
+  assert.strictEqual((await messaging.handleIncomingMessage(msg('s-6', 'great, what are your prices?'))).routed, true, 'auto-replies resume');
+  console.log('✓ STOP: confirmed once, then no automatic messages (manual replies still allowed); START re-subscribes');
+
+  // 9c. Auto-reply rate limit per contact
+  const D = '233200000031';
+  for (let i = 0; i < config.whatsapp.autoReplyMaxPerContactPerHour; i++) {
+    await store.saveMessage({ provider: 'waha', sessionName: sessionA, userId: USER_A, workspaceId: WS, direction: 'out', contactNumber: D, text: 'reply', source: 'auto_reply', waMessageId: `r-${i}` });
+  }
+  const limited = await messaging.handleIncomingMessage({ providerName: 'waha', sessionName: sessionA, userId: USER_A, workspaceId: WS, message: { waMessageId: 'd-1', contactNumber: D, text: 'hello again', timestamp: new Date().toISOString() } });
+  assert.strictEqual(limited.reason, 'rate limited');
+  registry.getAgent = realGetAgent;
+  console.log(`✓ auto-replies capped at ${config.whatsapp.autoReplyMaxPerContactPerHour} per contact per hour (no endless bot loops)`);
+
+  // 9d. Meta's official Cloud API sits behind the same interface
+  const meta = require('../core/whatsapp/MetaCloudProvider');
+  config.whatsapp.provider = 'meta';
+  assert.strictEqual(getProvider().name, 'meta');
+  config.whatsapp.provider = 'waha';
+  const metaIn = meta.handleIncomingWebhook({ body: { entry: [{ changes: [{ value: {
+    contacts: [{ wa_id: '233200000040', profile: { name: 'Esi' } }],
+    messages: [{ id: 'wamid.1', from: '233200000040', type: 'text', text: { body: 'Hi' }, timestamp: '1767000000' }, { id: 'wamid.2', from: '233200000040', type: 'image' }],
+  } }] }] } });
+  assert.strictEqual(metaIn.messages.length, 1, 'text only');
+  assert.deepStrictEqual(Object.keys(metaIn.messages[0]).sort(), Object.keys(ok.message).sort());
+  assert.strictEqual(metaIn.messages[0].contactName, 'Esi');
+  assert.strictEqual((await meta.getStatus()).status, 'NOT_CONFIGURED');
+  console.log('✓ Meta Cloud API: same interface and message shape (WHATSAPP_PROVIDER=meta)');
+
+  // 9e. The real webhook route: quick 200, same message twice handled once, bad signature 401
+  {
+    const http = require('http');
+    const express = require('express');
+    const app = express();
+    app.use(express.json({ verify: (req, _res, buf) => { req.rawBody = buf; } }));
+    app.use('/api/webhooks/whatsapp', require('../api/whatsappWebhook'));
+    const server = await new Promise((resolve) => { const s = app.listen(0, () => resolve(s)); });
+    const post = (body, secret = 'test-webhook-secret') => new Promise((resolve, reject) => {
+      const raw = Buffer.from(JSON.stringify(body));
+      const req = http.request({
+        host: '127.0.0.1', port: server.address().port, path: '/api/webhooks/whatsapp', method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'Content-Length': raw.length, 'X-Webhook-Hmac': crypto.createHmac('sha512', secret).update(raw).digest('hex') },
+      }, (res) => { res.resume(); res.on('end', () => resolve(res.statusCode)); });
+      req.on('error', reject);
+      req.end(raw);
+    });
+    const hits = [];
+    registry.getAgent = () => ({ handleIncomingMessage: async (m) => { hits.push(m); } });
+    const event = { event: 'message', session: sessionA, payload: { id: 'dup-1', from: '233200000050@c.us', fromMe: false, body: 'Are you open on Sunday?', timestamp: 1767000000 } };
+    const started = Date.now();
+    assert.strictEqual(await post(event), 200);
+    assert.ok(Date.now() - started < 1000, 'answers at once');
+    assert.strictEqual(await post(event), 200, 'a repeat delivery still gets 200 (so WAHA stops retrying)');
+    await new Promise((r) => setTimeout(r, 300));
+    require('../api/whatsappWebhook')._recentIds.clear(); // a restarted backend (empty memory) still drops it, via the database
+    assert.strictEqual(await post(event), 200);
+    await new Promise((r) => setTimeout(r, 300));
+    assert.strictEqual(hits.length, 1, 'the same message is handled once');
+    assert.strictEqual(await post(event, 'wrong-secret'), 401);
+    registry.getAgent = realGetAgent;
+    server.close();
+    console.log('✓ webhook route: 200 at once; the same message delivered 3 times is handled once (memory + database); bad signature 401');
+  }
 
   // 10. Disconnects flag the session for the Reconnect banner
   await messaging.handleSessionStatus({ sessionName: sessionA, status: 'FAILED' });
