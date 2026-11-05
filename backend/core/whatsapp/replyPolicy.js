@@ -39,22 +39,39 @@ const DRAFT_RULES = [
 const RISK_RE = new RegExp(`\\b(${RISK_KEYWORDS.map((k) => k.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')).join('|')})\\b`, 'i');
 const UPSET_RE = /\b(not happy|very disappointed|disappointed|rubbish|nonsense|waste of (my )?(time|money)|ripped off|useless|annoyed|frustrated)\b|!{3,}/i;
 
-const FOUNDER_CLAIM_RE = /\b(i am|i'm|im|this is|it's|it is)\s+(the\s+|your\s+)?(founder|co-?founder|owner|ceo|md|managing director|boss)\b|\b(i|we)\s+(founded|own)\s+codecraft\b/i;
+const FOUNDER_CLAIM_RE = /\b(i am|i'm|im|this is|it's|it is)\s+(the\s+|your\s+)?(founder|co-?founder|owner|ceo|md|managing director|boss)\b|\bi\s+(co-?)?founded\b|\b(i|we)\s+(founded|own)\s+(this|the|our)\s+(business|company)\b/i;
 // Case-sensitive on purpose: only a Capitalised word after "I'm" counts as a name ("I'm glad" doesn't).
 const NAME_CLAIM_RE = /\b(?:[Mm]y name is|[Mm]y name's|[Tt]his is|I am|I'm)\s+([A-Z][a-zA-Z'-]+)/g;
-const NOT_NAMES = new Set(['Ian', 'CodeCraft', 'Codecraft', 'Sorry', 'Happy', 'Glad', 'Here', 'Just', 'Not', 'So', 'Still', 'Really', 'Afraid', 'An', 'A', 'The', 'Your', 'Great']);
+const NOT_NAMES = new Set(['Sorry', 'Happy', 'Glad', 'Here', 'Just', 'Not', 'So', 'Still', 'Really', 'Afraid', 'An', 'A', 'The', 'Your', 'Great']);
+const escapeRe = (s) => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 
-/** Why this draft misrepresents who's speaking, or null. Ian never claims to be the founder or uses another name. */
-function identityProblem(draft, { ownerName = null } = {}) {
+/**
+ * Why this draft misrepresents who's speaking, or null. The agent never claims
+ * to be the founder/owner or uses any name but its own (agentName, default Ian);
+ * the business's own name ("This is CodeCraft") is fine.
+ */
+function identityProblem(draft, { ownerName = null, agentName = 'Ian', businessName = null } = {}) {
   const text = String(draft || '');
+  const agent = String(agentName || 'Ian').trim();
   if (FOUNDER_CLAIM_RE.test(text)) return 'the reply claims to be the founder or owner';
-  for (const m of text.matchAll(NAME_CLAIM_RE)) {
-    const name = m[1].replace(/'s$/i, '');
-    if (!NOT_NAMES.has(name)) return `the reply introduces itself as "${name}" instead of Ian`;
+  if (businessName && new RegExp(`\\b(i|we)\\s+(founded|own)\\s+${escapeRe(String(businessName).trim())}\\b`, 'i').test(text)) {
+    return 'the reply claims to be the founder or owner';
   }
-  // The account owner's own name (e.g. a profile display name) must never be used as Ian's.
+  const agentLower = new Set(agent.toLowerCase().split(/\s+/));
+  // Business name words match loosely: "CodeCraft" is fine for a business saved as "codecraftgh".
+  const bizWords = String(businessName || '').toLowerCase().split(/[^a-z0-9]+/).filter((w) => w.length >= 4);
+  const isBusiness = (n) => n.length >= 4 && bizWords.some((w) => w.startsWith(n) || n.startsWith(w));
+  for (const m of text.matchAll(NAME_CLAIM_RE)) {
+    // "I'm Zackman's assistant" / "I'm CodeCraft's assistant" is about whose assistant it is, not a name.
+    if (/^[A-Za-z'-]+['’]s$/.test(m[1]) || /^['’]s\b/.test(text.slice(m.index + m[0].length))) continue;
+    const name = m[1];
+    const lower = name.toLowerCase();
+    if (!NOT_NAMES.has(name) && !agentLower.has(lower) && !isBusiness(lower)) return `the reply introduces itself as "${name}" instead of ${agent}`;
+  }
+  // The account owner's own name (e.g. a profile display name) must never be used as the agent's.
+  const agentWords = new Set(agent.toLowerCase().split(/\s+/));
   for (const part of String(ownerName || '').split(/\s+/)) {
-    if (part.length >= 3 && part.toLowerCase() !== 'ian' && new RegExp(`\\b${part.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\b`, 'i').test(text)) {
+    if (part.length >= 3 && !agentWords.has(part.toLowerCase()) && !String(businessName || '').toLowerCase().split(/[^a-z0-9]+/).includes(part.toLowerCase()) && new RegExp(`\\b${escapeRe(part)}\\b`, 'i').test(text)) {
       return `the reply uses the name "${part}"`;
     }
   }
@@ -116,10 +133,10 @@ const SIGN_OFF_RE = /^\s*((best|kind|warm|warmest|with)\s+)?(regards|wishes)\s*,
  * sign-off or signature block (the business profile's signature included).
  * The voice file's Signature section, if filled in, is added back on purpose.
  */
-function cleanReply(text, { signature = '', profileSignature = '' } = {}) {
+function cleanReply(text, { signature = '', profileSignature = '', agentName = 'Ian' } = {}) {
   let t = String(text || '').trim()
     .replace(/^["“']+|["”']+$/g, '')
-    .replace(/^(ian|reply)\s*:\s*/i, '')
+    .replace(new RegExp(`^(ian|reply|${escapeRe(String(agentName || 'Ian'))})\\s*:\\s*`, 'i'), '')
     .trim();
 
   // The business profile's email signature, if the model copied it in as a block
@@ -145,7 +162,7 @@ function cleanReply(text, { signature = '', profileSignature = '' } = {}) {
 /**
  * @returns {{ hold: boolean, reason: string }} hold = wait for the owner's approval.
  */
-function decideRouting({ incoming, draft, modelHold = false, modelReason = '', knowledge = '', ownerName = null }) {
+function decideRouting({ incoming, draft, modelHold = false, modelReason = '', knowledge = '', ownerName = null, agentName = 'Ian', businessName = null }) {
   const msg = String(incoming || '');
   if (!String(draft || '').trim()) return { hold: true, reason: 'no reply was drafted' };
 
@@ -158,7 +175,7 @@ function decideRouting({ incoming, draft, modelHold = false, modelReason = '', k
 
   if (modelHold) return { hold: true, reason: modelReason || 'the AI was not sure how to answer' };
 
-  const identity = identityProblem(draft, { ownerName });
+  const identity = identityProblem(draft, { ownerName, agentName, businessName });
   if (identity) return { hold: true, reason: identity };
   for (const rule of DRAFT_RULES) {
     if (rule.re.test(draft)) return { hold: true, reason: rule.reason };

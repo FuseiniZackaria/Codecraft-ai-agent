@@ -1,5 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
-import { Save, Plus, Trash2, Mail, Building2, User, Phone, Globe, MapPin, FileText, Volume2, AlertCircle, CheckCircle2 } from 'lucide-react';
+import { useSearchParams } from 'react-router-dom';
+import { Save, Plus, Trash2, Mail, Building2, User, Phone, Globe, MapPin, FileText, AlertCircle, CheckCircle2 } from 'lucide-react';
+import AgentInstructionsTab from '../components/settings/AgentInstructionsTab';
 import { api } from '../services/api';
 
 // Mirrors the backend's ALLOWED_FIELDS and column names in business_profile.
@@ -18,10 +20,49 @@ const FIELDS = [
 const LONG_FIELDS = [
   { key: 'offers',    label: 'What you offer',  icon: FileText,  placeholder: 'A short paragraph outreach prompts can pull from.' },
   { key: 'signature', label: 'Email signature', icon: FileText,  placeholder: '— Your name\nTitle, Business name\nPhone • Website' },
-  { key: 'tone',      label: 'Voice & tone',    icon: Volume2,   placeholder: 'e.g. warm, direct, Ghanaian small-business tone' },
+];
+// "Voice & tone" now lives in the Agent instructions tab (its "## Email & outreach tone" section).
+
+// Tabs on this page. Add new ones here (Q&A, Documents, Test chat come next).
+const TABS = [
+  { key: 'profile', label: 'Profile' },
+  { key: 'agent',   label: 'Agent instructions' },
 ];
 
 export default function Settings() {
+  const [params, setParams] = useSearchParams();
+  const tab = TABS.some((t) => t.key === params.get('tab')) ? params.get('tab') : 'profile';
+  return (
+    <div className="p-6 max-w-4xl mx-auto">
+      <div className="mb-4">
+        <h1 className="text-2xl font-[var(--font-display)] font-semibold mb-1">Settings</h1>
+        <p className="text-sm text-[var(--color-text-muted)]">
+          Your business profile and how your WhatsApp agent replies. Changes apply from the agent's next reply.
+        </p>
+      </div>
+      <div role="tablist" className="flex gap-1 border-b border-[var(--color-border)] mb-6">
+        {TABS.map((t) => (
+          <button
+            key={t.key}
+            role="tab"
+            type="button"
+            aria-selected={tab === t.key}
+            onClick={() => setParams(t.key === 'profile' ? {} : { tab: t.key })}
+            className={`px-3 py-2 text-sm -mb-px border-b-2 ${tab === t.key
+              ? 'border-[var(--color-accent)] text-[var(--color-text)] font-medium'
+              : 'border-transparent text-[var(--color-text-muted)] hover:text-[var(--color-text)]'}`}
+          >
+            {t.label}
+          </button>
+        ))}
+      </div>
+      {tab === 'profile' && <ProfileTab />}
+      {tab === 'agent' && <AgentInstructionsTab />}
+    </div>
+  );
+}
+
+function ProfileTab() {
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState(null);
@@ -109,22 +150,16 @@ export default function Settings() {
 
   if (loading) {
     return (
-      <div className="p-6 max-w-4xl mx-auto">
-        <div className="text-sm text-[var(--color-text-muted)]">Loading your business profile…</div>
-      </div>
+      <div className="text-sm text-[var(--color-text-muted)]">Loading your business profile…</div>
     );
   }
 
   return (
-    <div className="p-6 max-w-4xl mx-auto">
-      <div className="mb-6">
-        <h1 className="text-2xl font-[var(--font-display)] font-semibold mb-1">Settings</h1>
-        <p className="text-sm text-[var(--color-text-muted)]">
-          Your business profile. Agents use these fields when they draft outreach,
-          sign emails, and triage the inbox. Blank fields fall back to the
-          server-wide defaults.
-        </p>
-      </div>
+    <div>
+      <p className="text-sm text-[var(--color-text-muted)] mb-6">
+        Agents use these fields when they draft outreach, sign emails, triage the
+        inbox and reply on WhatsApp. Blank fields fall back to the server-wide defaults.
+      </p>
 
       <form onSubmit={handleSave} className="space-y-6">
         <section className="bg-[var(--color-surface)] border border-[var(--color-border)] rounded-lg p-5">
@@ -155,7 +190,7 @@ export default function Settings() {
 
         <section className="bg-[var(--color-surface)] border border-[var(--color-border)] rounded-lg p-5">
           <h2 className="text-sm font-semibold text-[var(--color-text)] mb-4 flex items-center gap-2">
-            <FileText size={14} /> Voice, offers, signature
+            <FileText size={14} /> Offers and signature
           </h2>
           <div className="space-y-4">
             {LONG_FIELDS.map((f) => {

@@ -53,7 +53,12 @@ async function request(path, options = {}) {
   }
   if (!res.ok) {
     const body = await res.json().catch(() => ({}));
-    throw new Error(body.error || `Request failed: ${res.status}`);
+    const err = new Error(body.error || `Request failed: ${res.status}`);
+    // Keep the server's extra info (e.g. a list of validation problems).
+    err.status = res.status;
+    err.details = body.details || null;
+    err.body = body;
+    throw err;
   }
   return res.json();
 }
@@ -246,6 +251,12 @@ export const api = {
   // --- Business profile (Phase 2.4) ---
   getBusinessProfile: () => request('/business-profile'),
   saveBusinessProfile: (patch) => request('/business-profile', { method: 'PATCH', body: JSON.stringify(patch) }),
+
+  // Agent instructions (Settings -> General -> Agent instructions), with version history.
+  getAgentSettings: () => request('/agent-settings'),
+  getAgentSettingsVersion: (id) => request(`/agent-settings/versions/${encodeURIComponent(id)}`),
+  saveAgentSettings: (body) => request('/agent-settings', { method: 'POST', body: JSON.stringify(body) }),
+  restoreAgentSettingsVersion: (id) => request(`/agent-settings/versions/${encodeURIComponent(id)}/restore`, { method: 'POST' }),
 
   // --- Connections (Phase 2.5) ---
   listConnections: () => request('/connections'),

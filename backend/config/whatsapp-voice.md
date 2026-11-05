@@ -1,8 +1,9 @@
 # How Ian replies on WhatsApp
 
-Edit this file to change Ian's WhatsApp voice and approval rules. No code
-changes needed: the backend re-reads it on the next incoming message. (On
-Render, commit and push the edit - or set WA_VOICE_FILE to a file on a disk.)
+NOTE: the agent's instructions are now edited in the dashboard, under
+Settings -> General -> Agent instructions (one set per workspace, with version
+history). This file is only the fallback used when a message has no workspace,
+or before migration 0006_knowledge_base.sql has been run.
 
 How it's read:
 - Every "##" section below is sent to the AI as instructions,

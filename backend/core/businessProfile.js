@@ -139,7 +139,15 @@ async function profileContextLine(workspaceId, { forChat = false } = {}) {
   if (p.phone)         parts.push(`Phone: ${p.phone}`);
   if (p.whatsapp)      parts.push(`WhatsApp: ${p.whatsapp}`);
   if (p.business_email) parts.push(`Email: ${p.business_email}`);
-  if (p.tone)          parts.push(`Tone: ${p.tone}`);
+  // Tone for the email/outreach agents: the "Email & outreach tone" section of
+  // the Agent instructions (Settings), else the old Voice & tone field. The
+  // WhatsApp agent (forChat) gets its full instructions separately.
+  if (!forChat) {
+    let tone = null;
+    try { tone = await require('./knowledge/agentSettings').emailTone(workspaceId); } catch { tone = null; }
+    tone = tone || p.tone;
+    if (tone) parts.push(`Tone: ${tone}`);
+  }
   if (p.signature && !forChat) parts.push(`Signature:\n${p.signature}`);
 
   // Legacy business.json still carries a few richer fields the Settings

@@ -49,6 +49,15 @@ const TABLES = [
   'telegram_messages',
   'user_roles',
   'whatsapp_messages',
+  'whatsapp_sessions',      // migration 0005
+  'whatsapp_chat_messages', // migration 0005
+  'whatsapp_outbox',        // migration 0005
+  'whatsapp_optouts',       // migration 0005
+  'agent_instruction_versions', // migration 0006
+  'kb_qa_entries',          // migration 0006
+  'kb_documents',           // migration 0006
+  'kb_document_chunks',     // migration 0006
+  'agent_test_messages',    // migration 0006
   'workflow_connections',   // reserved for Phase 2; may not exist yet
   'workflow_definitions',
   'workflow_members',       // reserved for Phase 2; may not exist yet

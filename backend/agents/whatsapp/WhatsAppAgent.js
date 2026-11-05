@@ -7,14 +7,16 @@ const businessProfile = require('../../core/businessProfile');
 const { countSentToday } = require('../../core/autoReplySafety');
 const notifications = require('../../core/notifications');
 const voice = require('../../core/whatsapp/voice');
+const agentSettings = require('../../core/knowledge/agentSettings');
 const replyPolicy = require('../../core/whatsapp/replyPolicy');
 
 /**
  * WhatsAppAgent - triggered by the webhook receiver on each incoming customer
  * message, not a user goal, so it skips the standard plan/execute loop.
  *
- * Ian speaks as "Ian from CodeCraft" in the voice set in
- * backend/config/whatsapp-voice.md (editable without code changes).
+ * How it speaks - its name, instructions, example replies and the "team will
+ * follow up" message - is set per workspace on Settings -> General -> Agent
+ * instructions (core/knowledge/agentSettings.js), and applies on the next reply.
  *
  * With auto-reply on (WAHA: WA_AUTO_REPLY, default on; Twilio/Meta:
  * WHATSAPP_AUTO_REPLY_ENABLED):
@@ -37,7 +39,7 @@ const HOLD_REPEAT_MS = 2 * 60 * 60 * 1000; // don't repeat "let me check with th
 const OUTPUT_FORMAT =
   'Answer with ONLY a JSON object, nothing else:\n' +
   '{"reply": "<your WhatsApp message to the customer>", "hold": <true or false>, "reason": "<if hold: why, in a few words; else empty>"}\n' +
-  'If hold is true, "reply" is your suggested answer for Zackman to check before it is sent.';
+  'If hold is true, "reply" is your suggested answer for the team to check before it is sent.';
 
 /** Stored messages keep their text in `body`. */
 const msgText = (m) => String(m.body ?? m.text ?? '');
@@ -47,7 +49,7 @@ class WhatsAppAgent extends BaseAgent {
     super({
       key: 'whatsapp',
       role: 'WhatsApp Agent',
-      goals: ['Reply to incoming customer messages as Ian from CodeCraft; hold anything sensitive for approval'],
+      goals: ['Reply to incoming customer messages in the voice set for the business; hold anything sensitive for approval'],
       tools: [TOOL],
     });
   }
@@ -81,8 +83,8 @@ class WhatsAppAgent extends BaseAgent {
         ? "You're in the middle of a conversation: don't greet again, just answer."
         : `This starts a conversation: begin with "${time.greeting}".`,
       firstContact
-        ? 'This is the first time they have ever messaged CodeCraft, so a warm "Akwaaba" fits.'
-        : 'They have messaged before: no "Akwaaba".',
+        ? `This is the first time they have ever messaged ${profile?.business_name || 'the business'}.`
+        : 'They have messaged before (not a first-time contact).',
     ];
     const transcript = history.length
       ? `Conversation so far:\n${history.slice(-10).map((m) => `${m.direction === 'in' ? 'Customer' : 'Ian'}: ${msgText(m)}`).join('\n')}\n\n`
@@ -90,18 +92,19 @@ class WhatsAppAgent extends BaseAgent {
 
     const result = await selectProvider({}).complete({
       maxTokens: 800,
-      system: `${v.instructions}\n\n${knowledge}Right now:\n- ${situation.join('\n- ')}\n\n${OUTPUT_FORMAT}`,
+      system: `${v.instructions}\n\n${v.examplesBlock ? `${v.examplesBlock}\n\n` : ''}${knowledge}Right now:\n- ${situation.join('\n- ')}\n\n${OUTPUT_FORMAT}`,
       prompt: `${transcript}Customer's latest message: "${body}"`,
     });
 
     const parsed = replyPolicy.parseDraft(result.text);
-    const reply = replyPolicy.cleanReply(parsed.reply, { signature: v.signature, profileSignature: profile?.signature });
+    const reply = replyPolicy.cleanReply(parsed.reply, { signature: v.signature || '', profileSignature: profile?.signature, agentName: v.agentName });
     // The owner's profile name is checked so Ian never borrows it - unless the voice
     // file itself names that person (e.g. the founder), who Ian may talk about.
     const ownerName = profile?.display_name && !v.instructions.toLowerCase().includes(String(profile.display_name).toLowerCase())
       ? profile.display_name : null;
     const decision = replyPolicy.decideRouting({
       incoming: body, draft: reply, modelHold: parsed.hold, modelReason: parsed.reason, knowledge, ownerName,
+      agentName: v.agentName, businessName: profile?.business_name || null,
     });
     return { reply, ...decision, history };
   }
@@ -129,8 +132,10 @@ class WhatsAppAgent extends BaseAgent {
    */
   async handleIncomingMessage({ from, body, workspaceId: wsFromWebhook, session = null, userId = null, now = new Date() }) {
     const workspaceId = wsFromWebhook || null;
-    const v = voice.loadVoice();
     const profile = workspaceId ? await businessProfile.getProfile(workspaceId).catch(() => null) : null;
+    // This workspace's instructions, examples and hold reply (falls back to whatsapp-voice.md).
+    const v = await agentSettings.forAgent(workspaceId, profile);
+    v.hold = v.holdReply;
     const history = await this.recentHistory({ session, from, userId, workspaceId, body });
 
     // The AI service can be overloaded (Gemini 503 / timeouts). Try once more after a
