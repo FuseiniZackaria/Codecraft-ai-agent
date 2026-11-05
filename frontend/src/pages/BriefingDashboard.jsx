@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { ArrowUp, ArrowDown, ArrowRight, ExternalLink } from 'lucide-react';
 import { api } from '../services/api';
 import { useStore } from '../store/useStore';
+import LoadingScreen from '../components/LoadingScreen';
 
 function StatColumn({ label, value, urgent }) {
   return (
@@ -127,7 +128,7 @@ export default function BriefingDashboard({ embedded } = {}) {
           {error}
         </div>
       )}
-      {loading && <div className="text-sm text-[var(--color-text-muted)]">Loading...</div>}
+      {loading && <LoadingScreen compact label="Loading the briefing…" />}
 
       {stats && !loading && (
         <>

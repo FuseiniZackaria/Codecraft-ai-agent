@@ -1,52 +1,66 @@
-import { Search, Circle, Menu } from 'lucide-react';
+import { Search, Menu } from 'lucide-react';
 import { useStore } from '../store/useStore';
+import Logo from './Logo';
 
+/**
+ * The navy brand bar across the top of every page: (phone) menu + logo,
+ * connection status, Quick action, and who's signed in.
+ */
 export default function TopBar({ onOpenSidebar }) {
   const { connected, setPaletteOpen } = useStore();
+  const user = useStore((s) => s.user);
+  const initial = (user?.email || '?').trim().charAt(0).toUpperCase();
+  const status = connected ? 'Connected' : 'Demo mode - backend not reachable';
 
   return (
-    <header className="h-14 border-b border-[var(--color-border)] flex items-center justify-between gap-2 px-3 sm:px-6 bg-[var(--color-bg)]/80 backdrop-blur-sm sticky top-0 z-10">
+    <header className="h-14 shrink-0 flex items-center justify-between gap-2 px-3 sm:px-6 bg-[var(--color-brand)] text-white sticky top-0 z-10 shadow-sm">
       <div className="flex items-center gap-2 min-w-0">
         {onOpenSidebar && (
           <button
             type="button"
             onClick={onOpenSidebar}
             aria-label="Open navigation"
-            className="md:hidden p-2 -ml-1 rounded-md text-[var(--color-text-muted)] hover:text-[var(--color-text)] hover:bg-[var(--color-surface-2)]"
+            className="md:hidden p-2 -ml-1 rounded-md text-white/80 hover:text-white hover:bg-white/10"
           >
             <Menu size={18} />
           </button>
         )}
-        <div className="flex items-center gap-2 text-xs text-[var(--color-text-muted)] min-w-0">
-          <Circle
-            size={8}
-            className={`shrink-0 ${connected ? 'text-[var(--color-success)] fill-current pulse-live rounded-full' : 'text-[var(--color-warning)] fill-current'}`}
-          />
-          {/* Full label from sm up; status dot alone on phones (title still
-              carries the full message for a long-press/tooltip). */}
-          <span
-            className="hidden sm:inline truncate"
-            title={connected ? 'Connected to backend' : 'Demo mode — backend not reachable'}
-          >
-            {connected ? 'Connected to backend' : 'Demo mode — backend not reachable'}
-          </span>
-          <span className="sr-only sm:hidden">
-            {connected ? 'Connected to backend' : 'Demo mode — backend not reachable'}
-          </span>
+        {/* On phones the sidebar is hidden, so the brand shows here. */}
+        <div className="md:hidden flex items-center gap-2">
+          <Logo onDark />
+          <span className="font-[var(--font-display)] font-semibold tracking-tight">CodeCraft</span>
         </div>
+        <span
+          className="hidden md:inline-flex items-center gap-1.5 text-xs px-2 py-1 rounded-full bg-white/10 text-white/85"
+          title={connected ? 'Connected to the backend' : 'Demo mode - backend not reachable'}
+        >
+          <span className={`w-2 h-2 rounded-full ${connected ? 'bg-emerald-400 pulse-live' : 'bg-amber-400'}`} />
+          {status}
+        </span>
       </div>
 
-      <button
-        onClick={() => setPaletteOpen(true)}
-        className="flex items-center gap-2 px-2.5 sm:px-3 py-1.5 rounded-md border border-[var(--color-border)] bg-[var(--color-surface)] text-sm text-[var(--color-text-muted)] hover:text-[var(--color-text)] hover:border-[var(--color-accent)]/40 transition-colors shrink-0"
-        aria-label="Quick action"
-      >
-        <Search size={14} />
-        <span className="hidden sm:inline">Quick action</span>
-        <kbd className="hidden sm:inline ml-2 text-[10px] font-[var(--font-mono)] px-1.5 py-0.5 rounded bg-[var(--color-surface-2)] border border-[var(--color-border)]">
-          ⌘K
-        </kbd>
-      </button>
+      <div className="flex items-center gap-2 sm:gap-3 shrink-0">
+        <span className="md:hidden w-2 h-2 rounded-full shrink-0" title={status} style={{ background: connected ? '#34d399' : '#fbbf24' }}>
+          <span className="sr-only">{status}</span>
+        </span>
+        <button
+          onClick={() => setPaletteOpen(true)}
+          className="flex items-center gap-2 px-2.5 sm:px-3 py-1.5 rounded-md bg-white/10 text-sm text-white/85 hover:bg-white/15 hover:text-white transition-colors"
+          aria-label="Quick action"
+        >
+          <Search size={14} />
+          <span className="hidden sm:inline">Quick action</span>
+          <kbd className="hidden sm:inline ml-1 text-[10px] font-[var(--font-mono)] px-1.5 py-0.5 rounded bg-white/10">⌘K</kbd>
+        </button>
+        {user && (
+          <div className="flex items-center gap-2 min-w-0" title={user.email}>
+            <span className="w-8 h-8 rounded-full bg-[var(--color-accent)] text-[var(--color-brand)] font-semibold text-sm flex items-center justify-center shrink-0">
+              {initial}
+            </span>
+            <span className="hidden lg:inline text-sm text-white/85 truncate max-w-[180px]">{user.email}</span>
+          </div>
+        )}
+      </div>
     </header>
   );
 }

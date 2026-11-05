@@ -1,12 +1,22 @@
 import { useState } from 'react';
-import { LogIn, Mail, KeyRound } from 'lucide-react';
+import { LogIn, Mail, KeyRound, AlertCircle } from 'lucide-react';
 import Logo from '../components/Logo';
 import PasswordInput from '../components/PasswordInput';
 import { supabase } from '../services/supabaseClient';
+import { useStore } from '../store/useStore';
 
 export default function Login() {
+  // Set when Supabase accepted the password but the CodeCraft server didn't let us in.
+  const authError = useStore((s) => s.authError);
   const [mode, setMode] = useState('signin'); // 'signin' | 'forgot' | 'code'
-  const [email, setEmail] = useState('');
+  // Remembered for this tab, so it's still filled in if the page comes back after a failed sign-in.
+  const [email, setEmailState] = useState(() => {
+    try { return sessionStorage.getItem('cc_login_email') || ''; } catch { return ''; }
+  });
+  const setEmail = (value) => {
+    setEmailState(value);
+    try { sessionStorage.setItem('cc_login_email', value); } catch { /* storage unavailable */ }
+  };
   const [password, setPassword] = useState('');
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState(null);
@@ -77,6 +87,7 @@ export default function Login() {
     if (!email.trim() || !password) return setError('Enter both email and password.');
     setBusy(true);
     setError(null);
+    useStore.setState({ authError: null });
     try {
       const { error: signInError } = await supabase.auth.signInWithPassword({ email: email.trim(), password });
       if (signInError) throw signInError;
@@ -118,6 +129,16 @@ export default function Login() {
             CodeCraft
           </span>
         </div>
+
+        {authError && (
+          <div role="alert" className="mb-4 flex items-start gap-2 rounded-lg border border-[var(--color-danger)]/30 bg-[var(--color-danger)]/5 p-3 text-sm">
+            <AlertCircle size={16} className="mt-0.5 shrink-0 text-[var(--color-danger)]" />
+            <span className="flex-1">{authError}</span>
+            <button type="button" onClick={() => useStore.setState({ authError: null })} className="text-[var(--color-text-muted)] hover:text-[var(--color-text)] text-xs shrink-0" aria-label="Dismiss">
+              Dismiss
+            </button>
+          </div>
+        )}
 
         <div className="rounded-lg border border-[var(--color-border)] bg-[var(--color-surface)] p-6">
           {mode === 'code' ? (

@@ -6,13 +6,48 @@ import { X, Minus, Send, Mic, MicOff, Volume2, VolumeX, Settings as SettingsIcon
 import { useStore } from '../store/useStore';
 import { matchNameTrigger } from '../services/nameTrigger';
 import StatusPill from './StatusPill';
+import IanAvatar from './IanAvatar';
 
+// Ian's starting spot before he's ever dragged (the old corner setting).
 const CORNERS = {
-  br: { bottom: 20, right: 20, align: 'end' },
-  bl: { bottom: 20, left: 20, align: 'start' },
-  tr: { top: 70, right: 20, align: 'end' },
-  tl: { top: 70, left: 20, align: 'start' },
+  br: { bottom: 20, right: 20 },
+  bl: { bottom: 20, left: 20 },
+  tr: { top: 70, right: 20 },
+  tl: { top: 70, left: 20 },
 };
+const FAB = 56; // the round button, px
+const PANEL_W = 380;
+const PANEL_H = 560;
+const EDGE = 8; // never closer than this to the window edge
+const DRAG_PX = 6; // movement needed before a press counts as a drag (so a tap still opens the chat)
+
+const viewport = () => ({ w: window.innerWidth, h: window.innerHeight });
+const clampTo = (v, max) => Math.max(EDGE, Math.min(v, Math.max(EDGE, max)));
+
+/** Top-left of the button in one of the corners. */
+function cornerPos(corner) {
+  const c = CORNERS[corner] || CORNERS.br;
+  const { w, h } = viewport();
+  return {
+    x: c.left !== undefined ? c.left : w - c.right - FAB,
+    y: c.top !== undefined ? c.top : h - c.bottom - FAB,
+  };
+}
+const clampFab = (p) => {
+  const { w, h } = viewport();
+  return { x: clampTo(p.x, w - FAB - EDGE), y: clampTo(p.y, h - FAB - EDGE) };
+};
+const clampPanel = (p) => {
+  const { w, h } = viewport();
+  return { x: clampTo(p.x, w - PANEL_W - EDGE), y: clampTo(p.y, h - PANEL_H - EDGE) };
+};
+/** The panel opens beside the button, growing toward the middle of the screen. */
+function panelBeside(fab) {
+  const { w, h } = viewport();
+  const right = fab.x + FAB / 2 > w / 2;
+  const bottom = fab.y + FAB / 2 > h / 2;
+  return clampPanel({ x: right ? fab.x + FAB - PANEL_W : fab.x, y: bottom ? fab.y + FAB - PANEL_H : fab.y });
+}
 
 const PAUSE_MS = 1500; // silence after speech that ends one voice message
 const MAX_VOICE_RESTARTS = 5; // failed restarts in a row before the mic gives up
@@ -83,7 +118,7 @@ export default function FloatingAssistant() {
   const setAssistant = useStore((s) => s.setAssistant);
   const setTriggerMode = useStore((s) => s.setTriggerMode);
   const setSpokenReplies = useStore((s) => s.setSpokenReplies);
-  const setCorner = useStore((s) => s.setCorner);
+  const setAssistantPos = useStore((s) => s.setAssistantPos);
 
   const [input, setInput] = useState('');
   const [settingsOpen, setSettingsOpen] = useState(false);
@@ -404,36 +439,64 @@ export default function FloatingAssistant() {
     };
   }, []);
 
-  // --- Drag + corner snap ---
-  const dragStateRef = useRef(null);
-  function onHeaderMouseDown(e) {
-    if (e.target.closest('button')) return;
-    dragStateRef.current = { startX: e.clientX, startY: e.clientY, moved: false };
-    window.addEventListener('mousemove', onDragMove);
-    window.addEventListener('mouseup', onDragEnd);
+  // --- Moving Ian: drag the round button anywhere (mouse, touch or pen) ---
+  // A click/tap opens the chat; only a real drag (more than DRAG_PX) moves him.
+  // The position is remembered and kept on screen when the window shrinks.
+  // The open panel appears next to the button and can be dragged by its header.
+  const [fabPos, setFabPos] = useState(() => clampFab(assistant.pos || cornerPos(assistant.corner)));
+  const [panelPos, setPanelPos] = useState(null);
+  const dragRef = useRef(null);
+  const suppressClickRef = useRef(false);
+
+  useEffect(() => {
+    const onResize = () => {
+      setFabPos((p) => clampFab(p));
+      setPanelPos((p) => (p ? clampPanel(p) : p));
+    };
+    window.addEventListener('resize', onResize);
+    return () => window.removeEventListener('resize', onResize);
+  }, []);
+
+  // Each time the panel opens, place it beside the button.
+  useEffect(() => {
+    if (assistant.panelOpen) setPanelPos(panelBeside(fabPos));
+  }, [assistant.panelOpen]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  function startDrag(e, kind) {
+    if (e.pointerType === 'mouse' && e.button !== 0) return;
+    if (kind === 'panel' && e.target.closest('button')) return; // header buttons still work
+    const origin = kind === 'fab' ? fabPos : panelPos;
+    if (!origin) return;
+    dragRef.current = { kind, startX: e.clientX, startY: e.clientY, origin, moved: false, last: origin };
+    e.currentTarget.setPointerCapture?.(e.pointerId);
   }
-  function onDragMove(e) {
-    const d = dragStateRef.current;
+  function moveDrag(e) {
+    const d = dragRef.current;
     if (!d) return;
-    if (Math.abs(e.clientX - d.startX) + Math.abs(e.clientY - d.startY) > 6) d.moved = true;
-    if (panelRef.current && d.moved) {
-      panelRef.current.style.transform = `translate(${e.clientX - d.startX}px, ${e.clientY - d.startY}px)`;
+    const dx = e.clientX - d.startX;
+    const dy = e.clientY - d.startY;
+    if (!d.moved && Math.abs(dx) + Math.abs(dy) < DRAG_PX) return;
+    d.moved = true;
+    const next = { x: d.origin.x + dx, y: d.origin.y + dy };
+    if (d.kind === 'fab') { d.last = clampFab(next); setFabPos(d.last); } else { d.last = clampPanel(next); setPanelPos(d.last); }
+  }
+  function endDrag(e) {
+    const d = dragRef.current;
+    dragRef.current = null;
+    e.currentTarget.releasePointerCapture?.(e.pointerId);
+    if (!d?.moved) return;
+    if (d.kind === 'fab') {
+      suppressClickRef.current = true; // the click that ends a drag must not open the chat
+      setAssistantPos(d.last);
     }
   }
-  function onDragEnd(e) {
-    const d = dragStateRef.current;
-    window.removeEventListener('mousemove', onDragMove);
-    window.removeEventListener('mouseup', onDragEnd);
-    dragStateRef.current = null;
-    if (panelRef.current) panelRef.current.style.transform = '';
-    if (!d || !d.moved) return;
-    const cx = e.clientX, cy = e.clientY;
-    const half = { w: window.innerWidth / 2, h: window.innerHeight / 2 };
-    const corner = `${cy < half.h ? 't' : 'b'}${cx < half.w ? 'l' : 'r'}`;
-    setCorner(corner);
+  function onFabClick() {
+    if (suppressClickRef.current) { suppressClickRef.current = false; return; }
+    setAssistant({ panelOpen: true });
   }
 
-  const pos = CORNERS[assistant.corner] || CORNERS.br;
+  const pos = { left: fabPos.x, top: fabPos.y };
+  const panelStyle = panelPos ? { left: panelPos.x, top: panelPos.y } : { left: fabPos.x, top: fabPos.y };
   const sorted = [...chatMessages];
 
   // The FAB sits in the SAME corner as the panel, so when the panel opens
@@ -454,14 +517,20 @@ export default function FloatingAssistant() {
       {/* Floating action button */}
       {!assistant.panelOpen && (
         <button
-          onClick={() => setAssistant({ panelOpen: true })}
-          style={pos}
-          className="fixed z-40 w-14 h-14 rounded-full bg-[var(--color-accent)] text-black shadow-lg hover:brightness-110 flex items-center justify-center transition-all"
+          onClick={onFabClick}
+          onPointerDown={(e) => startDrag(e, 'fab')}
+          onPointerMove={moveDrag}
+          onPointerUp={endDrag}
+          onPointerCancel={endDrag}
+          style={{ ...pos, touchAction: 'none' }}
+          className="fixed z-40 w-14 h-14 rounded-full bg-[var(--color-accent)] text-black shadow-lg hover:brightness-110 flex items-center justify-center transition-[filter,box-shadow] cursor-grab active:cursor-grabbing"
           aria-label={`Open ${assistant.name}`}
-          title={`${assistant.name} (Ctrl+/)`}
+          title={`${assistant.name} (Ctrl+/) - drag to move`}
         >
-          <span className="font-[var(--font-display)] font-bold text-lg">{assistant.name.charAt(0)}</span>
-          <span className={`absolute bottom-1 right-1 w-3 h-3 rounded-full border-2 border-[var(--color-accent)] ${statusColor}`} />
+          <span className="w-full h-full rounded-full overflow-hidden flex items-center justify-center">
+            <IanAvatar name={assistant.name} letterClassName="text-lg" />
+          </span>
+          <span className={`absolute bottom-0.5 right-0.5 w-3.5 h-3.5 rounded-full border-2 border-white ${statusColor}`} />
         </button>
       )}
 
@@ -471,18 +540,22 @@ export default function FloatingAssistant() {
           ref={panelRef}
           role="dialog"
           aria-label={`${assistant.name} assistant`}
-          style={isMobile ? { top: 0, left: 0, right: 0, bottom: 0 } : pos}
+          style={isMobile ? { top: 0, left: 0, right: 0, bottom: 0 } : panelStyle}
           className={`fixed z-40 flex flex-col bg-[var(--color-bg)] border border-[var(--color-border)] shadow-2xl ${
             isMobile ? '' : 'w-[380px] h-[560px] rounded-xl overflow-hidden'
           }`}
         >
           {/* Header */}
           <div
-            onMouseDown={onHeaderMouseDown}
-            className="flex items-center gap-2 px-3 py-2.5 border-b border-[var(--color-border)] bg-[var(--color-surface)] cursor-move select-none"
+            onPointerDown={isMobile ? undefined : (e) => startDrag(e, 'panel')}
+            onPointerMove={moveDrag}
+            onPointerUp={endDrag}
+            onPointerCancel={endDrag}
+            style={isMobile ? undefined : { touchAction: 'none' }}
+            className={`flex items-center gap-2 px-3 py-2.5 border-b border-[var(--color-border)] bg-[var(--color-surface)] select-none ${isMobile ? '' : 'cursor-move'}`}
           >
-            <div className="w-7 h-7 rounded-full bg-[var(--color-accent)] text-black flex items-center justify-center font-[var(--font-display)] font-bold text-sm">
-              {assistant.name.charAt(0)}
+            <div className="w-8 h-8 rounded-full bg-[var(--color-accent)] text-black flex items-center justify-center overflow-hidden shrink-0">
+              <IanAvatar name={assistant.name} letterClassName="text-sm" />
             </div>
             <div className="flex-1 min-w-0">
               <div className="text-sm font-medium leading-tight">{assistant.name}</div>

@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import { Send, RotateCcw, Loader2, AlertCircle, CheckCircle2, Clock, HelpCircle, FileText, ShieldCheck, ChevronDown, ChevronRight } from 'lucide-react';
 import { api } from '../../services/api';
 import CorrectAnswerDialog, { CorrectButton, CorrectedBadge, questionBefore } from './CorrectAnswer';
+import LoadingScreen from '../LoadingScreen';
 
 // Settings -> General -> Test chat.
 // Message the WhatsApp agent as if you were a customer. It replies with the
@@ -154,7 +155,7 @@ export default function TestChatTab() {
     try { await api.clearTestChat(); setMessages([]); setError(null); } catch (err) { setError(err.message); }
   }
 
-  if (loading) return <div className="text-sm text-[var(--color-text-muted)]">Loading the test chat…</div>;
+  if (loading) return <LoadingScreen compact label="Loading the test chat…" />;
   if (loadError) {
     return (
       <div className="bg-[var(--color-surface)] border border-[var(--color-border)] rounded-lg p-5 text-sm flex items-start gap-2 text-[var(--color-danger)]">

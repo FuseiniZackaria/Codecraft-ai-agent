@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import { Bot, Save, Plus, Trash2, History, RotateCcw, Eye, X, AlertCircle, CheckCircle2, MessageSquare, Info } from 'lucide-react';
 import { api } from '../../services/api';
+import LoadingScreen from '../LoadingScreen';
 
 // Settings -> General -> Agent instructions.
 // One set per workspace (business). Every save is kept as a version, and the
@@ -129,7 +130,7 @@ export default function AgentInstructionsTab() {
     setBusyVersion(null);
   }
 
-  if (loading) return <div className="text-sm text-[var(--color-text-muted)]">Loading the agent's instructions…</div>;
+  if (loading) return <LoadingScreen compact label="Loading the agent's instructions…" />;
 
   if (loadError) {
     return (

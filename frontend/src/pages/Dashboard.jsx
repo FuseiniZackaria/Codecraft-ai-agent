@@ -1,7 +1,11 @@
 import { Link } from 'react-router-dom';
-import { Radio, ArrowRight, Briefcase, CheckCircle2, Circle, Settings, Link2, MessageSquare } from 'lucide-react';
+import {
+  Radio, ArrowRight, Briefcase, CheckCircle2, Circle, Settings, Link2, MessageSquare, Gauge, Bot, Clock,
+  AlertTriangle, PieChart, BarChart3, ListChecks, Zap, BookOpen, Inbox,
+} from 'lucide-react';
 import { useStore } from '../store/useStore';
-import StatCard from '../components/StatCard';
+import Card, { PageHeader, HeaderButton } from '../components/ui/Card';
+import { KpiCard, TaskStatusBar, TasksPerDayChart, RecentTasksTable } from '../components/dashboard/DashboardWidgets';
 import StatusPill from '../components/StatusPill';
 
 function OnboardingBanner({ onboarding }) {
@@ -51,89 +55,92 @@ export default function Dashboard() {
   const pending = tasks.filter((t) => t.status === 'pending_approval');
   const outreachPipelines = tasks.filter((t) => t.payload?.pipelineType === 'job_outreach_pipeline');
   const scheduledCalls = outreachPipelines.filter((t) => t.payload.stage === 'call_scheduled').length;
+  const counts = summary.tasks || {};
+
+  const quickLinks = [
+    { to: '/chat', icon: MessageSquare, label: 'Chat with Ian', hint: 'Ask for anything in plain words' },
+    { to: '/chat/console', icon: Radio, label: 'Watch agents live', hint: 'Reasoning, tool calls and results' },
+    { to: '/work/inbox', icon: Inbox, label: 'WhatsApp inbox', hint: 'Conversations and replies' },
+    { to: '/settings?tab=qa', icon: BookOpen, label: 'Agent knowledge', hint: 'Q&A, documents, test chat' },
+    { to: '/toolbox/connections', icon: Link2, label: 'Connections', hint: 'Gmail, WhatsApp, Calendar and more' },
+    ...(outreachPipelines.length
+      ? [{
+        to: '/departments/sales/outreach', icon: Briefcase, label: 'Job outreach',
+        hint: `${outreachPipelines.length} processed${scheduledCalls ? ` · ${scheduledCalls} call${scheduledCalls > 1 ? 's' : ''} scheduled` : ''}`,
+      }]
+      : []),
+  ];
 
   return (
-    <div className="p-4 md:p-6 max-w-5xl">
-      <h1 className="font-[var(--font-display)] text-xl font-semibold mb-1">Overview</h1>
-      <p className="text-sm text-[var(--color-text-muted)] mb-6">Your autonomous workforce, at a glance.</p>
+    <div className="p-4 md:p-6 max-w-7xl">
+      <PageHeader
+        icon={Gauge}
+        title="Dashboard"
+        subtitle="Your autonomous workforce, at a glance."
+        actions={(
+          <>
+            <HeaderButton as={Link} to="/chat" variant="primary" icon={MessageSquare}>Open chat</HeaderButton>
+            <HeaderButton as={Link} to="/work" variant="accent" icon={ListChecks}>Review tasks</HeaderButton>
+          </>
+        )}
+      />
 
       <OnboardingBanner onboarding={user?.onboarding} />
 
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-8">
-        <StatCard label="Active agents" value={summary.activeAgents} />
-        <StatCard label="Tasks done" value={summary.tasks.done} />
-        <StatCard label="Awaiting approval" value={summary.tasks.pending_approval} accent={summary.tasks.pending_approval > 0} />
-        <StatCard label="Failed" value={summary.tasks.failed} />
+      <div className="grid grid-cols-2 xl:grid-cols-4 gap-3 sm:gap-4 mb-5">
+        <KpiCard tone="navy" icon={Bot} label="Active agents" value={summary.activeAgents} to="/departments" />
+        <KpiCard tone="green" icon={CheckCircle2} label="Tasks done" value={counts.done ?? 0} to="/work" />
+        <KpiCard tone="orange" icon={Clock} label="Awaiting approval" shortLabel="Awaiting you" value={counts.pending_approval ?? 0} to="/work" linkLabel="Review" />
+        <KpiCard tone="red" icon={AlertTriangle} label="Failed" value={counts.failed ?? 0} to="/work" />
       </div>
 
       {pending.length > 0 && (
-        <div className="mb-8 rounded-lg border border-[var(--color-warning)]/30 bg-[var(--color-warning)]/5 p-4">
-          <div className="text-sm font-medium mb-1 text-[var(--color-warning)]">
-            {pending.length} action{pending.length > 1 ? 's' : ''} waiting on you
+        <div className="mb-5 rounded-lg border border-[var(--color-warning)]/40 bg-[var(--color-warning)]/10 px-4 py-3 flex items-center gap-3 flex-wrap">
+          <Clock size={16} className="text-[var(--color-warning)] shrink-0" />
+          <div className="flex-1 min-w-0">
+            <div className="text-sm font-medium">{pending.length} action{pending.length > 1 ? 's' : ''} waiting on you</div>
+            <div className="text-xs text-[var(--color-text-muted)]">Irreversible actions pause here until you approve them.</div>
           </div>
-          <div className="text-xs text-[var(--color-text-muted)]">
-            Irreversible actions pause here until approved. Review them on the Tasks page.
-          </div>
+          <HeaderButton as={Link} to="/work" variant="primary">Review now</HeaderButton>
         </div>
       )}
 
-      <div className="grid md:grid-cols-2 gap-6">
-        <div>
-          <h2 className="text-sm font-medium text-[var(--color-text-muted)] mb-3">Live activity</h2>
-          <Link
-            to="/chat/console"
-            className="group flex items-center justify-between rounded-lg border border-[var(--color-border)] bg-[var(--color-surface)] p-4 hover:border-[var(--color-accent)]/40 transition-colors"
-          >
-            <div className="flex items-center gap-3">
-              <div className="w-8 h-8 rounded-md bg-[var(--color-accent)]/10 flex items-center justify-center shrink-0">
-                <Radio size={15} className="text-[var(--color-accent)]" />
-              </div>
-              <div>
-                <div className="text-sm font-medium">Watch agents work in real time</div>
-                <div className="text-xs text-[var(--color-text-muted)]">Live reasoning, tool calls, and results as they happen</div>
-              </div>
-            </div>
-            <ArrowRight size={16} className="text-[var(--color-text-muted)] group-hover:text-[var(--color-accent)] transition-colors shrink-0" />
-          </Link>
+      <div className="grid lg:grid-cols-2 gap-5 mb-5">
+        <Card title="Task status" icon={PieChart} action={<Link to="/work" className="text-[var(--color-accent)] font-medium hover:underline">View tasks</Link>}>
+          <TaskStatusBar counts={counts} />
+        </Card>
+        <Card title="Tasks per day" icon={BarChart3} action={<Link to="/home/analytics" className="text-[var(--color-accent)] font-medium hover:underline">Analytics</Link>}>
+          <TasksPerDayChart tasks={tasks} />
+        </Card>
+      </div>
 
-          {outreachPipelines.length > 0 && (
-            <Link
-              to="/departments/sales/outreach"
-              className="group flex items-center justify-between rounded-lg border border-[var(--color-border)] bg-[var(--color-surface)] p-4 hover:border-[var(--color-accent)]/40 transition-colors mt-3"
-            >
-              <div className="flex items-center gap-3">
-                <div className="w-8 h-8 rounded-md bg-[var(--color-accent)]/10 flex items-center justify-center shrink-0">
-                  <Briefcase size={15} className="text-[var(--color-accent)]" />
-                </div>
-                <div>
-                  <div className="text-sm font-medium">Job Outreach</div>
-                  <div className="text-xs text-[var(--color-text-muted)]">
-                    {outreachPipelines.length} opportunit{outreachPipelines.length === 1 ? 'y' : 'ies'} processed
-                    {scheduledCalls > 0 ? ` · ${scheduledCalls} call${scheduledCalls > 1 ? 's' : ''} scheduled` : ''}
-                  </div>
-                </div>
-              </div>
-              <ArrowRight size={16} className="text-[var(--color-text-muted)] group-hover:text-[var(--color-accent)] transition-colors shrink-0" />
-            </Link>
-          )}
-        </div>
+      <div className="grid lg:grid-cols-3 gap-5">
+        <Card title="Recent tasks" icon={ListChecks} className="lg:col-span-2" bodyClassName="">
+          <RecentTasksTable tasks={tasks} StatusPill={StatusPill} />
+        </Card>
 
-        <div>
-          <h2 className="text-sm font-medium text-[var(--color-text-muted)] mb-3">Installed tools</h2>
-          <div className="rounded-lg border border-[var(--color-border)] bg-[var(--color-surface)] p-4 flex flex-wrap gap-2">
-            {summary.installedTools.map((t) => (
-              <span key={t} className="text-xs font-[var(--font-mono)] px-2 py-1 rounded bg-[var(--color-surface-2)] border border-[var(--color-border)] text-[var(--color-text-muted)]">
-                {t}
-              </span>
-            ))}
-          </div>
-
-          <h2 className="text-sm font-medium text-[var(--color-text-muted)] mb-3 mt-5">Providers</h2>
-          <div className="rounded-lg border border-[var(--color-border)] bg-[var(--color-surface)] p-4 flex flex-wrap gap-2">
-            {summary.availableProviders.map((p) => (
-              <StatusPill key={p} status={p === 'mock' ? 'pending' : 'done'} />
-            ))}
-          </div>
+        <div className="space-y-5">
+          <Card title="Quick actions" icon={Zap} bodyClassName="p-2">
+            <ul>
+              {quickLinks.map((q) => {
+                const Icon = q.icon;
+                return (
+                  <li key={q.to}>
+                    <Link to={q.to} className="group flex items-center gap-3 px-3 py-2.5 rounded-md hover:bg-[var(--color-surface-2)] transition-colors">
+                      <span className="w-8 h-8 rounded-md bg-[var(--color-accent)]/12 text-[var(--color-accent)] flex items-center justify-center shrink-0" style={{ background: 'var(--color-accent-dim)' }}>
+                        <Icon size={15} />
+                      </span>
+                      <span className="flex-1 min-w-0">
+                        <span className="block text-sm font-medium truncate">{q.label}</span>
+                        <span className="block text-xs text-[var(--color-text-muted)] truncate">{q.hint}</span>
+                      </span>
+                      <ArrowRight size={14} className="text-[var(--color-text-muted)] group-hover:text-[var(--color-accent)] transition-colors shrink-0" />
+                    </Link>
+                  </li>
+                );
+              })}
+            </ul>
+          </Card>
         </div>
       </div>
     </div>

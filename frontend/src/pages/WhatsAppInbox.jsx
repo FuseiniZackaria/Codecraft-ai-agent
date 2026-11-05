@@ -3,6 +3,7 @@ import { Link } from 'react-router-dom';
 import { ArrowLeft, Loader2, MessageCircle, RefreshCw, Send } from 'lucide-react';
 import { api } from '../services/api';
 import CorrectAnswerDialog, { CorrectButton, CorrectedBadge, questionBefore } from '../components/settings/CorrectAnswer';
+import LoadingScreen from '../components/LoadingScreen';
 
 /**
  * WhatsApp inbox: the signed-in admin's own conversations (WAHA session, plus
@@ -175,7 +176,7 @@ export default function WhatsAppInbox() {
         {/* Conversation list (hidden on phones while a chat is open) */}
         <div className={`rounded-lg border border-[var(--color-border)] bg-[var(--color-surface)] overflow-y-auto max-h-[70vh] ${selected ? 'hidden md:block' : ''}`}>
           {loading ? (
-            <div className="flex items-center gap-2 p-4 text-sm text-[var(--color-text-muted)]"><Loader2 size={14} className="animate-spin" /> Loading…</div>
+            <LoadingScreen compact label="Loading conversations…" />
           ) : conversations.length === 0 ? (
             <div className="p-4 text-sm text-[var(--color-text-muted)]">No messages yet. When someone messages your WhatsApp, the conversation shows up here.</div>
           ) : (

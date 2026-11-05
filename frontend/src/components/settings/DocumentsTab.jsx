@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { Upload, FileText, Trash2, RefreshCw, Eye, X, AlertCircle, CheckCircle2, Loader2, Replace } from 'lucide-react';
 import { api } from '../../services/api';
+import LoadingScreen from '../LoadingScreen';
 
 // Settings -> General -> Documents.
 // Menus, price lists, policies... The text is pulled out automatically and the
@@ -140,7 +141,7 @@ export default function DocumentsTab() {
     setBusy(null);
   }
 
-  if (loading) return <div className="text-sm text-[var(--color-text-muted)]">Loading documents…</div>;
+  if (loading) return <LoadingScreen compact label="Loading documents…" />;
   if (loadError) {
     return (
       <div className={`${cardCls} text-sm flex items-start gap-2 text-[var(--color-danger)]`}>

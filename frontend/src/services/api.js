@@ -14,6 +14,13 @@ let browserAuthFailed = false;
 
 export function hasAuthFailed() { return authFailed; }
 
+/**
+ * Clear the "not authorized" latch. Called when a fresh session loads the
+ * account (after signing in again) - without this, one 401 blocked every
+ * request until a full page reload, so signing back in silently failed.
+ */
+export function resetAuthFailure() { authFailed = false; }
+
 function emitAuthFailure() {
   if (authFailed) return;
   authFailed = true;

@@ -1,11 +1,13 @@
 import { useEffect, useRef, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
-import { Save, Plus, Trash2, Mail, Building2, User, Phone, Globe, MapPin, FileText, AlertCircle, CheckCircle2 } from 'lucide-react';
+import { Save, Plus, Trash2, Mail, Building2, User, Phone, Globe, MapPin, FileText, AlertCircle, CheckCircle2, Settings as SettingsIcon } from 'lucide-react';
 import AgentInstructionsTab from '../components/settings/AgentInstructionsTab';
+import { PageHeader } from '../components/ui/Card';
 import QaTab from '../components/settings/QaTab';
 import DocumentsTab from '../components/settings/DocumentsTab';
 import TestChatTab from '../components/settings/TestChatTab';
 import { api } from '../services/api';
+import LoadingScreen from '../components/LoadingScreen';
 
 // Mirrors the backend's ALLOWED_FIELDS and column names in business_profile.
 // Keep in sync with backend/api/businessProfileRoutes.js when the schema grows.
@@ -40,12 +42,11 @@ export default function Settings() {
   const tab = TABS.some((t) => t.key === params.get('tab')) ? params.get('tab') : 'profile';
   return (
     <div className="p-6 max-w-4xl mx-auto">
-      <div className="mb-4">
-        <h1 className="text-2xl font-[var(--font-display)] font-semibold mb-1">Settings</h1>
-        <p className="text-sm text-[var(--color-text-muted)]">
-          Your business profile and how your WhatsApp agent replies. Changes apply from the agent's next reply.
-        </p>
-      </div>
+      <PageHeader
+        icon={SettingsIcon}
+        title="Settings"
+        subtitle="Your business profile and how your WhatsApp agent replies. Changes apply from the agent's next reply."
+      />
       <div role="tablist" className="flex gap-1 border-b border-[var(--color-border)] mb-6">
         {TABS.map((t) => (
           <button
@@ -159,7 +160,7 @@ function ProfileTab() {
 
   if (loading) {
     return (
-      <div className="text-sm text-[var(--color-text-muted)]">Loading your business profile…</div>
+      <LoadingScreen compact label="Loading your business profile…" />
     );
   }
 

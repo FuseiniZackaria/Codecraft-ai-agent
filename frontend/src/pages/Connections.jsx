@@ -6,6 +6,7 @@ import {
 } from 'lucide-react';
 import { api } from '../services/api';
 import WhatsAppConnectCard from '../components/WhatsAppConnectCard';
+import LoadingScreen from '../components/LoadingScreen';
 
 const PROVIDERS = [
   { key: 'gmail',          label: 'Gmail',           icon: Mail,           composio: true,  desc: 'Read and send email on your behalf.' },
@@ -537,7 +538,7 @@ export default function Connections() {
   }
 
   if (loading) {
-    return <div className="p-6 text-sm text-[var(--color-text-muted)]">Loading connections...</div>;
+    return <LoadingScreen compact label="Loading connections…" />;
   }
 
   return (

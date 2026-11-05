@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
-import { Trash2, CheckCheck } from 'lucide-react';
+import { Trash2, CheckCheck, ListChecks } from 'lucide-react';
+import { PageHeader, HeaderButton } from '../components/ui/Card';
 import { useStore } from '../store/useStore';
 import { api } from '../services/api';
 import { createResilientEventSource } from '../services/resilientEventSource';
@@ -89,22 +90,16 @@ export default function Tasks() {
 
   return (
     <div className="p-4 md:p-6 max-w-5xl">
-      <div className="flex items-center justify-between gap-2 mb-1">
-        <h1 className="font-[var(--font-display)] text-xl font-semibold">Tasks</h1>
-        {unreadCount > 0 && (
-          <button
-            onClick={handleMarkAllRead}
-            disabled={marking}
-            className="flex items-center gap-1.5 rounded-md border border-[var(--color-border)] px-2.5 py-1 text-xs font-medium text-[var(--color-text-muted)] hover:text-[var(--color-text)] hover:border-[var(--color-accent)]/40 hover:bg-[var(--color-accent)]/5 transition-colors disabled:opacity-50"
-          >
-            <CheckCheck size={13} />
+      <PageHeader
+        icon={ListChecks}
+        title="Tasks"
+        subtitle="Everything the orchestrator has queued, run, or paused for your approval. Click a completed task to see its full result."
+        actions={unreadCount > 0 && (
+          <HeaderButton variant="ghost" icon={CheckCheck} onClick={handleMarkAllRead} disabled={marking}>
             {marking ? 'Marking…' : `Mark all as read (${unreadCount})`}
-          </button>
+          </HeaderButton>
         )}
-      </div>
-      <p className="text-sm text-[var(--color-text-muted)] mb-4">
-        Everything the orchestrator has queued, run, or paused for your approval. Click a completed task to see its full result.
-      </p>
+      />
 
       {sorted.length > 0 && (
         <div className="flex items-center gap-3 mb-3">

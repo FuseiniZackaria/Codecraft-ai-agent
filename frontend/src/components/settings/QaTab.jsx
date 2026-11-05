@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import { Plus, Search, Pencil, Trash2, Save, X, AlertCircle, HelpCircle, Wand2 } from 'lucide-react';
 import { api } from '../../services/api';
+import LoadingScreen from '../LoadingScreen';
 
 // Settings -> General -> Q&A.
 // Question/answer pairs the WhatsApp agent treats as approved answers.
@@ -153,7 +154,7 @@ export default function QaTab() {
     setAdding(false);
   }
 
-  if (loading) return <div className="text-sm text-[var(--color-text-muted)]">Loading Q&A entries…</div>;
+  if (loading) return <LoadingScreen compact label="Loading Q&A entries…" />;
 
   if (loadError) {
     return (

@@ -10,7 +10,6 @@ import Dashboard from './pages/Dashboard';
 import Console from './pages/Console';
 import Skills from './pages/Skills';
 import Tasks from './pages/Tasks';
-import Plugins from './pages/Plugins';
 import Workflows from './pages/Workflows';
 import Analytics from './pages/Analytics';
 import Chat from './pages/Chat';
@@ -29,6 +28,7 @@ import { useStore } from './store/useStore';
 import { supabase } from './services/supabaseClient';
 import ResetPassword from './pages/ResetPassword';
 import TabbedLayout from './components/nav/TabbedLayout';
+import LoadingScreen from './components/LoadingScreen';
 import { REDIRECTS } from './components/nav/navConfig';
 
 /** Redirect an old URL to its new location, keeping ?query (e.g. ?connected= after a Google sign-in) and #hash. */
@@ -69,6 +69,13 @@ export default function App() {
     supabase.auth.getSession().then(({ data }) => setSession(data.session || null));
     const { data: listener } = supabase.auth.onAuthStateChange((event, newSession) => {
       if (event === 'PASSWORD_RECOVERY') setPasswordRecovery(true);
+      // Signing in again as the same person after the account failed to load
+      // (e.g. the server was asleep): the session doesn't "change", so retry here -
+      // otherwise the Sign in button silently did nothing until a page reload.
+      if (event === 'SIGNED_IN' && newSession && !useStore.getState().user) {
+        useStore.setState({ authLoading: true });
+        loadUserRole({ force: true });
+      }
       setSession((prev) => {
         const prevId = prev?.user?.id || null;
         const nextId = newSession?.user?.id || null;
@@ -139,10 +146,12 @@ export default function App() {
   // kicked off (refresh loop, SSE streams, connector refresh, etc.) because
   // they're all gated on `user`.
   useEffect(() => {
-    let signedOut = false;
+    // api.js fires this once per session (the latch resets on the next sign-in),
+    // so every later session can be signed out too - not just the first one.
     function onUnauthorized() {
-      if (signedOut) return;
-      signedOut = true;
+      if (!useStore.getState().authError) {
+        useStore.setState({ authError: 'You were signed out because the CodeCraft server no longer accepted your session. Please sign in again.' });
+      }
       supabase.auth.signOut().catch(() => { /* ignore - the state change still fires */ });
     }
     window.addEventListener('cc:unauthorized', onUnauthorized);
@@ -164,11 +173,7 @@ export default function App() {
   }
 
   if (session === undefined || (session && authLoading)) {
-    return (
-      <div className="min-h-dvh flex items-center justify-center bg-[var(--color-bg)] text-[var(--color-text-muted)] text-sm">
-        Loading…
-      </div>
-    );
+    return <LoadingScreen />;
   }
 
   if (!session || !user) {
@@ -208,7 +213,7 @@ export default function App() {
               <WifiOff size={13} /> {connectionError}
             </div>
           )}
-          <main className="flex-1 overflow-y-auto">
+          <main className="flex-1 overflow-y-auto bg-[var(--color-surface-2)]">
             <Routes>
               <Route path="/departments/strategy/intelligence" element={<BriefingDashboard />} />
               <Route path="/briefing-dashboard" element={<Navigate to="/departments/strategy/intelligence" replace />} />
@@ -254,7 +259,7 @@ function AdminLayout({ connectionError }) {
             <WifiOff size={13} /> {connectionError}
           </div>
         )}
-        <main className="flex-1 overflow-y-auto">
+        <main className="flex-1 overflow-y-auto bg-[var(--color-surface-2)]">
           <Routes>
             {/* Tabbed sections (tabs and nav items come from components/nav/navConfig.js) */}
             <Route path="/home" element={<TabbedLayout navKey="home" />}>
@@ -272,7 +277,8 @@ function AdminLayout({ connectionError }) {
               <Route path="inbox" element={<WhatsAppInbox />} />
             </Route>
             <Route path="/toolbox" element={<TabbedLayout navKey="toolbox" />}>
-              <Route index element={<Plugins />} />
+              {/* Connections is the Toolbox's main page (the old Plugins page duplicated it). */}
+              <Route index element={<Navigate to="connections" replace />} />
               <Route path="skills" element={<Skills />} />
               <Route path="connections" element={<Connections />} />
             </Route>

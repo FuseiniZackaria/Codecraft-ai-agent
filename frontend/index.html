@@ -2,15 +2,44 @@
 <html lang="en" class="dark">
   <head>
     <meta charset="UTF-8" />
-    <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+    <!-- ?v= forces browsers to drop a cached old icon; bump it whenever the icon changes. -->
+    <link rel="icon" type="image/svg+xml" href="/favicon.svg?v=2" />
+    <meta name="theme-color" content="#ffffff" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;600;700&family=Inter:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet" />
     <title>CodeCraft</title>
+    <!-- First-paint loading screen: shown while the app downloads, replaced by
+         React on start. Same look as src/components/LoadingScreen.jsx. -->
+    <style>
+      html, body { margin: 0; background: #ffffff; }
+      .cc-boot { min-height: 100vh; min-height: 100dvh; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 14px; }
+      .cc-boot svg { width: 44px; height: 44px; }
+      .cc-boot .l { stroke: #0f1b2e; animation: cc-boot-l 1.6s ease-in-out infinite; }
+      .cc-boot .r { stroke: #f5811f; animation: cc-boot-r 1.6s ease-in-out infinite; }
+      .cc-boot .d { fill: #f5811f; transform-origin: 16px 16px; animation: cc-boot-d 1.6s ease-in-out infinite; }
+      .cc-boot .w { display: flex; font: 700 28px/1 "Space Grotesk", ui-sans-serif, system-ui, sans-serif; letter-spacing: 0.28em; margin-right: -0.28em; }
+      .cc-boot .w span { display: inline-block; color: #0f1b2e; animation: cc-boot-w 1.6s ease-in-out infinite; }
+      .cc-boot .w span.o { color: #f5811f; }
+      @keyframes cc-boot-w { 0%, 60%, 100% { transform: translateY(0); opacity: 1; } 30% { transform: translateY(-0.35em); opacity: 0.55; } }
+      @keyframes cc-boot-l { 0%, 100% { transform: translateX(0); } 50% { transform: translateX(-2px); } }
+      @keyframes cc-boot-r { 0%, 100% { transform: translateX(0); } 50% { transform: translateX(2px); } }
+      @keyframes cc-boot-d { 0%, 100% { transform: scale(1); } 50% { transform: scale(1.8); } }
+      @media (prefers-reduced-motion: reduce) { .cc-boot * { animation: none !important; } }
+    </style>
   </head>
   <body>
-    <div id="root"></div>
+    <div id="root">
+      <div class="cc-boot" role="status" aria-label="Loading CodeCraft">
+        <svg viewBox="0 0 32 32" fill="none" aria-hidden="true">
+          <path class="l" d="M12 6L4 16L12 26" stroke-width="2.5" stroke-linecap="square" />
+          <path class="r" d="M20 6L28 16L20 26" stroke-width="2.5" stroke-linecap="square" />
+          <rect class="d" x="15" y="15" width="2" height="2" />
+        </svg>
+        <div class="w" aria-hidden="true"><span style="animation-delay:0s">C</span><span style="animation-delay:.08s">O</span><span style="animation-delay:.16s">D</span><span style="animation-delay:.24s">E</span><span class="o" style="animation-delay:.32s">C</span><span class="o" style="animation-delay:.4s">R</span><span class="o" style="animation-delay:.48s">A</span><span class="o" style="animation-delay:.56s">F</span><span class="o" style="animation-delay:.64s">T</span></div>
+      </div>
+    </div>
     <script type="module" src="/src/main.jsx"></script>
   </body>
 </html>

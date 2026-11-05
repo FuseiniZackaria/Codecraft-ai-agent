@@ -11,10 +11,12 @@ import {
  *   (`end: true`); the others are nested routes (e.g. /work/workflows).
  * - `children`: a collapsible group (Departments) instead of tabs.
  * - `badgeKey`: which live count to show next to the item.
+ * - `group`: the sidebar section heading the item sits under.
  */
 export const NAV_ITEMS = [
   {
     key: 'home',
+    group: 'Main navigation',
     label: 'Home',
     icon: LayoutGrid,
     to: '/home',
@@ -25,6 +27,7 @@ export const NAV_ITEMS = [
   },
   {
     key: 'chat',
+    group: 'Main navigation',
     label: 'Chat',
     icon: MessageSquare,
     to: '/chat',
@@ -36,6 +39,7 @@ export const NAV_ITEMS = [
   },
   {
     key: 'work',
+    group: 'Main navigation',
     label: 'Work',
     icon: ListChecks,
     to: '/work',
@@ -49,6 +53,7 @@ export const NAV_ITEMS = [
   },
   {
     key: 'departments',
+    group: 'Main navigation',
     label: 'Departments',
     icon: Building2,
     to: '/departments',
@@ -62,17 +67,18 @@ export const NAV_ITEMS = [
   },
   {
     key: 'toolbox',
+    group: 'Tools & settings',
     label: 'Toolbox',
     icon: Puzzle,
     to: '/toolbox',
     tabs: [
-      { label: 'Plugins', to: '/toolbox', end: true },
-      { label: 'Skills', to: '/toolbox/skills' },
       { label: 'Connections', to: '/toolbox/connections' },
+      { label: 'Skills', to: '/toolbox/skills' },
     ],
   },
   {
     key: 'settings',
+    group: 'Tools & settings',
     label: 'Settings',
     icon: Settings,
     to: '/settings',
@@ -97,7 +103,7 @@ export const REDIRECTS = {
   '/workflows': '/work/workflows',
   '/client-tracker': '/work/clients',
   '/inbox': '/work/inbox',
-  '/plugins': '/toolbox',
+  '/plugins': '/toolbox/connections', // the Plugins page was removed (Connections replaced it)
   '/skills': '/toolbox/skills',
   '/connections': '/toolbox/connections',
   '/team': '/settings/team',

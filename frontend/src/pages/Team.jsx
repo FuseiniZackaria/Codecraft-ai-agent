@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { Users, Plus, Trash2, ShieldAlert, Activity, RefreshCw, Trash, Mail, Building, UserPlus, Clock, RotateCw, XCircle, AlertTriangle, Ban, UserCheck } from 'lucide-react';
 import { api } from '../services/api';
 import { useStore } from '../store/useStore';
+import LoadingScreen from '../components/LoadingScreen';
 
 function formatDate(iso) {
   if (!iso) return 'Never';
@@ -846,7 +847,7 @@ export default function Team() {
 
       <div className="rounded-lg border border-[var(--color-border)] bg-[var(--color-surface)]">
         {!loaded ? (
-          <div className="p-8 text-center text-sm text-[var(--color-text-muted)]">Loading...</div>
+          <LoadingScreen compact label="Loading your team…" />
         ) : error ? (
           <div className="p-6 text-center text-sm text-[var(--color-danger)]">{error}</div>
         ) : admins.length === 0 ? (

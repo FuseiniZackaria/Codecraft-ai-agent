@@ -1,11 +1,13 @@
 import { create } from 'zustand';
-import { api, DEMO } from '../services/api';
+import { api, DEMO, resetAuthFailure } from '../services/api';
 import { supabase } from '../services/supabaseClient';
 
 export const useStore = create((set, get) => ({
   connected: false,
   loading: true,
   authLoading: true,
+  // Why signing in didn't get you in (shown on the sign-in page), or null.
+  authError: null,
   connectionError: null,
   user: null,
   // Cache marks so repeated callers don't re-hit the backend during a session.
@@ -38,11 +40,20 @@ export const useStore = create((set, get) => ({
       set({ authLoading: false });
       return;
     }
+    // A new session gets a clean slate - an old 401 must not block this sign-in.
+    resetAuthFailure();
+    set({ authError: null });
     try {
       const me = await api.getMe();
-      set({ user: me, authLoading: false, connected: true, loading: false, userLoadedAt: Date.now() });
-    } catch {
-      set({ user: null, authLoading: false, connected: false, loading: false, userLoadedAt: 0 });
+      set({ user: me, authLoading: false, connected: true, loading: false, userLoadedAt: Date.now(), authError: null });
+    } catch (err) {
+      // Signed in with Supabase, but the CodeCraft server couldn't load the
+      // account. Say why on the sign-in page instead of silently showing it again.
+      const unreachable = err instanceof TypeError || /failed to fetch|networkerror|load failed/i.test(err.message || '');
+      const authError = unreachable
+        ? "Your password was accepted, but the CodeCraft server can't be reached right now. If it was asleep it can take up to a minute to wake up - please try again."
+        : `Your password was accepted, but the CodeCraft server couldn't load your account (${err.message}). Please try again.`;
+      set({ user: null, authLoading: false, connected: false, loading: false, userLoadedAt: 0, authError });
     }
   },
   summary: DEMO.summary,
@@ -71,7 +82,14 @@ export const useStore = create((set, get) => ({
     spokenReplies: localStorage.getItem('cc_assistant_tts') === 'on',
     voiceMode: false,
     listening: false,
-    corner: localStorage.getItem('cc_assistant_corner') || 'br', // br | bl | tr | tl
+    corner: localStorage.getItem('cc_assistant_corner') || 'br', // br | bl | tr | tl (starting spot)
+    // Where the round button was dragged to ({x, y} in px from the top-left), or null = the corner.
+    pos: (() => {
+      try {
+        const p = JSON.parse(localStorage.getItem('cc_assistant_pos') || 'null');
+        return p && Number.isFinite(p.x) && Number.isFinite(p.y) ? p : null;
+      } catch { return null; }
+    })(),
     ignoredHint: null, // short "Say Ian to get my attention" hint
   },
 
@@ -321,6 +339,15 @@ export const useStore = create((set, get) => ({
   setCorner(corner) {
     localStorage.setItem('cc_assistant_corner', corner);
     set((s) => ({ assistant: { ...s.assistant, corner } }));
+  },
+
+  /** Remember where Ian's button was dragged to (null = back to the corner). */
+  setAssistantPos(pos) {
+    try {
+      if (pos) localStorage.setItem('cc_assistant_pos', JSON.stringify({ x: Math.round(pos.x), y: Math.round(pos.y) }));
+      else localStorage.removeItem('cc_assistant_pos');
+    } catch { /* storage unavailable - position just won't be remembered */ }
+    set((s) => ({ assistant: { ...s.assistant, pos } }));
   },
 
   async markAllTasksRead() {

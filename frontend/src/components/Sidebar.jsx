@@ -78,9 +78,19 @@ const itemClass = (active, rail) =>
     rail ? 'justify-center h-10 w-10 mx-auto' : 'px-3 py-2.5 md:py-2'
   } ${
     active
-      ? 'bg-[var(--color-surface-2)] text-[var(--color-text)]'
-      : 'text-[var(--color-text-muted)] hover:text-[var(--color-text)] hover:bg-[var(--color-surface-2)]/60'
+      ? 'bg-white text-[var(--color-text)] font-medium shadow-sm before:absolute before:left-0 before:top-1.5 before:bottom-1.5 before:w-[3px] before:rounded-r before:bg-[var(--color-accent)] [&>svg]:text-[var(--color-accent)]'
+      : 'text-[var(--color-text-muted)] hover:text-[var(--color-text)] hover:bg-white/70'
   }`;
+
+/** Grey section heading ("Main navigation"), or a thin divider in the icon rail. */
+function GroupHeading({ label, rail, first }) {
+  if (rail) return first ? null : <div className="my-2 mx-3 border-t border-[var(--color-border)]" aria-hidden="true" />;
+  return (
+    <div className={`${first ? '' : 'mt-4'} mb-1.5 px-3 py-1.5 rounded-md bg-[var(--color-sidebar-heading)] text-[11px] font-semibold uppercase tracking-wider text-[var(--color-text-muted)]`}>
+      {label}
+    </div>
+  );
+}
 
 export default function Sidebar({ isOpen = false, onClose }) {
   const user = useStore((s) => s.user);
@@ -156,9 +166,9 @@ export default function Sidebar({ isOpen = false, onClose }) {
         }`}
       />
 
-      <aside className={`${asideClass} h-dvh border-r border-[var(--color-border)] bg-[var(--color-surface)] flex flex-col`}>
-        <div className={`flex items-center gap-2 h-14 shrink-0 border-b border-[var(--color-border)] ${rail ? 'justify-center' : 'px-5'}`}>
-          <Logo />
+      <aside className={`${asideClass} h-dvh border-r border-[var(--color-border)] bg-[var(--color-sidebar)] flex flex-col`}>
+        <div className={`flex items-center gap-2 h-14 shrink-0 bg-[var(--color-brand)] text-white ${rail ? 'justify-center' : 'px-5'}`}>
+          <Logo onDark />
           {!rail && (
             <span className="font-[var(--font-display)] font-semibold tracking-tight text-[15px] flex-1 truncate">CodeCraft</span>
           )}
@@ -167,7 +177,7 @@ export default function Sidebar({ isOpen = false, onClose }) {
               type="button"
               onClick={closeAll}
               aria-label="Close navigation"
-              className="p-1.5 -mr-1 rounded-md text-[var(--color-text-muted)] hover:text-[var(--color-text)] hover:bg-[var(--color-surface-2)]"
+              className="p-1.5 -mr-1 rounded-md text-white/80 hover:text-white hover:bg-white/10"
             >
               <X size={16} />
             </button>
@@ -175,13 +185,17 @@ export default function Sidebar({ isOpen = false, onClose }) {
         </div>
 
         <nav className={`flex-1 px-3 py-3 space-y-0.5 ${rail ? 'overflow-visible' : 'overflow-y-auto'}`} aria-label="Main">
-          {NAV_ITEMS.map((item) => {
+          {NAV_ITEMS.map((item, index) => {
             const Icon = item.icon;
             const badge = item.badgeKey ? badges[item.badgeKey] || 0 : 0;
+            const heading = item.group && item.group !== NAV_ITEMS[index - 1]?.group
+              ? <GroupHeading label={item.group} rail={rail} first={index === 0} />
+              : null;
 
             if (item.children) {
               return (
                 <div key={item.key}>
+                  {heading}
                   <button
                     type="button"
                     onClick={rail ? onDepartmentsRailClick : toggleDepts}
@@ -225,17 +239,19 @@ export default function Sidebar({ isOpen = false, onClose }) {
             }
 
             return (
-              <NavLink
-                key={item.key}
-                to={item.to}
-                onClick={closeAll}
-                aria-label={rail ? item.label : undefined}
-                className={({ isActive }) => itemClass(isActive, rail)}
-              >
-                <Icon size={16} strokeWidth={1.75} />
-                {rail ? <RailTooltip label={item.label} /> : <span className="flex-1 truncate">{item.label}</span>}
-                <Badge count={badge} rail={rail} />
-              </NavLink>
+              <div key={item.key}>
+                {heading}
+                <NavLink
+                  to={item.to}
+                  onClick={closeAll}
+                  aria-label={rail ? item.label : undefined}
+                  className={({ isActive }) => itemClass(isActive, rail)}
+                >
+                  <Icon size={16} strokeWidth={1.75} />
+                  {rail ? <RailTooltip label={item.label} /> : <span className="flex-1 truncate">{item.label}</span>}
+                  <Badge count={badge} rail={rail} />
+                </NavLink>
+              </div>
             );
           })}
         </nav>
@@ -262,8 +278,9 @@ export default function Sidebar({ isOpen = false, onClose }) {
             </button>
           </div>
         ) : (
-          <div className="px-5 py-4 border-t border-[var(--color-border)] shrink-0">
-            <div className="flex items-center justify-between gap-2 mb-2">
+          <div className="px-3 py-3 border-t border-[var(--color-border)] shrink-0">
+            <GroupHeading label="Account" first />
+            <div className="flex items-center justify-between gap-2 mb-2 px-2">
               <span className="text-[11px] text-[var(--color-text-muted)] truncate">{user?.email}</span>
               <button
                 onClick={signOut}
@@ -273,7 +290,7 @@ export default function Sidebar({ isOpen = false, onClose }) {
                 <LogOut size={14} />
               </button>
             </div>
-            <div className="text-[11px] text-[var(--color-text-muted)] font-[var(--font-mono)]">Build. Automate. Scale.</div>
+            <div className="px-2 text-[11px] text-[var(--color-text-muted)] font-[var(--font-mono)]">Build. Automate. Scale.</div>
           </div>
         )}
       </aside>

@@ -11,7 +11,7 @@ const actions = [
   { label: 'Go to Tasks', path: '/work', icon: ListChecks },
   { label: 'Go to Research', path: '/departments/strategy/research', icon: Search },
   { label: 'Go to Workflows', path: '/work/workflows', icon: Workflow },
-  { label: 'Go to Plugins', path: '/toolbox', icon: Puzzle },
+  { label: 'Go to Connections', path: '/toolbox/connections', icon: Puzzle },
   { label: 'Go to Chat', path: '/chat', icon: MessageSquare },
 ];
 
