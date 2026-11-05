@@ -173,12 +173,14 @@ const MEDIA_WORDS = { voice: 'a voice note', image: 'an image', sticker: 'a stic
  * Ian does NOT reply to them - the owner is asked to attend to this client.
  * Telegram and WhatsApp; email only if neither got through. Never throws.
  */
-async function notifyOwnerAttention({ channel, from, contactName = null, mediaType = null, workspaceId = null }) {
-  const what = MEDIA_WORDS[mediaType] || "a message Ian can't read";
+async function notifyOwnerAttention({ channel, from, contactName = null, mediaType = null, customerMessage = null, problem = null, workspaceId = null }) {
   const who = contactName ? `${contactName} (${from})` : from;
+  // A text Ian couldn't answer (e.g. the AI service is down), or media he can't open.
+  const what = customerMessage
+    ? `${who} wrote: "${truncate(customerMessage)}"\n\n${problem || "Ian couldn't answer"}, so he hasn't replied - they're waiting for you.`
+    : `${who} sent ${MEDIA_WORDS[mediaType] || "a message Ian can't read"}. Ian can't listen to or open it, so he hasn't replied - they're waiting for you.`;
   const alertText =
-    `Please attend to this client on ${channel}\n\n` +
-    `${who} sent ${what}. Ian can't listen to or open it, so he hasn't replied - they're waiting for you.\n\n` +
+    `Please attend to this client on ${channel}\n\n${what}\n\n` +
     'Reply to them from your WhatsApp or from Work -> Inbox in CodeCraft.';
   const results = {
     telegram: await trySendTelegram(alertText),

@@ -133,7 +133,29 @@ class WhatsAppAgent extends BaseAgent {
     const profile = workspaceId ? await businessProfile.getProfile(workspaceId).catch(() => null) : null;
     const history = await this.recentHistory({ session, from, userId, workspaceId, body });
 
-    const { reply: draft, hold, reason: holdReason } = await this.draftReply({ body, history, workspaceId, v, profile, now });
+    // The AI service can be overloaded (Gemini 503 / timeouts). Try once more after a
+    // short wait; if it's still down, the client must not be left in silence - the
+    // owner is alerted to attend to them.
+    let drafted;
+    try {
+      drafted = await this.draftReply({ body, history, workspaceId, v, profile, now });
+    } catch (firstErr) {
+      console.warn(`[WhatsAppAgent] AI couldn't draft a reply to ${from} (${firstErr.message}) - retrying in ${Math.round(WhatsAppAgent.retryDelayMs / 1000)}s`);
+      await new Promise((resolve) => setTimeout(resolve, WhatsAppAgent.retryDelayMs));
+      try {
+        drafted = await this.draftReply({ body, history, workspaceId, v, profile, now });
+      } catch (err) {
+        console.warn(`[WhatsAppAgent] AI still unavailable for ${from} (${err.message}) - no reply sent, owner alerted`);
+        await activityLog.record(this.role, 'ai_unavailable', from, { error: err.message, workspaceId }).catch(() => {});
+        const results = await notifications.notifyOwnerAttention({
+          channel: 'WhatsApp', from, customerMessage: body, workspaceId,
+          problem: "Ian couldn't answer because the AI service is busy right now",
+        }).catch((e) => ({ error: e.message }));
+        console.log(`[WhatsAppAgent] owner alerted about ${from}: ${JSON.stringify(results)}`);
+        return { draft: '', held: true, reason: 'AI unavailable', autoSent: false, holdSent: false, approvalTaskId: null, ownerAlerted: true };
+      }
+    }
+    const { reply: draft, hold, reason: holdReason } = drafted;
     let held = hold;
     let reason = holdReason;
 
@@ -194,5 +216,8 @@ class WhatsAppAgent extends BaseAgent {
     return result;
   }
 }
+
+/** Wait before retrying when the AI service is busy (WA_AI_RETRY_DELAY_MS, default 20s). */
+WhatsAppAgent.retryDelayMs = Number(process.env.WA_AI_RETRY_DELAY_MS) || 20000;
 
 module.exports = WhatsAppAgent;

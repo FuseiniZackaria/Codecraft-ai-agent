@@ -290,6 +290,33 @@ const json = (reply, hold = false, reason = '') => JSON.stringify({ reply, hold,
     assert.strictEqual(r5.autoSent, false);
     assert.deepStrictEqual(sentToCustomer, []);
     assert.strictEqual(pending.length, 1);
+    // AI service busy (Gemini 503): retried once; still down -> nothing sent, owner alerted
+    WhatsAppAgent.retryDelayMs = 0;
+    const realComplete = mockProvider.complete;
+    let failures = 0;
+    reset();
+    mockProvider.complete = async () => { failures += 1; throw new Error('AI provider error: got status: UNAVAILABLE (503)'); };
+    const busy = await ask('Hello, are you there?', { from: '233200000060' });
+    assert.strictEqual(failures, 2, 'tried twice');
+    assert.strictEqual(busy.ownerAlerted, true);
+    assert.deepStrictEqual(sentToCustomer, [], 'nothing sent to the client');
+    assert.strictEqual(attention.length, 1, 'owner told to attend to this client');
+    assert.strictEqual(attention[0].customerMessage, 'Hello, are you there?');
+    assert(/busy/.test(attention[0].problem));
+
+    // Busy once, fine on the retry -> normal reply
+    reset();
+    failures = 0;
+    mockProvider.complete = async () => {
+      failures += 1;
+      if (failures === 1) throw new Error('timeout');
+      return { provider: 'mock', text: json('Good morning! Yes, I\'m here. How can I help?'), costEstimate: 0 };
+    };
+    const retried = await ask('Hello, are you there?', { from: '233200000061' });
+    assert.strictEqual(retried.autoSent, true);
+    assert.strictEqual(attention.length, 0);
+    mockProvider.complete = realComplete;
+
     console.log('✓ routing: general questions auto-reply with a Telegram FYI; pricing, deals, deadlines, complaints and unknowns wait for approval');
   }
 
