@@ -120,11 +120,13 @@ async function trySendEmail({ subject, body, workspaceId = null }) {
  * chat channel is unconfigured or failed, so a working Telegram/WhatsApp
  * channel is still preferred (less inbox noise).
  */
-async function notifyOwnerPendingApproval({ channel, from, customerMessage, draftReply, approvalTaskId, workspaceId = null }) {
+async function notifyOwnerPendingApproval({ channel, from, customerMessage, draftReply, approvalTaskId, workspaceId = null, reason = null, customerToldText = null }) {
   const alertText =
     `New ${channel} message needs your approval\n\n` +
     `From: ${from}\n` +
+    (reason ? `Why: ${reason}\n` : '') +
     `Customer said: "${truncate(customerMessage)}"\n\n` +
+    (customerToldText ? `They were told: "${truncate(customerToldText)}"\n\n` : '') +
     `Drafted reply: "${truncate(draftReply)}"\n\n` +
     `Approve or edit it on your CodeCraft Tasks page` +
     (approvalTaskId ? ` (task ${approvalTaskId}).` : '.');
@@ -147,8 +149,23 @@ async function notifyOwnerPendingApproval({ channel, from, customerMessage, draf
   return results;
 }
 
+/**
+ * FYI only - an auto-reply already went out, nothing to approve. Telegram only
+ * (no WhatsApp or email fallback), so routine replies don't flood the owner.
+ * Returns 'sent' | 'not_configured' | 'failed: ...'. Never throws.
+ */
+async function notifyOwnerFyi({ channel, from, customerMessage, sentReply }) {
+  const text =
+    `FYI - Ian replied on ${channel} (no approval needed)\n\n` +
+    `From: ${from}\n` +
+    `Customer said: "${truncate(customerMessage)}"\n\n` +
+    `Ian replied: "${truncate(sentReply)}"`;
+  return trySendTelegram(text);
+}
+
 module.exports = {
   notifyOwnerPendingApproval,
+  notifyOwnerFyi,
   channelStatus,
   isChannelConfigured,
 };

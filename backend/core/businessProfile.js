@@ -123,13 +123,16 @@ function legacyFallback() {
  * matches the pre-Phase-2.4 behaviour, so a brand-new install still
  * works with zero config.
  */
-async function profileContextLine(workspaceId) {
+async function profileContextLine(workspaceId, { forChat = false } = {}) {
   const p = await getProfile(workspaceId);
   const legacyFaq = (config.business?.faq || []).filter((f) => f.question && f.answer);
 
+  // forChat (WhatsApp auto-replies): the assistant speaks as itself, so the
+  // owner's personal name and email signature are left out - otherwise the
+  // model signs off as the owner or borrows their name.
   const parts = [];
   if (p.business_name) parts.push(`Business: ${p.business_name}`);
-  if (p.display_name)  parts.push(`Owner: ${p.display_name}${p.title ? ` (${p.title})` : ''}`);
+  if (p.display_name && !forChat) parts.push(`Owner: ${p.display_name}${p.title ? ` (${p.title})` : ''}`);
   if (p.offers)        parts.push(`Offers: ${p.offers}`);
   if (p.location)      parts.push(`Location: ${p.location}`);
   if (p.website)       parts.push(`Website: ${p.website}`);
@@ -137,7 +140,7 @@ async function profileContextLine(workspaceId) {
   if (p.whatsapp)      parts.push(`WhatsApp: ${p.whatsapp}`);
   if (p.business_email) parts.push(`Email: ${p.business_email}`);
   if (p.tone)          parts.push(`Tone: ${p.tone}`);
-  if (p.signature)     parts.push(`Signature:\n${p.signature}`);
+  if (p.signature && !forChat) parts.push(`Signature:\n${p.signature}`);
 
   // Legacy business.json still carries a few richer fields the Settings
   // page doesn't surface yet (industry, pricing, policies, FAQ). Keep

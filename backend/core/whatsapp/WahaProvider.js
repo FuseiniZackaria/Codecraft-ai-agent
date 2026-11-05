@@ -245,6 +245,32 @@ function inspectSignature(req) {
  *   { type: 'ignored', reason }
  * `req.rawBody` must be the exact bytes WAHA sent (see server.js express.json verify).
  */
+const MEDIA_LABELS = {
+  voice: '[voice note]', image: '[image]', sticker: '[sticker]', video: '[video]', file: '[file]',
+};
+
+/**
+ * 'voice' | 'image' | 'sticker' | 'video' | 'file', or null for a text message.
+ * WAHA engines describe media differently (WEBJS: _data.type; GOWS: _data.Message.*Message
+ * or _data.Info.MediaType; all: media.mimetype), so each is checked.
+ */
+function mediaKind(payload = {}) {
+  const data = payload._data || {};
+  const inner = data.Message || data.message || {};
+  const type = String(payload.type || data.type || data.Info?.MediaType || data.Info?.Type || '').toLowerCase();
+  const mime = String(payload.media?.mimetype || payload.mimetype || data.mimetype || '').toLowerCase();
+  if (type === 'ptt' || type === 'audio' || inner.audioMessage || inner.pttMessage || mime.startsWith('audio/')) return 'voice';
+  if (type === 'sticker' || inner.stickerMessage) return 'sticker';
+  if (type === 'image' || inner.imageMessage) return 'image';
+  if (type === 'video' || type === 'gif' || inner.videoMessage) return 'video';
+  if (type === 'document' || inner.documentMessage) return 'file';
+  if (mime === 'image/webp') return 'sticker';
+  if (mime.startsWith('image/')) return 'image';
+  if (mime.startsWith('video/')) return 'video';
+  if (payload.hasMedia || mime) return 'file';
+  return null;
+}
+
 function handleIncomingWebhook(req) {
   if (!config.waha.webhookSecret) return { type: 'rejected', reason: 'WAHA_WEBHOOK_SECRET is not set, so webhooks cannot be verified' };
   if (!verifySignature(req.rawBody, req.headers['x-webhook-hmac'], req.headers['x-webhook-hmac-algorithm'] || 'sha512')) {
@@ -275,7 +301,9 @@ function handleIncomingWebhook(req) {
     // route looks it up (resolveLid) before the message is handled.
     const contactNumber = isLid ? phoneFromPayload(payload, me) : normalizeNumber(from);
     if (!isLid && !contactNumber) return { type: 'ignored', reason: 'unreadable sender number' };
-    const text = payload.body || (payload.hasMedia ? '[media message]' : '');
+    const mediaType = mediaKind(payload);
+    // A caption counts as the message; a voice note / image / sticker on its own is shown as a label.
+    const text = payload.body || (mediaType ? MEDIA_LABELS[mediaType] : '');
     return {
       type: 'message',
       sessionName,
@@ -285,6 +313,7 @@ function handleIncomingWebhook(req) {
         contactNumber,
         contactName: payload._data?.notifyName || payload._data?.pushName || payload.notifyName || null,
         text,
+        mediaType,
         timestamp: payload.timestamp ? new Date(payload.timestamp * 1000).toISOString() : new Date().toISOString(),
       },
     };
@@ -295,6 +324,6 @@ function handleIncomingWebhook(req) {
 
 module.exports = {
   name, isConfigured, startSession, getQR, getStatus, sendMessage, sendTyping, disconnect,
-  handleIncomingWebhook, verifySignature, inspectSignature, staleWebhooks, secretFingerprint, resolveLid,
+  handleIncomingWebhook, verifySignature, inspectSignature, staleWebhooks, secretFingerprint, resolveLid, mediaKind,
   FINGERPRINT_HEADER, WahaError,
 };

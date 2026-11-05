@@ -137,4 +137,4 @@ async function classifyReplySafety({ channel, incomingMessage, draftReply, works
   }
 }
 
-module.exports = { classifyReplySafety, containsRiskKeyword, RISK_KEYWORDS };
+module.exports = { classifyReplySafety, containsRiskKeyword, containsPlaceholderText, countSentToday, RISK_KEYWORDS };

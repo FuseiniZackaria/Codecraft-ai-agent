@@ -17,8 +17,8 @@ const businessProfile = require('./businessProfile');
  *   // legacy single-tenant (still supported)
  *   const line = businessContextLine();
  */
-function businessContextLine(workspaceId) {
-  if (workspaceId) return businessProfile.profileContextLine(workspaceId);
+function businessContextLine(workspaceId, options = {}) {
+  if (workspaceId) return businessProfile.profileContextLine(workspaceId, options);
   return legacySyncBlock();
 }
 

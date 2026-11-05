@@ -208,10 +208,22 @@ To hand it over, that admin clicks **Disconnect**, then the other admin clicks
    if the backend was asleep) the conversation appears.
 3. Shortly after, the second phone shows **typing...** and then the agent's
    reply. In the Inbox it's labelled *auto-reply*.
-   - No reply? Check **Work → Tasks**. Replies the safety check isn't sure about
-     (refunds, complaints, legal, anything not covered by your business info)
-     wait there for your approval. Approve to send.
-   - Auto-replies need your business info filled in (**Settings → General**).
+   - General questions are answered straight away, and you get a Telegram
+     **FYI** (nothing to approve).
+   - Pricing or quotes, agreeing a deal, deadlines or promises, complaints, or
+     anything Ian doesn't know are **held**: the customer gets *"Let me check
+     with the team and get back to you shortly."*, Ian's suggested answer waits
+     in **Work → Tasks**, and you get an alert. Approve (or edit) to send.
+   - Voice notes, images and stickers get *"Sorry, I can't play voice notes here
+     yet. Could you type it for me?"* (or the image/sticker version).
+
+### Changing how Ian sounds
+
+Ian's WhatsApp tone, identity, approval rules, examples and fixed replies
+(the "let me check" and voice-note texts, and an optional signature) are all in
+one plain-text file: **`backend/config/whatsapp-voice.md`**. Edit it, commit and
+push - Render redeploys and the next message uses it. No code changes needed.
+(To edit without a deploy, put the file on a disk and point `WA_VOICE_FILE` at it.)
 
 ## Step 6. Test sending, outreach, and STOP
 
@@ -268,7 +280,7 @@ To hand it over, that admin clicks **Disconnect**, then the other admin clicks
 | Messages never appear in the Inbox | Incoming messages aren't reaching the backend | Backend **Logs**: look for `[webhook] whatsapp (waha) rejected`. WAHA keeps the secret the session was connected with, even if you change it later. Open **Toolbox → Connections**: the backend notices and re-registers the webhook with the current secret (log: `webhook for default repaired`). The `signature check` log line shows `"source"` and `"match"` for each delivery |
 | Inbox empty and logs say `relation "whatsapp_chat_messages" does not exist` | Migration not run | Step 2 |
 | First reply after a quiet period takes ~1 minute | Backend was asleep (free plan) | Normal. Upgrade the backend's instance type to remove it |
-| Message arrives but no auto-reply | Safety check sent it for approval, or it's rate-limited, or the contact said STOP | **Work → Tasks** to approve; backend logs say `rate limit` or `opted out` |
+| Message arrives but no auto-reply | Held for approval (pricing, deal, deadline, complaint, unknown), or it's rate-limited, or the contact said STOP | **Work → Tasks** to approve (the alert says why it was held); backend logs say `rate limit` or `opted out` |
 | Outreach "Queued" but nothing sent | Daily limit reached, contact said STOP, backend asleep, or WhatsApp disconnected | Backend logs say which (`hit the daily limit`, `skipped ...`); open the site to wake the backend |
 | "hasn't messaged your WhatsApp first" | Consent protection | Only message people who contacted you (or ask them to send START) |
 | Logged out after a WAHA restart | No disk, or wrong mount path | WAHA service → **Disks**: mount path must be exactly `/app/.sessions` |
