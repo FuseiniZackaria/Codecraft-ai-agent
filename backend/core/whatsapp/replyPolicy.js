@@ -102,7 +102,38 @@ function unverifiedDetail(draft, knowledge = '') {
     const local = digits.replace(/^233/, '').replace(/^0/, '');
     if (!knownDigits.includes(local)) return `a phone number (${phone.trim()}) that isn't in the business info`;
   }
+  // Opening hours and other clock times: every time in the reply must appear in the knowledge.
+  const knownTimes = timesIn(known);
+  for (const t of timesInWithText(text)) {
+    if (!knownTimes.has(t.minutes)) return `a time (${t.text.trim()}) that isn't in the business info`;
+  }
   return null;
+}
+
+// "8am", "6 pm", "5:30pm", "8.30 a.m.", "18:00", "noon", "midnight" -> minutes after midnight.
+const TIME_RE = /\b(\d{1,2})(?:[:.](\d{2}))?\s?(a\.?m\.?|p\.?m\.?)(?![a-z])|\b([01]?\d|2[0-3]):([0-5]\d)\b|\b(noon|midday|midnight)\b/gi;
+
+function timesInWithText(text) {
+  const out = [];
+  for (const m of String(text || '').matchAll(TIME_RE)) {
+    let minutes;
+    if (m[6]) {
+      minutes = /midnight/i.test(m[6]) ? 0 : 12 * 60;
+    } else if (m[3]) {
+      let h = Number(m[1]) % 12;
+      if (/p/i.test(m[3])) h += 12;
+      if (Number(m[1]) > 12) continue; // "14pm" isn't a time
+      minutes = h * 60 + Number(m[2] || 0);
+    } else {
+      minutes = Number(m[4]) * 60 + Number(m[5]);
+    }
+    out.push({ minutes, text: m[0].replace(/\.$/, '') });
+  }
+  return out;
+}
+
+function timesIn(text) {
+  return new Set(timesInWithText(text).map((t) => t.minutes));
 }
 
 /**

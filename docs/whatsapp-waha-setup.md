@@ -222,11 +222,14 @@ To hand it over, that admin clicks **Disconnect**, then the other admin clicks
 
 ### Changing how Ian sounds
 
-Ian's WhatsApp tone, identity, approval rules, examples and fixed replies
-(the "let me check" text and an optional signature) are all in
-one plain-text file: **`backend/config/whatsapp-voice.md`**. Edit it, commit and
-push - Render redeploys and the next message uses it. No code changes needed.
-(To edit without a deploy, put the file on a disk and point `WA_VOICE_FILE` at it.)
+Everything about how the agent replies is edited in the dashboard, under
+**Settings → General**: its name, instructions, example replies and the
+"team will follow up" message (with version history), Q&A entries, documents,
+and a Test chat to try it safely. Changes apply on the agent's next reply - no
+deploy. See [knowledge-base.md](knowledge-base.md).
+
+`backend/config/whatsapp-voice.md` is now only the fallback, used when a message
+has no workspace or before migration `0006_knowledge_base.sql` has been run.
 
 ## Step 6. Test sending, outreach, and STOP
 

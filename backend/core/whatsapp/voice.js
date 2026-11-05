@@ -79,11 +79,17 @@ function loadVoice() {
   return cache.voice;
 }
 
-/** Time of day in Ghana (Africa/Accra) and the matching greeting. */
-function ghanaTime(date = new Date()) {
-  const parts = new Intl.DateTimeFormat('en-GB', {
-    timeZone: 'Africa/Accra', hour: '2-digit', minute: '2-digit', hourCycle: 'h23',
-  }).formatToParts(date);
+/**
+ * Local time and the matching greeting, in the business's time zone
+ * (WA_TIMEZONE, default Africa/Accra = Ghana). An unknown zone falls back to Ghana.
+ */
+function ghanaTime(date = new Date(), timeZone = process.env.WA_TIMEZONE || 'Africa/Accra') {
+  let parts;
+  try {
+    parts = new Intl.DateTimeFormat('en-GB', { timeZone, hour: '2-digit', minute: '2-digit', hourCycle: 'h23' }).formatToParts(date);
+  } catch {
+    parts = new Intl.DateTimeFormat('en-GB', { timeZone: 'Africa/Accra', hour: '2-digit', minute: '2-digit', hourCycle: 'h23' }).formatToParts(date);
+  }
   const get = (type) => parts.find((p) => p.type === type)?.value || '00';
   const hour = Number(get('hour'));
   const partOfDay = hour < 12 ? 'morning' : hour < 17 ? 'afternoon' : 'evening';

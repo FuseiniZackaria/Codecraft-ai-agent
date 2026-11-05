@@ -171,14 +171,15 @@ async function handleIncomingMessage({ providerName, sessionName, userId = null,
 
     // Lazy require: agents/registry -> agents -> core modules would otherwise be circular.
     const agent = require('../../agents/registry').getAgent('whatsapp');
-    await agent.handleIncomingMessage({
+    const reply = await agent.handleIncomingMessage({
       from: message.contactNumber,
       body: text,
       workspaceId,
       session: providerName === 'waha' ? sessionName : null,
       userId,
     });
-    return { handled: true, routed: true };
+    // reply: what the agent decided (sent / held and why) - for logs and tests.
+    return { handled: true, routed: true, reply: reply || null };
   } catch (err) {
     console.error(`[whatsapp] incoming message from ${message?.contactNumber} not processed: ${err.message}`);
     return { handled: false, error: err.message };

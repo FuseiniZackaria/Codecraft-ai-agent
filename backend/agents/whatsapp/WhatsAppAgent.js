@@ -86,7 +86,7 @@ class WhatsAppAgent extends BaseAgent {
     const firstContact = !history.some((m) => m.direction === 'in');
 
     const situation = [
-      `It is ${time.clock} in Ghana (${time.partOfDay}).`,
+      `It is ${time.clock} where the business is (${process.env.WA_PLACE || 'Ghana'}) - ${time.partOfDay}.`,
       midConversation
         ? "You're in the middle of a conversation: don't greet again, just answer."
         : `This starts a conversation: begin with "${time.greeting}".`,
