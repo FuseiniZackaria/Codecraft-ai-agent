@@ -1,10 +1,19 @@
 import { Link } from 'react-router-dom';
 import {
-  Radio, ArrowRight, Briefcase, CheckCircle2, Circle, Settings, Link2, MessageSquare, Gauge, Bot, Clock,
+  Radio, ArrowRight, Briefcase, CheckCircle2, Circle, Settings, Link2, MessageSquare, Bot, Clock,
   AlertTriangle, PieChart, BarChart3, ListChecks, Zap, BookOpen, Inbox,
 } from 'lucide-react';
 import { useStore } from '../store/useStore';
 import Card, { PageHeader, HeaderButton } from '../components/ui/Card';
+import ScrambleText from '../components/ScrambleText';
+import Logo from '../components/Logo';
+
+// The CodeCraft logo in the page-title icon box.
+const BrandMark = () => <Logo onDark size={20} />;
+
+// The CodeCraft title replays its scramble this often while you're on the page.
+// Set to 0 to switch the idle replay off (it still plays on load and on hover).
+const TITLE_IDLE_REPLAY_MS = 25000;
 import { KpiCard, TaskStatusBar, TasksPerDayChart, RecentTasksTable } from '../components/dashboard/DashboardWidgets';
 import StatusPill from '../components/StatusPill';
 
@@ -74,8 +83,15 @@ export default function Dashboard() {
   return (
     <div className="p-4 md:p-6 max-w-7xl">
       <PageHeader
-        icon={Gauge}
-        title="Dashboard"
+        icon={BrandMark}
+        title={(
+          <ScrambleText
+            text="CodeCraft"
+            duration={1300}
+            idleReplayMs={TITLE_IDLE_REPLAY_MS}
+            letterClassName={(i) => (i < 4 ? 'text-[var(--color-text)]' : 'text-[var(--color-accent)]')}
+          />
+        )}
         subtitle="Your autonomous workforce, at a glance."
         actions={(
           <>
