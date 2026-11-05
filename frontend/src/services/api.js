@@ -258,6 +258,12 @@ export const api = {
   saveAgentSettings: (body) => request('/agent-settings', { method: 'POST', body: JSON.stringify(body) }),
   restoreAgentSettingsVersion: (id) => request(`/agent-settings/versions/${encodeURIComponent(id)}/restore`, { method: 'POST' }),
 
+  // Knowledge base: Q&A entries.
+  listQa: () => request('/knowledge/qa'),
+  createQa: (entry) => request('/knowledge/qa', { method: 'POST', body: JSON.stringify(entry) }),
+  updateQa: (id, patch) => request(`/knowledge/qa/${encodeURIComponent(id)}`, { method: 'PATCH', body: JSON.stringify(patch) }),
+  deleteQa: (id) => request(`/knowledge/qa/${encodeURIComponent(id)}`, { method: 'DELETE' }),
+
   // --- Connections (Phase 2.5) ---
   listConnections: () => request('/connections'),
   getConnectionStatus: (provider) => request(`/connections/${provider}/status`),

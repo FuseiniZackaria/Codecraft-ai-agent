@@ -8,6 +8,7 @@ const { countSentToday } = require('../../core/autoReplySafety');
 const notifications = require('../../core/notifications');
 const voice = require('../../core/whatsapp/voice');
 const agentSettings = require('../../core/knowledge/agentSettings');
+const retrieval = require('../../core/knowledge/retrieval');
 const replyPolicy = require('../../core/whatsapp/replyPolicy');
 
 /**
@@ -71,7 +72,13 @@ class WhatsAppAgent extends BaseAgent {
 
   /** Draft Ian's reply. Returns { reply, hold, reason } (reply already cleaned up). */
   async draftReply({ body, history, workspaceId, v, profile, now = new Date() }) {
-    const knowledge = await businessContextLine(workspaceId, { forChat: true });
+    // Business profile + the Q&A entries that match this message (switched-on ones only).
+    const previousIn = [...history].reverse().find((m) => m.direction === 'in');
+    const [profileLine, found] = await Promise.all([
+      businessContextLine(workspaceId, { forChat: true }),
+      retrieval.forMessage(workspaceId, body, previousIn ? msgText(previousIn) : ''),
+    ]);
+    const knowledge = `${profileLine}${found.block}`;
     const time = voice.ghanaTime(now);
     const lastOut = [...history].reverse().find((m) => m.direction === 'out');
     const midConversation = !!(lastOut && now - new Date(lastOut.sent_at) < GREETING_GAP_MS);
@@ -87,7 +94,7 @@ class WhatsAppAgent extends BaseAgent {
         : 'They have messaged before (not a first-time contact).',
     ];
     const transcript = history.length
-      ? `Conversation so far:\n${history.slice(-10).map((m) => `${m.direction === 'in' ? 'Customer' : 'Ian'}: ${msgText(m)}`).join('\n')}\n\n`
+      ? `Conversation so far:\n${history.slice(-10).map((m) => `${m.direction === 'in' ? 'Customer' : v.agentName}: ${msgText(m)}`).join('\n')}\n\n`
       : '';
 
     const result = await selectProvider({}).complete({
@@ -106,7 +113,7 @@ class WhatsAppAgent extends BaseAgent {
       incoming: body, draft: reply, modelHold: parsed.hold, modelReason: parsed.reason, knowledge, ownerName,
       agentName: v.agentName, businessName: profile?.business_name || null,
     });
-    return { reply, ...decision, history };
+    return { reply, ...decision, history, knowledgeUsed: { qa: found.qa } };
   }
 
   async send({ from, text, session, workspaceId, label }) {
@@ -154,7 +161,7 @@ class WhatsAppAgent extends BaseAgent {
         await activityLog.record(this.role, 'ai_unavailable', from, { error: err.message, workspaceId }).catch(() => {});
         const results = await notifications.notifyOwnerAttention({
           channel: 'WhatsApp', from, customerMessage: body, workspaceId,
-          problem: "Ian couldn't answer because the AI service is busy right now",
+          problem: `${v.agentName} couldn't answer because the AI service is busy right now`,
         }).catch((e) => ({ error: e.message }));
         console.log(`[WhatsAppAgent] owner alerted about ${from}: ${JSON.stringify(results)}`);
         return { draft: '', held: true, reason: 'AI unavailable', autoSent: false, holdSent: false, approvalTaskId: null, ownerAlerted: true };

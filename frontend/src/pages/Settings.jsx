@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { Save, Plus, Trash2, Mail, Building2, User, Phone, Globe, MapPin, FileText, AlertCircle, CheckCircle2 } from 'lucide-react';
 import AgentInstructionsTab from '../components/settings/AgentInstructionsTab';
+import QaTab from '../components/settings/QaTab';
 import { api } from '../services/api';
 
 // Mirrors the backend's ALLOWED_FIELDS and column names in business_profile.
@@ -23,10 +24,11 @@ const LONG_FIELDS = [
 ];
 // "Voice & tone" now lives in the Agent instructions tab (its "## Email & outreach tone" section).
 
-// Tabs on this page. Add new ones here (Q&A, Documents, Test chat come next).
+// Tabs on this page. Add new ones here (Documents and Test chat come next).
 const TABS = [
   { key: 'profile', label: 'Profile' },
   { key: 'agent',   label: 'Agent instructions' },
+  { key: 'qa',      label: 'Q&A' },
 ];
 
 export default function Settings() {
@@ -58,6 +60,7 @@ export default function Settings() {
       </div>
       {tab === 'profile' && <ProfileTab />}
       {tab === 'agent' && <AgentInstructionsTab />}
+      {tab === 'qa' && <QaTab />}
     </div>
   );
 }

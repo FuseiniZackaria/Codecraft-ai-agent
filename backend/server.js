@@ -216,6 +216,7 @@ app.use('/api/business-profile', requireAuth, requireRole('admin'), businessProf
 // Knowledge base + agent tuning. To let clients edit their own later, allow
 // 'client' here too - core/workspaceAccess.js already checks the workspace role.
 app.use('/api/agent-settings', requireAuth, requireRole('admin'), require('./api/agentSettingsRoutes'));
+app.use('/api/knowledge', requireAuth, requireRole('admin'), require('./api/knowledgeRoutes'));
 app.use('/api/connections', requireAuth, requireRole('admin'), connectionRoutes);
 app.use('/api/client-tracker', requireAuth, requireRole('admin'), clientTrackerRoutes);
 app.use('/api/whatsapp', requireAuth, requireRole('admin'), require('./api/whatsappRoutes'));

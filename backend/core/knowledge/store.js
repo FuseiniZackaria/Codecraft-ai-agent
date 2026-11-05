@@ -18,7 +18,7 @@ function db() {
   return client;
 }
 
-const mem = { versions: [] };
+const mem = { versions: [], qa: [] };
 
 function check(error, where) {
   if (!error) return;
@@ -102,9 +102,123 @@ async function addVersion(workspaceId, fields) {
   throw new Error('knowledge store: could not save the new version - please try again');
 }
 
+// ---------- Q&A entries ----------
+
+const QA_COLUMNS = 'id, workspace_id, question, answer, enabled, source, source_message_id, created_at, updated_at';
+const QA_MAX_LIST = 1000;
+
+/** All entries, newest first (enabledOnly: just the ones switched on). */
+async function listQa(workspaceId, { enabledOnly = false, limit = QA_MAX_LIST } = {}) {
+  requireWs(workspaceId);
+  if (!db()) {
+    // Newest first; same-millisecond entries keep the order they were added in.
+    return mem.qa.map((q, i) => ({ q, i }))
+      .filter(({ q }) => q.workspace_id === workspaceId && (!enabledOnly || q.enabled))
+      .sort((a, b) => String(b.q.created_at).localeCompare(String(a.q.created_at)) || b.i - a.i)
+      .slice(0, limit).map(({ q }) => ({ ...q }));
+  }
+  let query = db().from('kb_qa_entries').select(QA_COLUMNS).eq('workspace_id', workspaceId);
+  if (enabledOnly) query = query.eq('enabled', true);
+  const { data, error } = await query.order('created_at', { ascending: false }).limit(limit);
+  check(error, 'listQa');
+  return data || [];
+}
+
+async function countQa(workspaceId) {
+  requireWs(workspaceId);
+  if (!db()) return mem.qa.filter((q) => q.workspace_id === workspaceId).length;
+  const { count, error } = await db().from('kb_qa_entries').select('id', { count: 'exact', head: true }).eq('workspace_id', workspaceId);
+  check(error, 'countQa');
+  return count || 0;
+}
+
+async function getQa(workspaceId, id) {
+  requireWs(workspaceId);
+  if (!db()) { const q = mem.qa.find((x) => x.workspace_id === workspaceId && x.id === id); return q ? { ...q } : null; }
+  const { data, error } = await db().from('kb_qa_entries').select(QA_COLUMNS).eq('workspace_id', workspaceId).eq('id', id).maybeSingle();
+  check(error, 'getQa');
+  return data;
+}
+
+async function createQa(workspaceId, fields) {
+  requireWs(workspaceId);
+  const row = {
+    workspace_id: workspaceId,
+    question: fields.question,
+    answer: fields.answer,
+    enabled: fields.enabled !== false,
+    source: fields.source || 'manual',
+    source_message_id: fields.source_message_id || null,
+    created_by: fields.created_by || null,
+  };
+  if (!db()) {
+    const at = new Date().toISOString();
+    const saved = { id: crypto.randomUUID(), created_at: at, updated_at: at, ...row };
+    mem.qa.push(saved);
+    return { ...saved };
+  }
+  const { data, error } = await db().from('kb_qa_entries').insert(row).select(QA_COLUMNS).single();
+  check(error, 'createQa');
+  return data;
+}
+
+/** Only question / answer / enabled can change. Returns null if not found in this workspace. */
+async function updateQa(workspaceId, id, patch) {
+  requireWs(workspaceId);
+  const fields = {};
+  for (const k of ['question', 'answer', 'enabled']) if (patch[k] !== undefined) fields[k] = patch[k];
+  fields.updated_at = new Date().toISOString();
+  if (!db()) {
+    const q = mem.qa.find((x) => x.workspace_id === workspaceId && x.id === id);
+    if (!q) return null;
+    Object.assign(q, fields);
+    return { ...q };
+  }
+  const { data, error } = await db().from('kb_qa_entries').update(fields).eq('workspace_id', workspaceId).eq('id', id).select(QA_COLUMNS).maybeSingle();
+  check(error, 'updateQa');
+  return data;
+}
+
+/** Returns true if something was deleted. */
+async function deleteQa(workspaceId, id) {
+  requireWs(workspaceId);
+  if (!db()) {
+    const before = mem.qa.length;
+    mem.qa = mem.qa.filter((x) => !(x.workspace_id === workspaceId && x.id === id));
+    return mem.qa.length < before;
+  }
+  const { data, error } = await db().from('kb_qa_entries').delete().eq('workspace_id', workspaceId).eq('id', id).select('id');
+  check(error, 'deleteQa');
+  return (data || []).length > 0;
+}
+
+/**
+ * Switched-on entries sharing any of these words (Postgres full-text search;
+ * ranking is done by the caller). terms: plain lower-case words.
+ */
+async function searchQa(workspaceId, terms, limit = 60) {
+  requireWs(workspaceId);
+  if (!terms.length) return [];
+  if (!db()) {
+    return mem.qa.filter((q) => q.workspace_id === workspaceId && q.enabled
+      && terms.some((t) => `${q.question} ${q.answer}`.toLowerCase().includes(t))).slice(0, limit).map((q) => ({ ...q }));
+  }
+  const { data, error } = await db().from('kb_qa_entries').select(QA_COLUMNS)
+    .eq('workspace_id', workspaceId).eq('enabled', true)
+    .textSearch('search', terms.join(' or '), { type: 'websearch', config: 'english' })
+    .limit(limit);
+  check(error, 'searchQa');
+  return data || [];
+}
+
 /** Test hook. */
 function _resetMemory() {
   mem.versions = [];
+  mem.qa = [];
 }
 
-module.exports = { getLatestVersion, listVersions, getVersion, addVersion, _resetMemory };
+module.exports = {
+  getLatestVersion, listVersions, getVersion, addVersion,
+  listQa, countQa, getQa, createQa, updateQa, deleteQa, searchQa, QA_MAX_LIST,
+  _resetMemory,
+};

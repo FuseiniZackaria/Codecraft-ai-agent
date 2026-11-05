@@ -22,6 +22,7 @@ module.exports = [
   'tests/gemini-fallback.test.js',
   'tests/anthropic-provider.test.js',
   'tests/agent-settings.test.js',
+  'tests/knowledge-qa.test.js',
   'tests/whatsapp-waha.test.js',
   'tests/whatsapp-voice.test.js',
   'tests/composio-per-workspace.test.js',
