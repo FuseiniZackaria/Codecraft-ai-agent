@@ -159,7 +159,7 @@ class ResponseDetectionAgent extends BaseAgent {
           '"schedulingRequestDetected" should be true if the sender is proposing or agreeing to a call/meeting, regardless of category. ' +
           '"Opt-out" is for explicit "don\'t contact me again" / unsubscribe requests. "Automated response" is for out-of-office/autoresponders.',
         prompt: `Original outreach was about: ${jobTitle || 'a role'} at ${company || 'a company'}.\n\nReply subject: ${subject || '(none)'}\nReply body:\n${snippet}`,
-        maxTokens: 60,
+        maxTokens: 400, // room for the model's thinking (counted against this limit)
       });
       const match = result.text.match(/\{[\s\S]*\}/);
       const parsed = match ? JSON.parse(match[0]) : null;

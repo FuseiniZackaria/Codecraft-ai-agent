@@ -113,7 +113,9 @@ async function classifyReplySafety({ channel, incomingMessage, draftReply, works
     const provider = selectProvider({});
     const businessLine = await businessContextLine(workspaceId);
     const result = await provider.complete({
-      maxTokens: 60,
+      // Room for the model's thinking: Gemini counts it against this limit, and at 60
+      // the one-word verdict got cut off, so every reply fell back to approval.
+      maxTokens: 400,
       system:
         `${businessLine}You are a strict fact-checker for an auto-reply customer messaging bot. Respond ` +
         'with ONLY "GROUNDED" or "NOT_GROUNDED". Say GROUNDED only if every factual claim in the drafted reply is ' +

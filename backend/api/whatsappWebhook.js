@@ -62,7 +62,12 @@ router.post('/', (req, res) => {
   }
   if (event.type === 'rejected') {
     const why = WahaProvider.inspectSignature(req);
-    console.warn(`[webhook] whatsapp (waha) rejected: ${event.reason}${why.source.includes('OLD secret') ? ' - this delivery comes from a session webhook registered with an older secret; open Toolbox -> Connections to repair it' : ''}`);
+    const hint = why.source.includes('OLD secret')
+      ? ' - this delivery comes from a session webhook registered with an older secret; open Toolbox -> Connections to repair it'
+      : !why.hmacHeaderPresent && why.source.startsWith('env webhook')
+        ? ' - this delivery has no signature at all: either an old delivery WAHA is still retrying from before the webhook was repaired (stops on its own), or a WHATSAPP_HOOK_URL env webhook on the WAHA service (remove it - the app registers its own signed webhook)'
+        : '';
+    console.warn(`[webhook] whatsapp (waha) rejected: ${event.reason}${hint}`);
     activityLog.record('WhatsApp', 'webhook_rejected', 'waha', { reason: event.reason }).catch(() => {});
     return res.sendStatus(401);
   }
