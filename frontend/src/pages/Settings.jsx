@@ -4,6 +4,7 @@ import { Save, Plus, Trash2, Mail, Building2, User, Phone, Globe, MapPin, FileTe
 import AgentInstructionsTab from '../components/settings/AgentInstructionsTab';
 import QaTab from '../components/settings/QaTab';
 import DocumentsTab from '../components/settings/DocumentsTab';
+import TestChatTab from '../components/settings/TestChatTab';
 import { api } from '../services/api';
 
 // Mirrors the backend's ALLOWED_FIELDS and column names in business_profile.
@@ -25,12 +26,13 @@ const LONG_FIELDS = [
 ];
 // "Voice & tone" now lives in the Agent instructions tab (its "## Email & outreach tone" section).
 
-// Tabs on this page. Add new ones here (Test chat comes next).
+// Tabs on this page.
 const TABS = [
   { key: 'profile', label: 'Profile' },
   { key: 'agent',   label: 'Agent instructions' },
   { key: 'qa',      label: 'Q&A' },
   { key: 'docs',    label: 'Documents' },
+  { key: 'test',    label: 'Test chat' },
 ];
 
 export default function Settings() {
@@ -64,6 +66,7 @@ export default function Settings() {
       {tab === 'agent' && <AgentInstructionsTab />}
       {tab === 'qa' && <QaTab />}
       {tab === 'docs' && <DocumentsTab />}
+      {tab === 'test' && <TestChatTab />}
     </div>
   );
 }

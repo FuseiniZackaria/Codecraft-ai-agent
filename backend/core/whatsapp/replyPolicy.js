@@ -32,7 +32,9 @@ const INCOMING_RULES = [
 
 const DRAFT_RULES = [
   { reason: 'the reply mentions a price', re: /(gh₵|₵|\bghs|\busd|\$|€|£)\s?\d|\b\d[\d,.]*\s?(cedis?|ghs|dollars|usd)\b/i },
-  { reason: 'the reply makes a promise or agrees a deal', re: /\b(i promise|we promise|we guarantee|guaranteed|it'?s a deal|we have a deal|deal is done|will be (ready|done|delivered|finished) (by|in|within)|deliver (it |this |that )?(by|within))\b/i },
+  { reason: 'the reply makes a promise or agrees a deal', re: /\b(i promise|we promise|we guarantee|guaranteed|it'?s a deal|we have a deal|deal is done)\b/i },
+  // A delivery/ready time is a promise; a delivery AREA ("we deliver within Accra") is not.
+  { reason: 'the reply makes a promise or agrees a deal', re: new RegExp(`\\b(will be (ready|done|delivered|finished)|deliver (it |this |that |them )?)\\s*(by|in|within)\\s+${'(\\d|an? |one|two|three|four|five|six|seven|few|couple|tomorrow|today|tonight|next|the end|end of|this (week|weekend|month|evening|afternoon)|monday|tuesday|wednesday|thursday|friday|saturday|sunday|hours?|days?|weeks?)'}`, 'i') },
 ];
 
 // Word-boundary match, so "issue" doesn't count as "sue".
@@ -118,12 +120,16 @@ function parseDraft(text) {
           reply: json.reply,
           hold: json.hold === true || json.hold === 'true',
           reason: String(json.reason || '').trim(),
+          // Labels of the knowledge it used, e.g. ["Q2", "D1"] (shown in the Test chat).
+          sources: Array.isArray(json.sources)
+            ? [...new Set(json.sources.map((s) => String(s).trim().replace(/^\[|\]$/g, '').toUpperCase()).filter((s) => /^[QD]\d{1,3}$/.test(s)))]
+            : [],
           parsed: true,
         };
       }
     } catch { /* fall through */ }
   }
-  return { reply: raw, hold: true, reason: "the AI's answer wasn't in the expected format", parsed: false };
+  return { reply: raw, hold: true, reason: "the AI's answer wasn't in the expected format", sources: [], parsed: false };
 }
 
 const SIGN_OFF_RE = /^\s*((best|kind|warm|warmest|with)\s+)?(regards|wishes)\s*,?\s*$|^\s*(sincerely|cheers|thanks|thank you|many thanks|yours (truly|faithfully|sincerely))\s*,\s*$|^\s*[-—–]{1,2}\s*\S/i;

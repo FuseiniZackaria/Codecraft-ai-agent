@@ -23,6 +23,7 @@ function fail(res, err) {
     return res.status(400).json({ error: err.details ? 'Please fix this and try again.' : err.message, details: err.details || [err.message] });
   }
   if (err.code === 'NOT_FOUND') return res.status(404).json({ error: err.message });
+  if (err.code === 'RATE_LIMIT') return res.status(429).json({ error: err.message });
   if (err.code === 'MIGRATION_MISSING') return res.status(503).json({ error: err.message, migrationMissing: true });
   console.warn(`[knowledge] ${err.message}`);
   return res.status(500).json({ error: err.message });
@@ -130,6 +131,40 @@ router.get('/documents/:id/text', async (req, res) => {
     if (!doc) return res.status(404).json({ error: 'That document was not found.' });
     const sections = await store.listChunks(req.user.workspaceId, { documentId: doc.id, limit: 30 });
     res.json({ document: publicDoc(doc), sections: sections.map((s) => s.content), shown: sections.length, total: doc.chunk_count });
+  } catch (err) {
+    fail(res, err);
+  }
+});
+
+// ---------- test chat ----------
+//   GET    /test-chat    the conversation so far
+//   POST   /test-chat    { text } -> the agent's reply (never sent to anyone)
+//   DELETE /test-chat    start over
+
+const testChat = require('../core/knowledge/testChat');
+
+router.get('/test-chat', async (req, res) => {
+  try {
+    const messages = await store.listTestMessages(req.user.workspaceId, 100);
+    res.json({ messages, maxText: testChat.MAX_TEXT });
+  } catch (err) {
+    fail(res, err);
+  }
+});
+
+router.post('/test-chat', async (req, res) => {
+  try {
+    const result = await testChat.send(req.user.workspaceId, req.body?.text, req.user);
+    res.json(result);
+  } catch (err) {
+    fail(res, err);
+  }
+});
+
+router.delete('/test-chat', async (req, res) => {
+  try {
+    await store.clearTestMessages(req.user.workspaceId);
+    res.json({ cleared: true });
   } catch (err) {
     fail(res, err);
   }

@@ -272,6 +272,11 @@ export const api = {
   deleteDocument: (id) => request(`/knowledge/documents/${encodeURIComponent(id)}`, { method: 'DELETE' }),
   getDocumentText: (id) => request(`/knowledge/documents/${encodeURIComponent(id)}/text`),
 
+  // Test chat: talk to the WhatsApp agent without anything being sent.
+  getTestChat: () => request('/knowledge/test-chat'),
+  sendTestChat: (text) => request('/knowledge/test-chat', { method: 'POST', body: JSON.stringify({ text }) }),
+  clearTestChat: () => request('/knowledge/test-chat', { method: 'DELETE' }),
+
   // --- Connections (Phase 2.5) ---
   listConnections: () => request('/connections'),
   getConnectionStatus: (provider) => request(`/connections/${provider}/status`),

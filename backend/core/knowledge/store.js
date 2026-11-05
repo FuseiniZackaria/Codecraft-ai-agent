@@ -18,7 +18,7 @@ function db() {
   return client;
 }
 
-const mem = { versions: [], qa: [], docs: [], chunks: [], files: new Map() };
+const mem = { versions: [], qa: [], docs: [], chunks: [], files: new Map(), test: [] };
 
 function check(error, where) {
   if (!error) return;
@@ -348,8 +348,49 @@ async function removeFiles(paths) {
   if (error) console.warn(`[knowledge] couldn't delete stored file(s): ${error.message}`);
 }
 
+// ---------- test chat ----------
+
+/** Oldest first, the most recent `limit`. */
+async function listTestMessages(workspaceId, limit = 100) {
+  requireWs(workspaceId);
+  if (!db()) return mem.test.filter((m) => m.workspace_id === workspaceId).slice(-limit).map((m) => ({ ...m }));
+  const { data, error } = await db().from('agent_test_messages').select('id, role, body, meta, created_at')
+    .eq('workspace_id', workspaceId).order('created_at', { ascending: false }).limit(limit);
+  check(error, 'listTestMessages');
+  return (data || []).reverse();
+}
+
+async function addTestMessage(workspaceId, { role, body, meta = {}, userId = null }) {
+  requireWs(workspaceId);
+  const row = { workspace_id: workspaceId, user_id: userId, role, body, meta };
+  if (!db()) {
+    const saved = { id: crypto.randomUUID(), created_at: new Date().toISOString(), ...row };
+    mem.test.push(saved);
+    return { ...saved };
+  }
+  const { data, error } = await db().from('agent_test_messages').insert(row).select('id, role, body, meta, created_at').single();
+  check(error, 'addTestMessage');
+  return data;
+}
+
+async function getTestMessage(workspaceId, id) {
+  requireWs(workspaceId);
+  if (!db()) { const m = mem.test.find((x) => x.workspace_id === workspaceId && x.id === id); return m ? { ...m } : null; }
+  const { data, error } = await db().from('agent_test_messages').select('id, role, body, meta, created_at').eq('workspace_id', workspaceId).eq('id', id).maybeSingle();
+  check(error, 'getTestMessage');
+  return data;
+}
+
+async function clearTestMessages(workspaceId) {
+  requireWs(workspaceId);
+  if (!db()) { mem.test = mem.test.filter((m) => m.workspace_id !== workspaceId); return; }
+  const { error } = await db().from('agent_test_messages').delete().eq('workspace_id', workspaceId);
+  check(error, 'clearTestMessages');
+}
+
 /** Test hook. */
 function _resetMemory() {
+  mem.test = [];
   mem.versions = [];
   mem.qa = [];
   mem.docs = [];
@@ -362,5 +403,6 @@ module.exports = {
   listQa, countQa, getQa, createQa, updateQa, deleteQa, searchQa, QA_MAX_LIST,
   listDocuments, getDocument, createDocument, updateDocument, deleteDocument,
   replaceChunks, listChunks, searchChunks, putFile, getFile, removeFiles,
+  listTestMessages, addTestMessage, getTestMessage, clearTestMessages,
   _resetMemory,
 };

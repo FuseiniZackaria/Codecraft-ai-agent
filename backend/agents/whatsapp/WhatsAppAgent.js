@@ -39,8 +39,9 @@ const HOLD_REPEAT_MS = 2 * 60 * 60 * 1000; // don't repeat "let me check with th
 
 const OUTPUT_FORMAT =
   'Answer with ONLY a JSON object, nothing else:\n' +
-  '{"reply": "<your WhatsApp message to the customer>", "hold": <true or false>, "reason": "<if hold: why, in a few words; else empty>"}\n' +
-  'If hold is true, "reply" is your suggested answer for the team to check before it is sent.';
+  '{"reply": "<your WhatsApp message to the customer>", "hold": <true or false>, "reason": "<if hold: why, in a few words; else empty>", "sources": [<labels of the Q&A or document parts you used, e.g. "Q2", "D1"; [] if none>]}\n' +
+  'If hold is true, "reply" is your suggested answer for the team to check before it is sent.\n' +
+  "If the answer isn't in the business knowledge you were given, don't guess: say a team member will follow up and set hold to true.";
 
 /** Stored messages keep their text in `body`. */
 const msgText = (m) => String(m.body ?? m.text ?? '');
@@ -113,7 +114,7 @@ class WhatsAppAgent extends BaseAgent {
       incoming: body, draft: reply, modelHold: parsed.hold, modelReason: parsed.reason, knowledge, ownerName,
       agentName: v.agentName, businessName: profile?.business_name || null,
     });
-    return { reply, ...decision, history, knowledgeUsed: { qa: found.qa, docs: found.docs } };
+    return { reply, ...decision, history, knowledgeUsed: { qa: found.qa, docs: found.docs, cited: parsed.sources || [] } };
   }
 
   async send({ from, text, session, workspaceId, label }) {
