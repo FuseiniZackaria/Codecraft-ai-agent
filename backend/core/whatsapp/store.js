@@ -161,6 +161,19 @@ async function listConversations(viewer) {
   return [...byContact.values()];
 }
 
+/** One message by id - only if this viewer may see it (else null). */
+async function getMessage(viewer, id) {
+  if (!id) return null;
+  if (!db()) {
+    const m = mem.messages.find((x) => x.id === id);
+    return m && visibleTo(m, viewer) ? { ...m } : null;
+  }
+  const { data, error } = await db().from('whatsapp_chat_messages').select('*').eq('id', id).maybeSingle();
+  if (error && /invalid input syntax for type uuid/i.test(error.message)) return null;
+  check(error, 'getMessage');
+  return data && visibleTo(data, viewer) ? data : null;
+}
+
 async function listMessages(viewer, contactNumber, limit = 200) {
   const all = db()
     ? await (async () => {
@@ -310,7 +323,7 @@ function _resetMemory() {
 
 module.exports = {
   getSessionByUser, getSessionByName, upsertSession, updateSession, listWorkingSessions,
-  saveMessage, listConversations, listMessages,
+  saveMessage, listConversations, listMessages, getMessage,
   isOptedOut, addOptOut, removeOptOut, hasMessagedFirst, countSentToContact,
   enqueueOutreach, nextQueuedPerSession, updateOutbox, countSentToday, listOutbox,
   _resetMemory,

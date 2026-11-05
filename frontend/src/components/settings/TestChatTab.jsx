@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { Send, RotateCcw, Loader2, AlertCircle, CheckCircle2, Clock, HelpCircle, FileText, ShieldCheck, ChevronDown, ChevronRight } from 'lucide-react';
 import { api } from '../../services/api';
+import CorrectAnswerDialog, { CorrectButton, CorrectedBadge, questionBefore } from './CorrectAnswer';
 
 // Settings -> General -> Test chat.
 // Message the WhatsApp agent as if you were a customer. It replies with the
@@ -51,7 +52,7 @@ function Sources({ sources }) {
   );
 }
 
-function AgentBubble({ m, agentName }) {
+function AgentBubble({ m, agentName, corrected, onCorrect }) {
   const meta = m.meta || {};
   if (meta.error) {
     return (
@@ -84,7 +85,13 @@ function AgentBubble({ m, agentName }) {
           </div>
         )}
         <Sources sources={meta.sources} />
-        {meta.instructionsVersion && <div className="text-[10px] text-[var(--color-text-muted)]">Instructions version {meta.instructionsVersion}</div>}
+        <div className="flex items-center justify-between gap-3 flex-wrap pt-1">
+          {meta.instructionsVersion ? <div className="text-[10px] text-[var(--color-text-muted)]">Instructions version {meta.instructionsVersion}</div> : <span />}
+          <div className="flex items-center gap-3">
+            {corrected && <CorrectedBadge />}
+            <CorrectButton corrected={corrected} onClick={onCorrect} />
+          </div>
+        </div>
       </div>
     </div>
   );
@@ -99,12 +106,17 @@ export default function TestChatTab() {
   const [error, setError] = useState(null);
   const [maxText, setMaxText] = useState(2000);
   const [agentName, setAgentName] = useState('Agent');
+  const [corrections, setCorrections] = useState({});
+  const [correcting, setCorrecting] = useState(null); // { messageId, question, answer }
   const endRef = useRef(null);
 
   useEffect(() => {
     (async () => {
       try {
-        const [chat, settings] = await Promise.all([api.getTestChat(), api.getAgentSettings().catch(() => null)]);
+        const [chat, settings, corr] = await Promise.all([
+          api.getTestChat(), api.getAgentSettings().catch(() => null), api.getCorrections().catch(() => null),
+        ]);
+        if (corr?.corrections) setCorrections(corr.corrections);
         setMessages(chat.messages || []);
         if (chat.maxText) setMaxText(chat.maxText);
         if (settings?.active?.agent_name) setAgentName(settings.active.agent_name);
@@ -170,7 +182,7 @@ export default function TestChatTab() {
             Try the questions your customers ask most - "Do you deliver?", "How much is…?", "Are you open on Sunday?"
           </div>
         )}
-        {messages.map((m) => (
+        {messages.map((m, i) => (
           <div key={m.id} className={`flex ${m.role === 'customer' ? 'justify-end' : 'justify-start'}`}>
             {m.role === 'customer' ? (
               <div className="max-w-[75%] p-3 rounded-lg bg-[var(--color-accent)]/15 border border-[var(--color-accent)]/30 text-sm whitespace-pre-wrap">
@@ -178,7 +190,16 @@ export default function TestChatTab() {
                 <div className="text-[10px] text-[var(--color-text-muted)] mt-1 text-right">You (as a customer) · {time(m.created_at)}</div>
               </div>
             ) : (
-              <AgentBubble m={m} agentName={agentName} />
+              <AgentBubble
+                m={m}
+                agentName={agentName}
+                corrected={!!corrections[`test:${m.id}`]}
+                onCorrect={() => setCorrecting({
+                  messageId: m.id,
+                  question: questionBefore(messages, i, (x) => x.role === 'customer'),
+                  answer: m.meta?.held ? (m.meta?.draft || '') : m.body,
+                })}
+              />
             )}
           </div>
         ))}
@@ -188,6 +209,14 @@ export default function TestChatTab() {
         <div ref={endRef} />
       </div>
 
+      {correcting && (
+        <CorrectAnswerDialog
+          kind="test"
+          {...correcting}
+          onClose={() => setCorrecting(null)}
+          onSaved={(entry) => setCorrections((c) => ({ ...c, [`test:${correcting.messageId}`]: entry.id }))}
+        />
+      )}
       {error && <div className="mx-5 mb-2 text-xs text-[var(--color-danger)] flex items-center gap-1.5"><AlertCircle size={12} /> {error}</div>}
       <form onSubmit={send} className="px-5 py-3 border-t border-[var(--color-border)] flex gap-2">
         <textarea

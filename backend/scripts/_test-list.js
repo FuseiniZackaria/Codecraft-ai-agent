@@ -25,6 +25,7 @@ module.exports = [
   'tests/knowledge-qa.test.js',
   'tests/knowledge-documents.test.js',
   'tests/knowledge-test-chat.test.js',
+  'tests/knowledge-corrections.test.js',
   'tests/whatsapp-waha.test.js',
   'tests/whatsapp-voice.test.js',
   'tests/composio-per-workspace.test.js',

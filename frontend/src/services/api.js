@@ -277,6 +277,11 @@ export const api = {
   sendTestChat: (text) => request('/knowledge/test-chat', { method: 'POST', body: JSON.stringify({ text }) }),
   clearTestChat: () => request('/knowledge/test-chat', { method: 'DELETE' }),
 
+  // "Correct this answer": kind 'test' (Test chat) or 'whatsapp' (Inbox).
+  saveCorrection: ({ kind, messageId, question, answer }) =>
+    request('/knowledge/corrections', { method: 'POST', body: JSON.stringify({ kind, messageId, question, answer }) }),
+  getCorrections: () => request('/knowledge/corrections'),
+
   // --- Connections (Phase 2.5) ---
   listConnections: () => request('/connections'),
   getConnectionStatus: (provider) => request(`/connections/${provider}/status`),

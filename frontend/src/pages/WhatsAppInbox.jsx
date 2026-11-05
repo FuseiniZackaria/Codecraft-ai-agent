@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { ArrowLeft, Loader2, MessageCircle, RefreshCw, Send } from 'lucide-react';
 import { api } from '../services/api';
+import CorrectAnswerDialog, { CorrectButton, CorrectedBadge, questionBefore } from '../components/settings/CorrectAnswer';
 
 /**
  * WhatsApp inbox: the signed-in admin's own conversations (WAHA session, plus
@@ -18,6 +19,8 @@ const time = (iso) => {
 };
 
 const SOURCE_LABEL = { auto_reply: 'auto-reply', outreach: 'outreach', manual: 'you', agent: 'agent' };
+// Replies written by the agent - these get "Correct this answer".
+const AGENT_SOURCES = new Set(['auto_reply', 'agent']);
 
 /** Start a new conversation. Goes through the outreach queue (gaps, daily limit, opt-outs), not straight out. */
 function NewMessage({ onQueued }) {
@@ -90,6 +93,13 @@ export default function WhatsAppInbox() {
   const [text, setText] = useState('');
   const [sending, setSending] = useState(false);
   const bottomRef = useRef(null);
+  const [corrections, setCorrections] = useState({});
+  const [correcting, setCorrecting] = useState(null); // { messageId, question, answer }
+
+  useEffect(() => {
+    // Which agent replies were already corrected (no knowledge-base access = just no badges).
+    api.getCorrections().then((r) => setCorrections(r.corrections || {})).catch(() => {});
+  }, []);
 
   const loadConversations = useCallback(async () => {
     try {
@@ -208,7 +218,7 @@ export default function WhatsAppInbox() {
                 </div>
               </div>
               <div className="flex-1 overflow-y-auto p-3 space-y-2">
-                {messages.map((m) => (
+                {messages.map((m, i) => (
                   <div key={m.id} className={`flex ${m.direction === 'out' ? 'justify-end' : 'justify-start'}`}>
                     <div className={`max-w-[80%] rounded-lg px-3 py-2 text-sm whitespace-pre-wrap break-words ${
                       m.direction === 'out' ? 'bg-[var(--color-accent)]/15 text-[var(--color-text)]' : 'bg-[var(--color-surface-2)] text-[var(--color-text)]'
@@ -217,11 +227,32 @@ export default function WhatsAppInbox() {
                       <div className="text-[10px] text-[var(--color-text-muted)] mt-1 text-right">
                         {m.direction === 'out' && SOURCE_LABEL[m.source] ? `${SOURCE_LABEL[m.source]} · ` : ''}{time(m.sent_at)}
                       </div>
+                      {m.direction === 'out' && AGENT_SOURCES.has(m.source) && (
+                        <div className="flex items-center justify-end gap-3 mt-1">
+                          {corrections[`whatsapp:${m.id}`] && <CorrectedBadge />}
+                          <CorrectButton
+                            corrected={!!corrections[`whatsapp:${m.id}`]}
+                            onClick={() => setCorrecting({
+                              messageId: m.id,
+                              question: questionBefore(messages, i, (x) => x.direction === 'in'),
+                              answer: m.body,
+                            })}
+                          />
+                        </div>
+                      )}
                     </div>
                   </div>
                 ))}
                 <div ref={bottomRef} />
               </div>
+              {correcting && (
+                <CorrectAnswerDialog
+                  kind="whatsapp"
+                  {...correcting}
+                  onClose={() => setCorrecting(null)}
+                  onSaved={(entry) => setCorrections((c) => ({ ...c, [`whatsapp:${correcting.messageId}`]: entry.id }))}
+                />
+              )}
               <form onSubmit={send} className="flex gap-2 p-3 border-t border-[var(--color-border)]">
                 <input
                   value={text}

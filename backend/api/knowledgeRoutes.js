@@ -65,6 +65,27 @@ router.delete('/qa/:id', async (req, res) => {
   }
 });
 
+// ---------- "Correct this answer" ----------
+//   POST /corrections   { kind: 'test'|'whatsapp', messageId, question, answer } -> saved as a Q&A entry
+//   GET  /corrections   { "test:<id>": qaId, "whatsapp:<id>": qaId } - which replies were corrected
+
+router.post('/corrections', async (req, res) => {
+  try {
+    const result = await qa.correct(req.user.workspaceId, req.body || {}, req.user);
+    res.status(result.created ? 201 : 200).json(result);
+  } catch (err) {
+    fail(res, err);
+  }
+});
+
+router.get('/corrections', async (req, res) => {
+  try {
+    res.json({ corrections: await qa.corrections(req.user.workspaceId) });
+  } catch (err) {
+    fail(res, err);
+  }
+});
+
 // ---------- documents ----------
 //   GET    /documents               the list with status
 //   POST   /documents               upload   { filename, mime_type, data (base64) }

@@ -66,4 +66,49 @@ async function remove(workspaceId, id) {
   }
 }
 
-module.exports = { create, update, remove, validate, LIMITS };
+/**
+ * "Correct this answer": save the right answer to an agent reply as a Q&A
+ * entry, so the agent uses it from its next reply.
+ *
+ * kind: 'test' (a Test chat reply) or 'whatsapp' (a real reply in the Inbox).
+ * The message must be an agent reply this person may see. Correcting the same
+ * reply again updates that entry (and switches it back on) instead of adding
+ * a duplicate. Returns { entry, created }.
+ */
+async function correct(workspaceId, { kind, messageId, question, answer } = {}, user = {}) {
+  if (!['test', 'whatsapp'].includes(kind) || typeof messageId !== 'string' || !messageId) {
+    throw invalid(['Which reply are you correcting? (kind must be "test" or "whatsapp", plus the message id)']);
+  }
+  let ok = false;
+  if (kind === 'test') {
+    const m = await store.getTestMessage(workspaceId, messageId);
+    ok = !!m && m.role === 'agent';
+  } else {
+    const wa = require('../whatsapp/store');
+    const m = await wa.getMessage({ userId: user.id || null, workspaceId }, messageId);
+    ok = !!m && m.direction === 'out';
+  }
+  if (!ok) {
+    const err = new Error("That reply wasn't found (or it isn't one of the agent's replies).");
+    err.code = 'NOT_FOUND';
+    throw err;
+  }
+
+  const sourceId = `${kind}:${messageId}`;
+  const existing = await store.findQaBySource(workspaceId, sourceId);
+  if (existing) {
+    const entry = await update(workspaceId, existing.id, { question, answer, enabled: true });
+    return { entry, created: false };
+  }
+  const entry = await create(workspaceId, { question, answer }, user, { source: 'correction', sourceMessageId: sourceId });
+  return { entry, created: true };
+}
+
+/** { "test:<id>": qaEntryId, "whatsapp:<id>": ... } for showing "Corrected" on replies. */
+async function corrections(workspaceId) {
+  const out = {};
+  for (const c of await store.listCorrections(workspaceId)) out[c.source_message_id] = c.id;
+  return out;
+}
+
+module.exports = { create, update, remove, validate, correct, corrections, LIMITS };

@@ -211,6 +211,31 @@ async function searchQa(workspaceId, terms, limit = 60) {
   return data || [];
 }
 
+/** Q&A entries saved with "Correct this answer": [{ id, source_message_id, enabled }]. */
+async function listCorrections(workspaceId) {
+  requireWs(workspaceId);
+  if (!db()) {
+    return mem.qa.filter((q) => q.workspace_id === workspaceId && q.source === 'correction' && q.source_message_id)
+      .map(({ id, source_message_id, enabled }) => ({ id, source_message_id, enabled }));
+  }
+  const { data, error } = await db().from('kb_qa_entries').select('id, source_message_id, enabled')
+    .eq('workspace_id', workspaceId).eq('source', 'correction').not('source_message_id', 'is', null).limit(QA_MAX_LIST);
+  check(error, 'listCorrections');
+  return data || [];
+}
+
+async function findQaBySource(workspaceId, sourceMessageId) {
+  requireWs(workspaceId);
+  if (!db()) {
+    const q = mem.qa.find((x) => x.workspace_id === workspaceId && x.source_message_id === sourceMessageId);
+    return q ? { ...q } : null;
+  }
+  const { data, error } = await db().from('kb_qa_entries').select(QA_COLUMNS)
+    .eq('workspace_id', workspaceId).eq('source_message_id', sourceMessageId).limit(1).maybeSingle();
+  check(error, 'findQaBySource');
+  return data;
+}
+
 // ---------- documents ----------
 
 const DOC_COLUMNS = 'id, workspace_id, filename, mime_type, size_bytes, storage_path, status, error, chunk_count, char_count, uploaded_by, created_at, updated_at, processed_at';
@@ -400,7 +425,7 @@ function _resetMemory() {
 
 module.exports = {
   getLatestVersion, listVersions, getVersion, addVersion,
-  listQa, countQa, getQa, createQa, updateQa, deleteQa, searchQa, QA_MAX_LIST,
+  listQa, countQa, getQa, createQa, updateQa, deleteQa, searchQa, listCorrections, findQaBySource, QA_MAX_LIST,
   listDocuments, getDocument, createDocument, updateDocument, deleteDocument,
   replaceChunks, listChunks, searchChunks, putFile, getFile, removeFiles,
   listTestMessages, addTestMessage, getTestMessage, clearTestMessages,
