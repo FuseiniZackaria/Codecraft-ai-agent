@@ -28,6 +28,11 @@ module.exports = {
     // Real providers read keys from env. If absent, router falls back to the
     // mock provider so the system is runnable out of the box.
     openaiKey: process.env.OPENAI_API_KEY || null,
+    // Which AI service Ian and the agents use: 'anthropic' (Claude, paid) or
+    // 'gemini' (Google, free tier). AI_PROVIDER picks; if unset, Anthropic is
+    // used whenever ANTHROPIC_API_KEY is set, otherwise Gemini.
+    provider: (process.env.AI_PROVIDER || (process.env.ANTHROPIC_API_KEY ? 'anthropic' : 'gemini')).trim().toLowerCase(),
+    anthropicKey: process.env.ANTHROPIC_API_KEY || null,
     // Google Gemini key shared with Ian (assistant.apiKey below).
     geminiKey: process.env.GEMINI_API_KEY || null,
     model: process.env.LLM_MODEL || 'gemini-3.8-flash',
@@ -45,12 +50,21 @@ module.exports = {
     // falls back to the keyword router, same as before.
     apiKey: process.env.GEMINI_API_KEY || null,
     model: process.env.ASSISTANT_MODEL || 'gemini-3.8-flash',
+    // Daily spend cap below (ASSISTANT_DAILY_USD_CAP) counts Claude usage too.
     maxTokens: Number(process.env.ASSISTANT_MAX_TOKENS) || 1024,
     dailyUsdCap: Number(process.env.ASSISTANT_DAILY_USD_CAP ?? 5),
     historyLimit: Number(process.env.ASSISTANT_HISTORY_LIMIT) || 30,
     name: process.env.ASSISTANT_NAME || 'Ian',
     nameVariations: (process.env.ASSISTANT_NAME_VARIATIONS || 'Ian,Ean,Ion,Eon,Ayan,Iain,Jan')
       .split(',').map((s) => s.trim()).filter(Boolean),
+  },
+  anthropic: {
+    // Used when llm.provider is 'anthropic' - for Ian and every agent.
+    // claude-sonnet-5-5 costs half as much as Opus ($2/$10 vs $4/$20 per million tokens).
+    model: process.env.ANTHROPIC_MODEL || 'claude-opus-5-5',
+    // How hard Claude thinks: low | medium | high | xhigh | max. Low keeps chat
+    // and WhatsApp replies quick and cheap.
+    effort: process.env.ANTHROPIC_EFFORT || 'low',
   },
   supabase: {
     url: process.env.SUPABASE_URL || null,

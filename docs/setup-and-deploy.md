@@ -34,7 +34,7 @@ Render → Environment / Vercel → Environment for production.
 | `CORS_ALLOWED_ORIGINS` | required in prod | Render | Comma-separated: Vercel URL + localhost for dev |
 | `ASSISTANT_NAME` | optional (default `Ian`) | Render | What the chat calls itself |
 | `ASSISTANT_NAME_VARIATIONS` | optional | Render | Alternate spellings the assistant answers to |
-| `ASSISTANT_MODEL` | optional (default `gemini-3.8-flash`) | Render | Gemini model id for Ian |
+| `ASSISTANT_MODEL` | optional (default `gemini-3.8-flash`) | Render | Gemini model id for Ian (only when on Gemini) |
 | `ASSISTANT_MAX_TOKENS` | optional (default 1024) | Render | — |
 | `ASSISTANT_DAILY_USD_CAP` | optional (default 5) | Render | Hard cap on daily chat spend |
 | `ASSISTANT_HISTORY_LIMIT` | optional (default 30) | Render | — |
@@ -49,9 +49,16 @@ Render → Environment / Vercel → Environment for production.
 
 ### Model providers
 
-`GEMINI_API_KEY` (required, Render; Google Gemini, used by Ian and every
-agent), `ASSISTANT_MODEL` / `LLM_MODEL` (optional, default `gemini-3.8-flash`),
-`OPENAI_API_KEY` (optional, image generation only), `OPENAI_IMAGE_MODEL`
+Ian and every agent use one AI service, picked by `AI_PROVIDER` (`anthropic`
+or `gemini`; if empty, Claude whenever `ANTHROPIC_API_KEY` is set).
+
+- Claude (paid): `ANTHROPIC_API_KEY` (Render; console.anthropic.com),
+  `ANTHROPIC_MODEL` (optional, default `claude-opus-5-5`; `claude-sonnet-5-5`
+  is half the price), `ANTHROPIC_EFFORT` (optional, default `low`).
+- Gemini (free tier): `GEMINI_API_KEY` (Render), `ASSISTANT_MODEL` /
+  `LLM_MODEL` (optional, default `gemini-3.8-flash`).
+
+Also `OPENAI_API_KEY` (optional, image generation only), `OPENAI_IMAGE_MODEL`
 (optional, default `gpt-image-1`). If no provider key is set, the router
 falls back to a mock provider and every agent returns canned text.
 

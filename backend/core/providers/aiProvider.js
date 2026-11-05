@@ -1,10 +1,12 @@
 const { FinishReason, ThinkingLevel } = require('@google/genai');
 const config = require('../../config');
 const gemini = require('./gemini');
+const anthropic = require('./anthropic');
 const { startTimer } = require('../debugTiming');
 
 /**
- * AiProvider - real adapter (Google Gemini), active only when GEMINI_API_KEY is set.
+ * AiProvider - real adapter: Claude (Anthropic) when config.llm.provider is
+ * 'anthropic', otherwise Google Gemini (active only when GEMINI_API_KEY is set).
  * Implements the same interface as mockProvider so the router can swap them freely.
  */
 // Per-model paid-tier prices live in one table (core/assistant/usage.js);
@@ -16,7 +18,13 @@ module.exports = {
   costPerCall: 0.003, // rough static estimate, used only by router.js's provider-selection scoring - NOT the actual per-call cost, which complete() now computes for real below
   speed: 'fast',
 
-  async complete({ prompt, system, maxTokens = 1000, history = [], content = null }) {
+  async complete(opts) {
+    if (config.llm.provider === 'anthropic') return completeWithClaude(opts);
+    return completeWithGemini(opts);
+  },
+};
+
+async function completeWithGemini({ prompt, system, maxTokens = 1000, history = [], content = null }) {
     if (!config.llm.geminiKey) {
       throw new Error('GEMINI_API_KEY not configured');
     }
@@ -87,5 +95,51 @@ module.exports = {
       outputTokens,
       truncated,
     };
-  },
-};
+}
+
+/** Turn Gemini-style multimodal parts ({text} / {inlineData}) into Claude content blocks. */
+function toClaudeContent(parts) {
+  return parts.map((p) => {
+    if (p.text !== undefined) return { type: 'text', text: p.text || '(no text)' };
+    if (p.inlineData) {
+      const { mimeType, data } = p.inlineData;
+      if (mimeType === 'application/pdf') return { type: 'document', source: { type: 'base64', media_type: mimeType, data } };
+      return { type: 'image', source: { type: 'base64', media_type: mimeType, data } };
+    }
+    return { type: 'text', text: JSON.stringify(p) };
+  });
+}
+
+async function completeWithClaude({ prompt, system, maxTokens = 1000, history = [], content = null }) {
+  const cleanHistory = history.filter((h) => h.content && String(h.content).trim().length > 0);
+  const messages = [
+    ...cleanHistory.map((h) => ({ role: h.role === 'assistant' ? 'assistant' : 'user', content: String(h.content) })),
+    { role: 'user', content: content ? toClaudeContent(content) : (prompt || '(no text)') },
+  ];
+
+  const timer = startTimer('ai');
+  let final;
+  try {
+    // Claude always thinks a little first, and that counts against max_tokens -
+    // so give it room. It's only a ceiling: just what's generated is billed.
+    final = await anthropic.stream({ system, messages, maxTokens: Math.max(maxTokens, 8000) }).finalMessage();
+  } catch (err) {
+    throw new Error(`AI provider error: ${anthropic.describeFailure(err)}`);
+  }
+
+  const text = final.content.filter((b) => b.type === 'text').map((b) => b.text).join('');
+  timer.mark('done', { provider: 'anthropic', model: final.model, chars: text.length });
+  const truncated = final.stop_reason === 'max_tokens';
+  if (truncated) console.warn('[ai] Claude response truncated by max_tokens - consider raising it for this call');
+  if (!text && final.stop_reason === 'refusal') throw new Error('AI provider error: request declined by Claude');
+
+  const u = final.usage || {};
+  return {
+    provider: 'ai',
+    text,
+    costEstimate: costOf(final.model, u),
+    inputTokens: (u.input_tokens || 0) + (u.cache_read_input_tokens || 0) + (u.cache_creation_input_tokens || 0),
+    outputTokens: u.output_tokens || 0,
+    truncated,
+  };
+}

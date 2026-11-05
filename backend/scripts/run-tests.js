@@ -31,6 +31,7 @@ const SECRETS_TO_BLANK = [
   'AI_API_KEY',
   'ANTHROPIC_API_KEY',
   'GEMINI_API_KEY',
+  'AI_PROVIDER', // tests run on Gemini/mock unless a test picks Claude itself
   // WhatsApp (WAHA)
   'WAHA_BASE_URL',
   'WAHA_API_KEY',

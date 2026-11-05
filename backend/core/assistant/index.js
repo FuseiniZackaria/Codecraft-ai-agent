@@ -6,6 +6,7 @@ const { buildTools } = require('./tools');
 const { invoke } = require('./handlers');
 const usage = require('./usage');
 const gemini = require('../providers/gemini');
+const anthropic = require('../providers/anthropic');
 const { startTimer } = require('../debugTiming');
 
 // Greetings and thanks need no tools - sending the 16 tool definitions for
@@ -71,7 +72,12 @@ function toFunctionDeclarations(tools) {
  * @param {function} opts.onEvent - called with {type, ...} for each stream event
  * @returns {Promise<{reply: string, taskIds: string[], usage: object, iterations: number}>}
  */
-async function runAssistant({ message, scope = null, voice = false, workspaceId = null, onEvent = () => {}, timer = startTimer('ian') }) {
+async function runAssistant(opts) {
+  if (config.llm.provider === 'anthropic') return runWithClaude({ timer: startTimer('ian'), onEvent: () => {}, ...opts });
+  return runWithGemini(opts);
+}
+
+async function runWithGemini({ message, scope = null, voice = false, workspaceId = null, onEvent = () => {}, timer = startTimer('ian') }) {
   if (!config.assistant.apiKey) {
     throw new Error('GEMINI_API_KEY is not set');
   }
@@ -195,6 +201,120 @@ function accumulateUsage(total, u) {
   total.input_tokens += Math.max(0, (u.promptTokenCount || 0) - cached);
   total.output_tokens += (u.candidatesTokenCount || 0) + (u.thoughtsTokenCount || 0);
   total.cache_read_input_tokens += cached;
+}
+
+/**
+ * Ian on Claude: the same tool loop, in Anthropic's message shape. The frozen
+ * system prompt (and the tools before it) carry a cache breakpoint, so repeat
+ * turns read them from the prompt cache at a fraction of the price.
+ */
+async function runWithClaude({ message, scope = null, voice = false, workspaceId = null, onEvent, timer }) {
+  if (!config.llm.anthropicKey) throw new Error('ANTHROPIC_API_KEY is not set');
+
+  const [overCap, rows, perRequest] = await Promise.all([
+    usage.isOverCap(memory, workspaceId),
+    memory.listChatMessages(config.assistant.historyLimit, { workspaceId }),
+    buildPerRequestContextBlock({ voice, workspaceId }),
+  ]);
+  timer.mark('loaded cap + history + system prompt', { historyRows: rows.length });
+  if (overCap) {
+    const daily = await usage.getDaily(memory, workspaceId);
+    const err = new Error(`daily_cap_reached: ${daily.usd.toFixed(2)} today`);
+    err.code = 'DAILY_CAP_REACHED';
+    throw err;
+  }
+
+  const history = rows
+    .filter((m) => m.content && m.content.trim().length > 0)
+    .slice(-config.assistant.historyLimit)
+    .map((m) => ({ role: m.role === 'assistant' ? 'assistant' : 'user', content: m.content }));
+  // The API needs the conversation to start with the user.
+  while (history.length && history[0].role !== 'user') history.shift();
+
+  const system = [
+    { type: 'text', text: buildFrozenSystemPrompt(), cache_control: { type: 'ephemeral' } },
+    { type: 'text', text: perRequest },
+  ];
+  const smallTalk = isSmallTalk(message);
+  const tools = smallTalk ? [] : buildTools(scope);
+  timer.mark('built tools', { tools: tools.length, smallTalk });
+
+  const messages = [...history, { role: 'user', content: message }];
+  const collectedTaskIds = [];
+  const context = { history, collectedTaskIds, workspaceId, userMessage: message };
+  const totalUsage = { input_tokens: 0, output_tokens: 0, cache_read_input_tokens: 0, cache_creation_input_tokens: 0 };
+  const usageByModel = new Map();
+
+  let fullReply = '';
+  let iterations = 0;
+  const MAX_ITERATIONS = 6;
+
+  while (iterations < MAX_ITERATIONS) {
+    iterations++;
+    let final;
+    let text = '';
+    try {
+      const stream = anthropic.stream({ system, messages, tools, maxTokens: Math.max(config.assistant.maxTokens, 16000) });
+      let first = true;
+      for await (const event of stream) {
+        if (first) { timer.mark(`model call ${iterations}: first event`, { provider: 'anthropic', model: config.anthropic.model, tools: tools.length }); first = false; }
+        if (event.type === 'content_block_delta' && event.delta.type === 'text_delta') {
+          text += event.delta.text;
+          onEvent({ type: 'text_delta', text: event.delta.text });
+        } else if (event.type === 'content_block_start' && event.content_block?.type === 'tool_use') {
+          onEvent({ type: 'tool_start', name: event.content_block.name });
+        }
+      }
+      final = await stream.finalMessage();
+    } catch (err) {
+      const wrapped = new Error(anthropic.describeFailure(err));
+      wrapped.code = 'AI_UNAVAILABLE';
+      wrapped.status = err.status;
+      throw wrapped;
+    }
+
+    accumulateClaudeUsage(totalUsage, final.usage);
+    if (!usageByModel.has(final.model)) usageByModel.set(final.model, { input_tokens: 0, output_tokens: 0, cache_read_input_tokens: 0, cache_creation_input_tokens: 0 });
+    accumulateClaudeUsage(usageByModel.get(final.model), final.usage);
+    timer.mark(`model call ${iterations}: stream done`, { model: final.model, stopReason: final.stop_reason, chars: text.length });
+
+    // Keep the whole content (thinking and fallback blocks included) - the API needs it echoed back unchanged.
+    messages.push({ role: 'assistant', content: final.content });
+
+    if (final.stop_reason === 'tool_use') {
+      const toolResults = [];
+      for (const block of final.content) {
+        if (block.type !== 'tool_use') continue;
+        const result = await invoke(block.name, block.input || {}, context);
+        timer.mark(`tool ${block.name}`, { ok: result?.ok !== false });
+        onEvent({ type: 'tool_end', name: block.name, result });
+        toolResults.push({ type: 'tool_result', tool_use_id: block.id, content: JSON.stringify(result ?? null), is_error: result?.ok === false });
+      }
+      messages.push({ role: 'user', content: toolResults });
+      continue;
+    }
+
+    fullReply = text || final.content.filter((b) => b.type === 'text').map((b) => b.text).join('\n');
+    if (final.stop_reason === 'refusal') onEvent({ type: 'refusal' });
+    break;
+  }
+
+  for (const [model, u] of usageByModel) await usage.record(memory, model, u, workspaceId);
+
+  return {
+    reply: fullReply || "I didn't get a response - try again?",
+    taskIds: collectedTaskIds,
+    usage: totalUsage,
+    iterations,
+  };
+}
+
+function accumulateClaudeUsage(total, u) {
+  if (!u) return;
+  total.input_tokens += u.input_tokens || 0;
+  total.output_tokens += u.output_tokens || 0;
+  total.cache_read_input_tokens += u.cache_read_input_tokens || 0;
+  total.cache_creation_input_tokens += u.cache_creation_input_tokens || 0;
 }
 
 module.exports = { runAssistant };
