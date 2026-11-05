@@ -264,6 +264,14 @@ export const api = {
   updateQa: (id, patch) => request(`/knowledge/qa/${encodeURIComponent(id)}`, { method: 'PATCH', body: JSON.stringify(patch) }),
   deleteQa: (id) => request(`/knowledge/qa/${encodeURIComponent(id)}`, { method: 'DELETE' }),
 
+  // Knowledge base: documents. `file` = { filename, mime_type, data (base64) }.
+  listDocuments: () => request('/knowledge/documents'),
+  uploadDocument: (file) => request('/knowledge/documents', { method: 'POST', body: JSON.stringify(file) }),
+  replaceDocument: (id, file) => request(`/knowledge/documents/${encodeURIComponent(id)}`, { method: 'PUT', body: JSON.stringify(file) }),
+  reprocessDocument: (id) => request(`/knowledge/documents/${encodeURIComponent(id)}/reprocess`, { method: 'POST' }),
+  deleteDocument: (id) => request(`/knowledge/documents/${encodeURIComponent(id)}`, { method: 'DELETE' }),
+  getDocumentText: (id) => request(`/knowledge/documents/${encodeURIComponent(id)}/text`),
+
   // --- Connections (Phase 2.5) ---
   listConnections: () => request('/connections'),
   getConnectionStatus: (provider) => request(`/connections/${provider}/status`),

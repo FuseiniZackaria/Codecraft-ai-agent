@@ -113,7 +113,7 @@ class WhatsAppAgent extends BaseAgent {
       incoming: body, draft: reply, modelHold: parsed.hold, modelReason: parsed.reason, knowledge, ownerName,
       agentName: v.agentName, businessName: profile?.business_name || null,
     });
-    return { reply, ...decision, history, knowledgeUsed: { qa: found.qa } };
+    return { reply, ...decision, history, knowledgeUsed: { qa: found.qa, docs: found.docs } };
   }
 
   async send({ from, text, session, workspaceId, label }) {

@@ -18,7 +18,7 @@ function db() {
   return client;
 }
 
-const mem = { versions: [], qa: [] };
+const mem = { versions: [], qa: [], docs: [], chunks: [], files: new Map() };
 
 function check(error, where) {
   if (!error) return;
@@ -211,14 +211,156 @@ async function searchQa(workspaceId, terms, limit = 60) {
   return data || [];
 }
 
+// ---------- documents ----------
+
+const DOC_COLUMNS = 'id, workspace_id, filename, mime_type, size_bytes, storage_path, status, error, chunk_count, char_count, uploaded_by, created_at, updated_at, processed_at';
+const BUCKET = 'knowledge-docs';
+
+async function listDocuments(workspaceId) {
+  requireWs(workspaceId);
+  if (!db()) {
+    return mem.docs.filter((d) => d.workspace_id === workspaceId).sort((a, b) => String(b.created_at).localeCompare(String(a.created_at))).map((d) => ({ ...d }));
+  }
+  const { data, error } = await db().from('kb_documents').select(DOC_COLUMNS).eq('workspace_id', workspaceId).order('created_at', { ascending: false });
+  check(error, 'listDocuments');
+  return data || [];
+}
+
+async function getDocument(workspaceId, id) {
+  requireWs(workspaceId);
+  if (!db()) { const d = mem.docs.find((x) => x.workspace_id === workspaceId && x.id === id); return d ? { ...d } : null; }
+  const { data, error } = await db().from('kb_documents').select(DOC_COLUMNS).eq('workspace_id', workspaceId).eq('id', id).maybeSingle();
+  check(error, 'getDocument');
+  return data;
+}
+
+async function createDocument(workspaceId, fields) {
+  requireWs(workspaceId);
+  const row = { id: fields.id || crypto.randomUUID(), workspace_id: workspaceId, status: 'processing', ...fields };
+  if (!db()) {
+    const at = new Date().toISOString();
+    const saved = { error: null, chunk_count: 0, char_count: 0, processed_at: null, created_at: at, updated_at: at, ...row };
+    mem.docs.push(saved);
+    return { ...saved };
+  }
+  const { data, error } = await db().from('kb_documents').insert(row).select(DOC_COLUMNS).single();
+  check(error, 'createDocument');
+  return data;
+}
+
+async function updateDocument(workspaceId, id, fields) {
+  requireWs(workspaceId);
+  const patch = { ...fields, updated_at: new Date().toISOString() };
+  if (!db()) {
+    const d = mem.docs.find((x) => x.workspace_id === workspaceId && x.id === id);
+    if (!d) return null;
+    Object.assign(d, patch);
+    return { ...d };
+  }
+  const { data, error } = await db().from('kb_documents').update(patch).eq('workspace_id', workspaceId).eq('id', id).select(DOC_COLUMNS).maybeSingle();
+  check(error, 'updateDocument');
+  return data;
+}
+
+/** Deletes the row (its sections go with it). Returns true if something was deleted. */
+async function deleteDocument(workspaceId, id) {
+  requireWs(workspaceId);
+  if (!db()) {
+    const before = mem.docs.length;
+    mem.docs = mem.docs.filter((x) => !(x.workspace_id === workspaceId && x.id === id));
+    mem.chunks = mem.chunks.filter((c) => c.document_id !== id);
+    return mem.docs.length < before;
+  }
+  const { data, error } = await db().from('kb_documents').delete().eq('workspace_id', workspaceId).eq('id', id).select('id');
+  check(error, 'deleteDocument');
+  return (data || []).length > 0;
+}
+
+/** Swap a document's searchable sections for new ones (old ones stay usable until this runs). */
+async function replaceChunks(workspaceId, documentId, contents) {
+  requireWs(workspaceId);
+  const rows = contents.map((content, i) => ({ document_id: documentId, workspace_id: workspaceId, chunk_index: i, content }));
+  if (!db()) {
+    mem.chunks = mem.chunks.filter((c) => c.document_id !== documentId).concat(rows.map((r) => ({ id: crypto.randomUUID(), ...r })));
+    return;
+  }
+  const del = await db().from('kb_document_chunks').delete().eq('workspace_id', workspaceId).eq('document_id', documentId);
+  check(del.error, 'replaceChunks (delete)');
+  for (let i = 0; i < rows.length; i += 200) {
+    const { error } = await db().from('kb_document_chunks').insert(rows.slice(i, i + 200));
+    check(error, 'replaceChunks (insert)');
+  }
+}
+
+/** A document's sections in order (for "View text" and small knowledge bases). */
+async function listChunks(workspaceId, { documentId = null, limit = 500 } = {}) {
+  requireWs(workspaceId);
+  if (!db()) {
+    return mem.chunks.filter((c) => c.workspace_id === workspaceId && (!documentId || c.document_id === documentId))
+      .sort((a, b) => (a.document_id === b.document_id ? a.chunk_index - b.chunk_index : a.document_id.localeCompare(b.document_id)))
+      .slice(0, limit).map((c) => ({ ...c }));
+  }
+  let q = db().from('kb_document_chunks').select('id, document_id, chunk_index, content').eq('workspace_id', workspaceId);
+  if (documentId) q = q.eq('document_id', documentId);
+  const { data, error } = await q.order('document_id').order('chunk_index').limit(limit);
+  check(error, 'listChunks');
+  return data || [];
+}
+
+/** Sections sharing any of these words (Postgres full-text search; ranked by the caller). */
+async function searchChunks(workspaceId, terms, limit = 60) {
+  requireWs(workspaceId);
+  if (!terms.length) return [];
+  if (!db()) {
+    return mem.chunks.filter((c) => c.workspace_id === workspaceId && terms.some((t) => c.content.toLowerCase().includes(t)))
+      .slice(0, limit).map((c) => ({ ...c }));
+  }
+  const { data, error } = await db().from('kb_document_chunks').select('id, document_id, chunk_index, content')
+    .eq('workspace_id', workspaceId)
+    .textSearch('search', terms.join(' or '), { type: 'websearch', config: 'english' })
+    .limit(limit);
+  check(error, 'searchChunks');
+  return data || [];
+}
+
+// Original files, in the private "knowledge-docs" storage bucket (memory in tests).
+async function putFile(path, buffer, contentType) {
+  if (!db()) { mem.files.set(path, Buffer.from(buffer)); return; }
+  const { error } = await db().storage.from(BUCKET).upload(path, buffer, { contentType: contentType || 'application/octet-stream', upsert: true });
+  if (error) throw new Error(`couldn't store the file (${error.message})`);
+}
+
+async function getFile(path) {
+  if (!db()) {
+    if (!mem.files.has(path)) throw new Error('the stored file is missing');
+    return mem.files.get(path);
+  }
+  const { data, error } = await db().storage.from(BUCKET).download(path);
+  if (error) throw new Error(`couldn't read the stored file (${error.message})`);
+  return Buffer.from(await data.arrayBuffer());
+}
+
+async function removeFiles(paths) {
+  const list = paths.filter(Boolean);
+  if (!list.length) return;
+  if (!db()) { for (const p of list) mem.files.delete(p); return; }
+  const { error } = await db().storage.from(BUCKET).remove(list);
+  if (error) console.warn(`[knowledge] couldn't delete stored file(s): ${error.message}`);
+}
+
 /** Test hook. */
 function _resetMemory() {
   mem.versions = [];
   mem.qa = [];
+  mem.docs = [];
+  mem.chunks = [];
+  mem.files = new Map();
 }
 
 module.exports = {
   getLatestVersion, listVersions, getVersion, addVersion,
   listQa, countQa, getQa, createQa, updateQa, deleteQa, searchQa, QA_MAX_LIST,
+  listDocuments, getDocument, createDocument, updateDocument, deleteDocument,
+  replaceChunks, listChunks, searchChunks, putFile, getFile, removeFiles,
   _resetMemory,
 };

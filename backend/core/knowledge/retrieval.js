@@ -17,6 +17,9 @@ const store = require('./store');
 const INCLUDE_ALL = 25;
 const INCLUDE_ALL_CHARS = 8000;
 const MAX_QA = 8;
+// Documents: send everything up to this size, otherwise the best-matching sections.
+const DOCS_INCLUDE_ALL_CHARS = 6000;
+const MAX_DOC_SECTIONS = 5;
 
 const STOP = new Set(('a an and are as at be but by can could did do does for from had has have hello hi how i if in is it its me my ' +
   'no not of on or our please so than that the their them then there these they this to us was we were what when where which ' +
@@ -51,42 +54,74 @@ function score(entry, queryTerms) {
   return s;
 }
 
+/** Pick Q&A entries (switched-on only) for this message. */
+async function pickQa(workspaceId, queryTerms) {
+  const firstFew = await store.listQa(workspaceId, { enabledOnly: true, limit: INCLUDE_ALL + 1 });
+  const chars = firstFew.reduce((n, e) => n + e.question.length + e.answer.length, 0);
+  if (firstFew.length <= INCLUDE_ALL && chars <= INCLUDE_ALL_CHARS) return firstFew.reverse(); // oldest first reads more naturally
+  const candidates = await store.searchQa(workspaceId, queryTerms);
+  return candidates
+    .map((e) => ({ e, s: score(e, queryTerms) }))
+    .filter((x) => x.s > 0)
+    .sort((x, y) => y.s - x.s)
+    .slice(0, MAX_QA)
+    .map((x) => x.e);
+}
+
+/** Pick document sections (from documents that processed fine) for this message. */
+async function pickDocs(workspaceId, queryTerms) {
+  const docs = (await store.listDocuments(workspaceId)).filter((d) => d.status === 'ready' && d.chunk_count > 0);
+  if (!docs.length) return [];
+  const names = new Map(docs.map((d) => [d.id, d.filename]));
+  const total = docs.reduce((n, d) => n + (d.char_count || 0), 0);
+  let sections;
+  if (total <= DOCS_INCLUDE_ALL_CHARS) {
+    sections = await store.listChunks(workspaceId);
+  } else {
+    const candidates = await store.searchChunks(workspaceId, queryTerms);
+    sections = candidates
+      .map((c) => ({ c, s: score({ question: '', answer: c.content }, queryTerms) }))
+      .filter((x) => x.s > 0)
+      .sort((x, y) => y.s - x.s)
+      .slice(0, MAX_DOC_SECTIONS)
+      .map((x) => x.c);
+  }
+  return sections.filter((c) => names.has(c.document_id)).map((c) => ({ ...c, filename: names.get(c.document_id) }));
+}
+
 /**
  * @param {string} workspaceId
  * @param {string} message - the customer's latest message
  * @param {string} [previous] - their message before that (helps short follow-ups like "and on Sunday?")
- * @returns {Promise<{qa: Array<{label, id, question, answer}>, block: string}>}
+ * @returns {Promise<{qa: Array<{label, id, question, answer}>, docs: Array<{label, documentId, filename, chunkIndex}>, block: string}>}
  */
 async function forMessage(workspaceId, message, previous = '') {
-  if (!workspaceId) return { qa: [], block: '' };
-  let picked = [];
-  try {
-    const firstFew = await store.listQa(workspaceId, { enabledOnly: true, limit: INCLUDE_ALL + 1 });
-    const chars = firstFew.reduce((n, e) => n + e.question.length + e.answer.length, 0);
-    if (firstFew.length <= INCLUDE_ALL && chars <= INCLUDE_ALL_CHARS) {
-      picked = firstFew.reverse(); // oldest first reads more naturally
-    } else {
-      const queryTerms = terms(`${message} ${previous}`);
-      const candidates = await store.searchQa(workspaceId, queryTerms);
-      picked = candidates
-        .map((e) => ({ e, s: score(e, queryTerms) }))
-        .filter((x) => x.s > 0)
-        .sort((x, y) => y.s - x.s)
-        .slice(0, MAX_QA)
-        .map((x) => x.e);
-    }
-  } catch (err) {
-    // No Q&A is better than no reply: the agent then holds anything it doesn't know.
-    if (err.code !== 'MIGRATION_MISSING') console.warn(`[knowledge] Q&A lookup failed for ${workspaceId}: ${err.message}`);
-    return { qa: [], block: '' };
-  }
+  if (!workspaceId) return { qa: [], docs: [], block: '' };
+  const queryTerms = terms(`${message} ${previous}`);
+  // Each part fails on its own: no knowledge is better than no reply (the agent then holds what it doesn't know).
+  const [pickedQa, pickedDocs] = await Promise.all([
+    pickQa(workspaceId, queryTerms).catch((err) => {
+      if (err.code !== 'MIGRATION_MISSING') console.warn(`[knowledge] Q&A lookup failed for ${workspaceId}: ${err.message}`);
+      return [];
+    }),
+    pickDocs(workspaceId, queryTerms).catch((err) => {
+      if (err.code !== 'MIGRATION_MISSING') console.warn(`[knowledge] document lookup failed for ${workspaceId}: ${err.message}`);
+      return [];
+    }),
+  ]);
 
-  const qa = picked.map((e, i) => ({ label: `Q${i + 1}`, id: e.id, question: e.question, answer: e.answer }));
-  const block = qa.length
-    ? 'Q&A from the business (approved answers - use them as the truth, in your own words):\n' +
-      qa.map((e) => `[${e.label}] Q: ${e.question}\nA: ${e.answer}`).join('\n\n') + '\n\n'
-    : '';
-  return { qa, block };
+  const qa = pickedQa.map((e, i) => ({ label: `Q${i + 1}`, id: e.id, question: e.question, answer: e.answer }));
+  const docs = pickedDocs.map((c, i) => ({ label: `D${i + 1}`, documentId: c.document_id, filename: c.filename, chunkIndex: c.chunk_index, content: c.content }));
+  let block = '';
+  if (qa.length) {
+    block += 'Q&A from the business (approved answers - use them as the truth, in your own words):\n' +
+      qa.map((e) => `[${e.label}] Q: ${e.question}\nA: ${e.answer}`).join('\n\n') + '\n\n';
+  }
+  if (docs.length) {
+    block += "From the business's documents (only what is written here counts - never fill gaps by guessing):\n" +
+      docs.map((d) => `[${d.label}] (${d.filename})\n${d.content}`).join('\n\n') + '\n\n';
+  }
+  return { qa, docs, block };
 }
 
-module.exports = { forMessage, terms, score, INCLUDE_ALL, MAX_QA };
+module.exports = { forMessage, terms, score, INCLUDE_ALL, MAX_QA, MAX_DOC_SECTIONS, DOCS_INCLUDE_ALL_CHARS };
