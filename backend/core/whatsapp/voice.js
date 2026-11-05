@@ -15,19 +15,11 @@ const DEFAULT_FILE = path.join(__dirname, '..', '..', 'config', 'whatsapp-voice.
 // heading (lower case) -> key
 const FIXED_SECTIONS = {
   'hold reply': 'hold',
-  'voice note reply': 'voice',
-  'image reply': 'image',
-  'sticker reply': 'sticker',
-  'file reply': 'file',
   signature: 'signature',
 };
 
 const FALLBACK_TEXTS = {
   hold: 'Let me check with the team and get back to you shortly.',
-  voice: "Sorry, I can't play voice notes here yet. Could you type it for me?",
-  image: "Thanks for sending that! I can't open images here yet. Could you type what you need?",
-  sticker: 'How can I help you today?',
-  file: "Thanks! I can't open files here yet. Could you type a short message about what you need?",
   signature: '',
 };
 
@@ -43,7 +35,7 @@ function voiceFile() {
   return process.env.WA_VOICE_FILE || DEFAULT_FILE;
 }
 
-/** Markdown -> { instructions, hold, voice, image, sticker, file, signature }. */
+/** Markdown -> { instructions, hold, signature }. */
 function parseVoice(markdown) {
   const text = String(markdown || '').replace(/\r\n/g, '\n').replace(/<!--[\s\S]*?-->/g, '');
   const sections = [];

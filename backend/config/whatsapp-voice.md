@@ -6,8 +6,8 @@ Render, commit and push the edit - or set WA_VOICE_FILE to a file on a disk.)
 
 How it's read:
 - Every "##" section below is sent to the AI as instructions,
-- EXCEPT the sections whose heading ends in "reply" and the "Signature"
-  section: those are fixed texts, sent to customers exactly as written.
+- EXCEPT the "Hold reply" and "Signature" sections: those are fixed texts,
+  sent to customers exactly as written.
 - Text inside <!-- --> is a note for you and is never sent.
 
 ## Who you are
@@ -59,17 +59,8 @@ Ian: You're welcome! Have a lovely day.
 ## Hold reply
 Let me check with the team and get back to you shortly.
 
-## Voice note reply
-Sorry, I can't play voice notes here yet. Could you type it for me?
-
-## Image reply
-Thanks for sending that! I can't open images here yet. Could you type what you need?
-
-## Sticker reply
-😊 How can I help you today?
-
-## File reply
-Thanks! I can't open files here yet. Could you type a short message about what you need?
+<!-- Voice notes, images and stickers: Ian does NOT reply to those. You get a
+     Telegram / WhatsApp alert to attend to that client yourself. -->
 
 ## Signature
 <!-- Leave this empty for no signature (recommended for WhatsApp). Anything written here is added to the end of every auto-reply. -->

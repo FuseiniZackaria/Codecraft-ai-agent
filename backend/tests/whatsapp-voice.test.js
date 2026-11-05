@@ -46,6 +46,8 @@ const fyi = [];
 const pending = [];
 notifications.notifyOwnerFyi = async (args) => { fyi.push(args); return 'sent'; };
 notifications.notifyOwnerPendingApproval = async (args) => { pending.push(args); return {}; };
+const attention = [];
+notifications.notifyOwnerAttention = async (args) => { attention.push(args); return { telegram: 'sent' }; };
 
 const wahaSends = [];
 waha.sendMessage = async (session, to, text) => { wahaSends.push({ session, to, text }); return { id: `out-${wahaSends.length}` }; };
@@ -57,6 +59,7 @@ function reset() {
   fyi.length = 0;
   pending.length = 0;
   wahaSends.length = 0;
+  attention.length = 0;
 }
 const json = (reply, hold = false, reason = '') => JSON.stringify({ reply, hold, reason });
 
@@ -71,7 +74,7 @@ const json = (reply, hold = false, reason = '') => JSON.stringify({ reply, hold,
     assert(v.instructions.includes('Zackman'), 'founder named in the voice file');
     assert(!/hold reply|voice note reply|signature/i.test(v.instructions.split('\n').filter((l) => /^[A-Z].*:$/.test(l)).join(' ')), 'fixed texts are not sent as instructions');
     assert.strictEqual(v.hold, 'Let me check with the team and get back to you shortly.');
-    assert.strictEqual(v.voice, "Sorry, I can't play voice notes here yet. Could you type it for me?");
+    assert(!/voice notes? here yet|could you type/i.test(JSON.stringify(v)), 'no "please type it" text anywhere');
     assert.strictEqual(v.signature, '', 'no signature by default');
 
     // Edits are picked up without a restart
@@ -82,7 +85,7 @@ const json = (reply, hold = false, reason = '') => JSON.stringify({ reply, hold,
     fs.writeFileSync(tmp, '## Tone\nBe brief.\n\n## Hold reply\nGive me a minute to check.\n');
     fs.utimesSync(tmp, new Date(), new Date(Date.now() + 5000));
     assert.strictEqual(voice.loadVoice().hold, 'Give me a minute to check.');
-    assert.strictEqual(voice.loadVoice().voice, v.voice, 'missing sections fall back to the defaults');
+    assert.strictEqual(voice.loadVoice().signature, '', 'missing sections fall back to the defaults');
     delete process.env.WA_VOICE_FILE;
     fs.unlinkSync(tmp);
     console.log('✓ voice: tone rules and fixed replies come from config/whatsapp-voice.md and edits apply without a restart');
@@ -167,27 +170,46 @@ const json = (reply, hold = false, reason = '') => JSON.stringify({ reply, hold,
     const registry = require('../agents/registry');
     const realGetAgent = registry.getAgent;
     registry.getAgent = () => ({ handleIncomingMessage: async () => { routed += 1; } });
-    const incoming = (id, mediaType, text) => messaging.handleIncomingMessage({
+    const incoming = (id, mediaType, text, from = '233200000002') => messaging.handleIncomingMessage({
       providerName: 'waha', sessionName: 'default', userId: 'admin-1',
-      message: { waMessageId: id, contactNumber: '233200000002', text, mediaType, timestamp: new Date().toISOString() },
+      message: { waMessageId: id, contactNumber: from, contactName: 'Ama', text, mediaType, timestamp: new Date().toISOString() },
     });
     const r1 = await incoming('vn-1', 'voice', '[voice note]');
-    assert.strictEqual(r1.mediaReply, "Sorry, I can't play voice notes here yet. Could you type it for me?");
-    assert.deepStrictEqual(wahaSends.map((s) => s.text), [r1.mediaReply]);
+    assert.strictEqual(r1.ownerAlerted, true);
+    assert.deepStrictEqual(wahaSends, [], 'nothing is sent to the customer');
+    assert.strictEqual(attention.length, 1, 'owner told to attend to this client');
+    assert.strictEqual(attention[0].from, '233200000002');
+    assert.strictEqual(attention[0].mediaType, 'voice');
     await incoming('vn-2', 'voice', '[voice note]');
-    assert.strictEqual(wahaSends.length, 1, 'a second voice note right after gets no repeat');
+    assert.strictEqual(attention.length, 1, 'a second voice note right after is not a second alert');
     assert.strictEqual(routed, 0, 'media alone never goes to the AI');
 
-    messaging._lastMediaReply.clear();
-    const r3 = await incoming('st-1', 'sticker', '[sticker]');
-    assert.strictEqual(r3.mediaReply, v.sticker);
-    messaging._lastMediaReply.clear();
-    const r4 = await incoming('im-1', 'image', '[image]');
-    assert.strictEqual(r4.mediaReply, v.image);
+    for (const [id, kind] of [['st-1', 'sticker'], ['im-1', 'image']]) {
+      await incoming(id, kind, `[${kind}]`, `2332000003${id === 'st-1' ? '01' : '02'}`);
+    }
+    assert.deepStrictEqual(attention.map((a) => a.mediaType), ['voice', 'sticker', 'image']);
+    assert.deepStrictEqual(wahaSends, [], 'still nothing sent to customers');
     await incoming('im-2', 'image', 'Can you build a site like this one?');
     assert.strictEqual(routed, 1, 'an image WITH a caption is answered like a text message');
+
+    // The owner's own number (e.g. answering an alert) never gets an AI reply
+    config.notifications.ownerWhatsappNumber = '0202457446';
+    const own = await incoming('own-1', null, 'ok I will call her', '233202457446');
+    assert.strictEqual(own.reason, 'message from the owner');
+    assert.strictEqual(routed, 1);
+    config.notifications.ownerWhatsappNumber = null;
     registry.getAgent = realGetAgent;
-    console.log('✓ media: voice notes, stickers and images get a polite "please type it" reply, once');
+
+    // Alert wording, and WhatsApp alerts work with WAHA (not just the Meta API)
+    const realNotifs = require('../core/notifications');
+    assert.strictEqual(typeof realNotifs.isChannelConfigured, 'function');
+    config.notifications.ownerWhatsappNumber = '233202457446';
+    const savedWaha = { ...config.waha };
+    config.waha.baseUrl = 'http://waha.test'; config.waha.apiKey = 'k';
+    assert.strictEqual(realNotifs.isChannelConfigured('whatsapp'), true, 'WAHA can deliver owner alerts');
+    Object.assign(config.waha, savedWaha);
+    config.notifications.ownerWhatsappNumber = null;
+    console.log('✓ media: voice notes, stickers and images get NO reply - the owner is alerted to attend to the client (once)');
   }
 
   // 6. Approval vs FYI routing

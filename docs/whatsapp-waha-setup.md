@@ -214,13 +214,16 @@ To hand it over, that admin clicks **Disconnect**, then the other admin clicks
      anything Ian doesn't know are **held**: the customer gets *"Let me check
      with the team and get back to you shortly."*, Ian's suggested answer waits
      in **Work → Tasks**, and you get an alert. Approve (or edit) to send.
-   - Voice notes, images and stickers get *"Sorry, I can't play voice notes here
-     yet. Could you type it for me?"* (or the image/sticker version).
+   - Voice notes, images and stickers: Ian does **not** reply. You get a
+     Telegram / WhatsApp alert to attend to that client yourself (one alert per
+     client per 10 minutes).
+   - Messages from your own number (`OWNER_WHATSAPP_NUMBER`), e.g. answering an
+     alert, never get an AI reply.
 
 ### Changing how Ian sounds
 
 Ian's WhatsApp tone, identity, approval rules, examples and fixed replies
-(the "let me check" and voice-note texts, and an optional signature) are all in
+(the "let me check" text and an optional signature) are all in
 one plain-text file: **`backend/config/whatsapp-voice.md`**. Edit it, commit and
 push - Render redeploys and the next message uses it. No code changes needed.
 (To edit without a deploy, put the file on a disk and point `WA_VOICE_FILE` at it.)

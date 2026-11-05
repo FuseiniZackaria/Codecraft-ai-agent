@@ -36,7 +36,10 @@ function isChannelConfigured(channel) {
     return !!(config.notifications?.ownerTelegramChatId && config.telegram?.botToken);
   }
   if (channel === 'whatsapp') {
-    return !!(config.notifications?.ownerWhatsappNumber && (config.whatsapp?.accessToken || config.whatsapp?.phoneNumberId));
+    if (!config.notifications?.ownerWhatsappNumber) return false;
+    // WAHA: alerts go out from the linked WhatsApp (needs WAHA_BASE_URL + WAHA_API_KEY).
+    if (config.whatsapp?.provider === 'waha' && config.waha?.baseUrl && config.waha?.apiKey) return true;
+    return !!(config.whatsapp?.accessToken || config.whatsapp?.phoneNumberId);
   }
   if (channel === 'email') {
     return !!(config.applicant?.email);
@@ -66,7 +69,7 @@ async function trySendTelegram(alertText) {
 async function trySendWhatsapp(alertText) {
   if (!isChannelConfigured('whatsapp')) return 'not_configured';
   try {
-    await whatsappProvider.sendMessage(config.notifications.ownerWhatsappNumber, alertText);
+    await whatsappProvider.sendMessage(config.notifications.ownerWhatsappNumber, alertText, { source: 'owner_alert' });
     return 'sent';
   } catch (err) {
     console.warn(`[notifications] owner WhatsApp alert failed: ${err.message}`);
@@ -163,8 +166,34 @@ async function notifyOwnerFyi({ channel, from, customerMessage, sentReply }) {
   return trySendTelegram(text);
 }
 
+const MEDIA_WORDS = { voice: 'a voice note', image: 'an image', sticker: 'a sticker', video: 'a video', file: 'a file' };
+
+/**
+ * A customer sent something Ian can't read (voice note, image, sticker, file).
+ * Ian does NOT reply to them - the owner is asked to attend to this client.
+ * Telegram and WhatsApp; email only if neither got through. Never throws.
+ */
+async function notifyOwnerAttention({ channel, from, contactName = null, mediaType = null, workspaceId = null }) {
+  const what = MEDIA_WORDS[mediaType] || "a message Ian can't read";
+  const who = contactName ? `${contactName} (${from})` : from;
+  const alertText =
+    `Please attend to this client on ${channel}\n\n` +
+    `${who} sent ${what}. Ian can't listen to or open it, so he hasn't replied - they're waiting for you.\n\n` +
+    'Reply to them from your WhatsApp or from Work -> Inbox in CodeCraft.';
+  const results = {
+    telegram: await trySendTelegram(alertText),
+    whatsapp: await trySendWhatsapp(alertText),
+    email: 'not_attempted',
+  };
+  if (results.telegram !== 'sent' && results.whatsapp !== 'sent') {
+    results.email = await trySendEmail({ subject: `Attend to ${channel} client ${from}`, body: alertText, workspaceId });
+  }
+  return results;
+}
+
 module.exports = {
   notifyOwnerPendingApproval,
+  notifyOwnerAttention,
   notifyOwnerFyi,
   channelStatus,
   isChannelConfigured,

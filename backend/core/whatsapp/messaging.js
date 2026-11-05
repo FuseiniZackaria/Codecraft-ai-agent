@@ -75,33 +75,33 @@ async function sendAndRecord({ sessionName, to, text, userId = null, workspaceId
 }
 
 const MEDIA_ONLY_TEXT = /^\[(voice note|image|sticker|video|file|media message)\]$/;
-const MEDIA_REPLY_KEY = { voice: 'voice', image: 'image', sticker: 'sticker', video: 'image', file: 'file' };
-const MEDIA_REPLY_GAP_MS = 10 * 60 * 1000;
-const lastMediaReply = new Map(); // session|contact -> time of the last "please type it" reply
+const MEDIA_ALERT_GAP_MS = 10 * 60 * 1000;
+const lastMediaAlert = new Map(); // session|contact -> time the owner was last alerted about their media
 
 /**
- * The polite "I can't open that yet, could you type it?" reply (texts in
- * config/whatsapp-voice.md). Sent at most once per 10 minutes per contact, so
- * five voice notes in a row get one answer, not five.
+ * Voice note / image / sticker / file with no text: Ian can't read it, so he
+ * says NOTHING to the customer - the owner is alerted (Telegram / WhatsApp) to
+ * attend to this client. At most one alert per contact per 10 minutes, so five
+ * voice notes in a row are one alert, not five.
  */
-async function replyToMedia({ providerName, sessionName, userId, workspaceId, message }) {
-  const autoReplyOn = providerName === 'waha' ? config.whatsapp.autoReply : config.autoReply.whatsapp.enabled;
-  if (!autoReplyOn) return { handled: true, routed: false, reason: 'media message; auto-reply is off' };
+async function alertOwnerAboutMedia({ sessionName, workspaceId, message }) {
   const key = `${sessionName}|${message.contactNumber}`;
-  if (Date.now() - (lastMediaReply.get(key) || 0) < MEDIA_REPLY_GAP_MS) {
-    return { handled: true, routed: false, reason: 'media message; already asked them to type it' };
+  if (Date.now() - (lastMediaAlert.get(key) || 0) < MEDIA_ALERT_GAP_MS) {
+    return { handled: true, routed: false, reason: 'media message; owner already alerted' };
   }
-  const v = require('./voice').loadVoice();
-  const text = v[MEDIA_REPLY_KEY[message.mediaType] || 'file'];
-  lastMediaReply.set(key, Date.now());
-  try {
-    await sendAndRecord({ sessionName, to: message.contactNumber, text, userId, workspaceId, source: 'auto_reply', typing: true });
-  } catch (err) {
-    lastMediaReply.delete(key);
-    return { handled: true, routed: false, error: `media reply not sent: ${err.message}` };
-  }
-  await activityLog.record('WhatsApp', 'media_reply_sent', message.contactNumber, { session: sessionName, mediaType: message.mediaType, workspaceId }).catch(() => {});
-  return { handled: true, routed: false, mediaReply: text };
+  lastMediaAlert.set(key, Date.now());
+  const results = await require('../notifications').notifyOwnerAttention({
+    channel: 'WhatsApp', from: message.contactNumber, contactName: message.contactName || null, mediaType: message.mediaType, workspaceId,
+  }).catch((err) => ({ error: err.message }));
+  await activityLog.record('WhatsApp', 'owner_alerted_media', message.contactNumber, { session: sessionName, mediaType: message.mediaType, results, workspaceId }).catch(() => {});
+  console.log(`[whatsapp] ${message.contactNumber} sent ${message.mediaType}; no reply sent, owner alerted (${JSON.stringify(results)})`);
+  return { handled: true, routed: false, ownerAlerted: true, results };
+}
+
+/** The owner's own number: their messages (e.g. answering an alert) never get an AI reply. */
+function isOwnerNumber(contactNumber) {
+  const owner = normalizeNumber(config.notifications?.ownerWhatsappNumber || '');
+  return !!owner && owner === contactNumber;
 }
 
 /**
@@ -152,8 +152,13 @@ async function handleIncomingMessage({ providerName, sessionName, userId = null,
     // Opted out: their message is saved (it shows in the Inbox) but nothing replies automatically.
     if (optedOut) return { handled: true, routed: false, reason: 'opted out' };
 
+    // The owner writing to the linked number (e.g. replying to an alert) is not a customer.
+    if (isOwnerNumber(message.contactNumber)) return { handled: true, routed: false, reason: 'message from the owner' };
+
     const mediaOnly = !!message.mediaType && MEDIA_ONLY_TEXT.test(text);
     if (!text || (!mediaOnly && text === '[media message]')) return { handled: true, routed: false };
+    // Voice note / image / sticker with no text: no reply to the customer; the owner is alerted instead.
+    if (mediaOnly) return alertOwnerAboutMedia({ sessionName, workspaceId, message });
 
     // Rate limit: a contact (or another bot) can't keep the auto-reply going forever.
     const hourAgo = new Date(Date.now() - 60 * 60 * 1000).toISOString();
@@ -163,9 +168,6 @@ async function handleIncomingMessage({ providerName, sessionName, userId = null,
       await activityLog.record('WhatsApp', 'auto_reply_rate_limited', message.contactNumber, { session: sessionName, workspaceId }).catch(() => {});
       return { handled: true, routed: false, reason: 'rate limited' };
     }
-
-    // Voice note / image / sticker with no text: Ian can't read it yet, so ask them to type it.
-    if (mediaOnly) return replyToMedia({ providerName, sessionName, userId, workspaceId, message });
 
     // Lazy require: agents/registry -> agents -> core modules would otherwise be circular.
     const agent = require('../../agents/registry').getAgent('whatsapp');
@@ -209,5 +211,5 @@ async function handleSessionStatus({ sessionName, status, phoneNumber, pushName 
 
 module.exports = {
   sendAndRecord, handleIncomingMessage, handleSessionStatus, randomBetween,
-  STOP_WORDS, START_WORDS, STOP_NOTICE, START_NOTICE, OptedOutError, timing, _lastMediaReply: lastMediaReply,
+  STOP_WORDS, START_WORDS, STOP_NOTICE, START_NOTICE, OptedOutError, timing, _lastMediaAlert: lastMediaAlert,
 };
