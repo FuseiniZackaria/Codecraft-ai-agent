@@ -94,7 +94,13 @@ export default function WhatsAppInbox() {
   const [error, setError] = useState(null);
   const [text, setText] = useState('');
   const [sending, setSending] = useState(false);
-  const bottomRef = useRef(null);
+  // The message list scrolls to the newest message only when you open a chat, send,
+  // or a new message arrives while you're already at the bottom - never while you
+  // are scrolled up reading earlier messages.
+  const listRef = useRef(null);
+  const atBottomRef = useRef(true);
+  const forceBottomRef = useRef(true);
+  const lastSeenRef = useRef('');
   const [corrections, setCorrections] = useState({});
   const [correcting, setCorrecting] = useState(null); // { messageId, question, answer }
 
@@ -117,7 +123,12 @@ export default function WhatsAppInbox() {
   const loadMessages = useCallback(async (number) => {
     if (!number) return;
     try {
-      setMessages(await api.getWhatsappMessages(number));
+      const list = await api.getWhatsappMessages(number);
+      // Nothing new: leave the list (and where you've scrolled to) alone.
+      const sig = `${number}|${list.length}|${list[list.length - 1]?.id || ''}`;
+      if (sig === lastSeenRef.current) return;
+      lastSeenRef.current = sig;
+      setMessages(list);
     } catch (err) {
       setError(err.message);
     }
@@ -130,6 +141,9 @@ export default function WhatsAppInbox() {
   }, [loadConversations]);
 
   useEffect(() => {
+    forceBottomRef.current = true; // a newly opened chat starts at the newest message
+    lastSeenRef.current = '';
+    atBottomRef.current = true;
     loadMessages(selected);
     if (!selected) return undefined;
     const t = setInterval(() => loadMessages(selected), REFRESH_MS);
@@ -137,8 +151,16 @@ export default function WhatsAppInbox() {
   }, [selected, loadMessages]);
 
   useEffect(() => {
-    bottomRef.current?.scrollIntoView({ block: 'end' });
+    const el = listRef.current;
+    if (!el) return;
+    if (forceBottomRef.current || atBottomRef.current) el.scrollTop = el.scrollHeight;
+    forceBottomRef.current = false;
   }, [messages]);
+
+  function onListScroll(e) {
+    const el = e.currentTarget;
+    atBottomRef.current = el.scrollHeight - el.scrollTop - el.clientHeight < 80;
+  }
 
   async function send(e) {
     e.preventDefault();
@@ -147,6 +169,7 @@ export default function WhatsAppInbox() {
     try {
       await api.replyWhatsapp(selected, text.trim());
       setText('');
+      forceBottomRef.current = true; // show your own message
       await Promise.all([loadMessages(selected), loadConversations()]);
     } catch (err) {
       setError(err.message);
@@ -225,7 +248,7 @@ export default function WhatsAppInbox() {
                   {current?.contactName && <div className="text-[11px] text-[var(--color-text-muted)]">+{selected}</div>}
                 </div>
               </div>
-              <div className="flex-1 overflow-y-auto p-3 space-y-2">
+              <div ref={listRef} onScroll={onListScroll} className="flex-1 overflow-y-auto p-3 space-y-2">
                 {messages.map((m, i) => (
                   <div key={m.id} className={`flex ${m.direction === 'out' ? 'justify-end' : 'justify-start'}`}>
                     <div className={`max-w-[80%] rounded-lg px-3 py-2 text-sm whitespace-pre-wrap break-words ${
@@ -251,7 +274,6 @@ export default function WhatsAppInbox() {
                     </div>
                   </div>
                 ))}
-                <div ref={bottomRef} />
               </div>
               {correcting && (
                 <CorrectAnswerDialog
