@@ -100,7 +100,9 @@ async function send(workspaceId, text, user = {}) {
     draft: drafted.reply,
     held,
     reason: drafted.reason,
-    customerSees: held ? v.holdReply : drafted.reply,
+    // Same text a real customer would get (payments have their own "we'll confirm" message).
+    customerSees: held ? (drafted.kind === 'payment' ? require('../../agents/whatsapp/WhatsAppAgent').PAYMENT_HOLD_TEXT : v.holdReply) : drafted.reply,
+    kind: drafted.kind || null,
     sources: describeSources(drafted.knowledgeUsed),
     cited: drafted.knowledgeUsed?.cited || [],
     instructionsVersion: v.version,

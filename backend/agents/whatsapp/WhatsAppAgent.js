@@ -36,6 +36,8 @@ const replyPolicy = require('../../core/whatsapp/replyPolicy');
 const TOOL = 'whatsapp.sendMessage';
 const GREETING_GAP_MS = 6 * 60 * 60 * 1000; // no message from Ian for 6h = a new conversation, greet again
 const HOLD_REPEAT_MS = 2 * 60 * 60 * 1000; // don't repeat "let me check with the team" within 2h
+// Sent when a customer says they've paid or sends proof: a person checks the money arrived first.
+const PAYMENT_HOLD_TEXT = 'Thank you! A team member will check and confirm your payment shortly.';
 
 const OUTPUT_FORMAT =
   'Answer with ONLY a JSON object, nothing else:\n' +
@@ -168,7 +170,9 @@ class WhatsAppAgent extends BaseAgent {
         return { draft: '', held: true, reason: 'AI unavailable', autoSent: false, holdSent: false, approvalTaskId: null, ownerAlerted: true };
       }
     }
-    const { reply: draft, hold, reason: holdReason } = drafted;
+    const { reply: draft, hold, reason: holdReason, kind } = drafted;
+    // A payment gets its own "we'll confirm" message - it is never confirmed by Ian.
+    const holdText = kind === 'payment' ? PAYMENT_HOLD_TEXT : v.hold;
     let held = hold;
     let reason = holdReason;
 
@@ -211,9 +215,9 @@ class WhatsAppAgent extends BaseAgent {
     // Tell the customer we're on it - once, not after every message.
     if (autoReplyOn && result.autoSent === false && held) {
       const lastOut = [...history].reverse().find((m) => m.direction === 'out');
-      const alreadyTold = lastOut && msgText(lastOut).trim() === v.hold.trim() && now - new Date(lastOut.sent_at) < HOLD_REPEAT_MS;
+      const alreadyTold = lastOut && msgText(lastOut).trim() === holdText.trim() && now - new Date(lastOut.sent_at) < HOLD_REPEAT_MS;
       if (!alreadyTold) {
-        const sent = await this.send({ from, text: v.hold, session, workspaceId, label: 'Holding reply' })
+        const sent = await this.send({ from, text: holdText, session, workspaceId, label: 'Holding reply' })
           .catch((err) => ({ sent: false, error: err }));
         result.holdSent = !!sent.sent;
       }
@@ -222,7 +226,7 @@ class WhatsAppAgent extends BaseAgent {
     notifications
       .notifyOwnerPendingApproval({
         channel: 'whatsapp', from, customerMessage: body, draftReply: draft, approvalTaskId: approvalTask.id, workspaceId,
-        reason: result.reason, customerToldText: result.holdSent ? v.hold : null,
+        reason: result.reason, customerToldText: result.holdSent ? holdText : null,
       })
       .catch((err) => console.warn(`[WhatsAppAgent] owner notification failed: ${err.message}`));
 
@@ -234,3 +238,4 @@ class WhatsAppAgent extends BaseAgent {
 WhatsAppAgent.retryDelayMs = Number(process.env.WA_AI_RETRY_DELAY_MS) || 20000;
 
 module.exports = WhatsAppAgent;
+module.exports.PAYMENT_HOLD_TEXT = PAYMENT_HOLD_TEXT;

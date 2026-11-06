@@ -71,7 +71,8 @@ const json = (reply, hold = false, reason = '') => JSON.stringify({ reply, hold,
   // 1. The voice file is the one editable place, and it's read correctly
   {
     assert(v.instructions.includes('Ian from CodeCraft'), 'identity comes from the voice file');
-    assert(v.instructions.includes('Zackman'), 'founder named in the voice file');
+    // Whoever the file names as founder (the name is the owner's to change).
+    assert(/founder is [A-Z][\w.]*/.test(v.instructions), 'founder named in the voice file');
     assert(!/hold reply|voice note reply|signature/i.test(v.instructions.split('\n').filter((l) => /^[A-Z].*:$/.test(l)).join(' ')), 'fixed texts are not sent as instructions');
     assert.strictEqual(v.hold, 'Let me check with the team and get back to you shortly.');
     assert(!/voice notes? here yet|could you type/i.test(JSON.stringify(v)), 'no "please type it" text anywhere');

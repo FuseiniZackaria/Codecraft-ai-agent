@@ -13,6 +13,32 @@ const { RISK_KEYWORDS, containsPlaceholderText } = require('../autoReplySafety')
  * flag, so one missed judgement can't send a price or a promise.
  */
 
+/*
+ * Payments are NEVER confirmed automatically - not from a text ("I've sent the
+ * MoMo") and not from a screenshot. A person checks the money actually arrived.
+ * The customer is told a team member will confirm, and the owner is alerted.
+ */
+const MONEY = '(money|payment|momo|mobile money|cash|amount|fees?|deposit|balance|transfer)';
+const PAYMENT_CLAIM_RE = new RegExp(
+  "\\b(i('ve| have)?( just| already| now)? (paid|transferred|made (the |my |a )?payment|sent (you |it |the |my )*" + MONEY + ')' +
+  `|(sent|send|did|made) (the |a |my )?(momo|mobile money|bank transfer|transfer)` +
+  `|payment (is |was |has been )?(done|made|sent|successful|completed|through)` +
+  `|proof of payment|payment (receipt|screenshot|confirmation|slip)|transaction (id|reference|ref|number)|momo (receipt|reference|ref)` +
+  `|(confirm|check|verify) (my|the) (payment|transfer|momo)|(have|did) you (receive|received|get|got|see|seen) (my|the) ${MONEY})\\b`,
+  'i',
+);
+const PAYMENT_CONFIRM_RE = new RegExp(
+  `\\b((we|i)('ve| have)?( now| just)? (received|got|confirmed|verified) (your|the) ${MONEY}` +
+  `|${MONEY} (has been |have been |is |was |has |have )?(now )?(received|confirmed|successful|verified|gone through|come through|reflected|arrived|cleared))\\b`,
+  'i',
+);
+const PAYMENT_REASON = 'payment - never confirmed automatically (a person must check the money arrived)';
+
+/** True if the customer is telling us they've paid / sending proof of payment. */
+function isPaymentClaim(text) {
+  return PAYMENT_CLAIM_RE.test(String(text || ''));
+}
+
 const INCOMING_RULES = [
   {
     reason: 'pricing or a quote',
@@ -201,6 +227,10 @@ function cleanReply(text, { signature = '', profileSignature = '', agentName = '
  */
 function decideRouting({ incoming, draft, modelHold = false, modelReason = '', knowledge = '', ownerName = null, agentName = 'Ian', businessName = null }) {
   const msg = String(incoming || '');
+  // Payments first: whatever else is in the message, a payment is never confirmed by the agent.
+  if (isPaymentClaim(msg) || PAYMENT_CONFIRM_RE.test(String(draft || ''))) {
+    return { hold: true, reason: PAYMENT_REASON, kind: 'payment' };
+  }
   if (!String(draft || '').trim()) return { hold: true, reason: 'no reply was drafted' };
 
   for (const rule of INCOMING_RULES) {
@@ -227,4 +257,4 @@ function decideRouting({ incoming, draft, modelHold = false, modelReason = '', k
   return { hold: false, reason: 'general question - answered straight away' };
 }
 
-module.exports = { decideRouting, cleanReply, parseDraft, identityProblem, unverifiedDetail };
+module.exports = { decideRouting, cleanReply, parseDraft, identityProblem, unverifiedDetail, isPaymentClaim, PAYMENT_REASON };

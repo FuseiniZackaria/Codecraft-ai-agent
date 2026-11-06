@@ -28,6 +28,7 @@ module.exports = [
   'tests/knowledge-corrections.test.js',
   'tests/knowledge-agent-e2e.test.js',
   'tests/knowledge-isolation.test.js',
+  'tests/payment-rule.test.js',
   'tests/whatsapp-waha.test.js',
   'tests/whatsapp-voice.test.js',
   'tests/composio-per-workspace.test.js',
