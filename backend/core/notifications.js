@@ -131,7 +131,7 @@ async function notifyOwnerPendingApproval({ channel, from, customerMessage, draf
     `Customer said: "${truncate(customerMessage)}"\n\n` +
     (customerToldText ? `They were told: "${truncate(customerToldText)}"\n\n` : '') +
     `Drafted reply: "${truncate(draftReply)}"\n\n` +
-    `Approve or edit it on your CodeCraft Tasks page` +
+    `The customer hasn't had a reply yet. Reply to them yourself, or approve/edit Ian's suggestion on your CodeCraft Tasks page` +
     (approvalTaskId ? ` (task ${approvalTaskId}).` : '.');
 
   const results = {

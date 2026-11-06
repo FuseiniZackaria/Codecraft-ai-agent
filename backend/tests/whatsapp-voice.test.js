@@ -130,7 +130,7 @@ const json = (reply, hold = false, reason = '') => JSON.stringify({ reply, hold,
     businessProfile.invalidate();
     assert.strictEqual(r.held, true);
     assert(/founder|Dumenu/.test(r.reason), r.reason);
-    assert.deepStrictEqual(sentToCustomer, [v.hold], 'only the holding reply went out');
+    assert.deepStrictEqual(sentToCustomer, [], 'nothing went out - the owner replies');
     assert(!sentToCustomer.join(' ').includes('founder'));
     console.log('✓ identity: Ian never claims to be the founder or uses the owner\'s name - such a draft is held');
   }
@@ -245,10 +245,10 @@ const json = (reply, hold = false, reason = '') => JSON.stringify({ reply, hold,
       const r = await ask(msg, { from: `2332000001${String(Math.floor(Math.random() * 90) + 10)}` });
       assert.strictEqual(r.held, true, `"${msg}" should be held`);
       assert(why.test(r.reason), `"${msg}": ${r.reason}`);
-      assert.deepStrictEqual(sentToCustomer, [v.hold], `"${msg}": only the holding reply goes out`);
+      assert.deepStrictEqual(sentToCustomer, [], `"${msg}": nothing goes out - never "let me check with the team"`);
       assert.strictEqual(pending.length, 1, 'owner asked to approve');
       assert.strictEqual(pending[0].draftReply, 'Sure, no problem at all!', 'the suggested answer waits for approval');
-      assert.strictEqual(pending[0].customerToldText, v.hold);
+      assert.strictEqual(pending[0].customerToldText, null);
       assert.strictEqual(fyi.length, 0, 'no FYI for held messages');
     }
 
@@ -272,14 +272,14 @@ const json = (reply, hold = false, reason = '') => JSON.stringify({ reply, hold,
     modelAnswer = 'Sure, here you go';
     assert.strictEqual((await ask('Hello there', { from: '233200000033' })).held, true);
 
-    // The holding reply isn't repeated within 2 hours
+    // Held again: still nothing is sent
     reset();
     await store.saveMessage({ provider: 'waha', sessionName: 'default', userId: 'admin-1', direction: 'out', contactNumber: '233200000040', text: v.hold, waMessageId: 'h-1', source: 'auto_reply' });
     modelAnswer = json('Sure!');
     const r4 = await ask('And how much for the logo?', { from: '233200000040' });
     assert.strictEqual(r4.held, true);
     assert.strictEqual(r4.holdSent, false);
-    assert.deepStrictEqual(sentToCustomer, [], 'not told "let me check" twice');
+    assert.deepStrictEqual(sentToCustomer, [], 'never told "let me check"');
     assert.strictEqual(pending.length, 1);
 
     // Auto-reply off: everything waits for approval, nothing is sent

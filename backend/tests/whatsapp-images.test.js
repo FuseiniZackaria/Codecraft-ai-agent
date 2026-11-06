@@ -121,9 +121,9 @@ const incoming = (extra = {}) => messaging.handleIncomingMessage({
     reply = { reply: 'Thanks, payment received!', hold: false, reason: '', photos: ['P1'] };
     const r = await incoming();
     assert.strictEqual(r.reply.held, true);
-    assert.deepStrictEqual(sends.map((s) => s.body), [WhatsAppAgent.PAYMENT_HOLD_TEXT], 'only "a team member will confirm" - no photos, no "received"');
+    assert.deepStrictEqual(sends, [], 'nothing is sent - no photos, no "received" - you check and reply');
     assert.strictEqual(pending.length, 1, 'the owner is asked to check');
-    console.log('✓ E: a payment screenshot is never confirmed - "a team member will check and confirm"');
+    console.log('✓ E: a payment screenshot is never confirmed - nothing is sent; you check and reply');
   }
 
   // E4. Caption + photo: both are used.

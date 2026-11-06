@@ -41,7 +41,7 @@ function checkRate(workspaceId) {
 /** Test-chat rows -> the history shape the agent uses (what the customer actually saw). */
 function toHistory(rows) {
   return rows
-    .filter((m) => !m.meta?.error)
+    .filter((m) => !m.meta?.error && !(m.role === 'agent' && !m.body)) // held replies were never sent
     .map((m) => ({
       direction: m.role === 'customer' ? 'in' : 'out',
       body: m.role === 'customer'
@@ -152,7 +152,8 @@ async function send(workspaceId, text, user = {}, image = null) {
     held,
     reason: drafted.reason,
     // Same text a real customer would get (payments have their own "we'll confirm" message).
-    customerSees: held ? (drafted.kind === 'payment' ? require('../../agents/whatsapp/WhatsAppAgent').PAYMENT_HOLD_TEXT : v.holdReply) : drafted.reply,
+    // Held: the customer gets nothing until you reply or approve (no "checking with the team").
+    customerSees: held ? null : drafted.reply,
     kind: drafted.kind || null,
     sources: describeSources(drafted.knowledgeUsed),
     cited: drafted.knowledgeUsed?.cited || [],
@@ -162,7 +163,7 @@ async function send(workspaceId, text, user = {}, image = null) {
     instructionsSource: v.source,
     autoReplyOn,
   };
-  const agentRow = await store.addTestMessage(workspaceId, { role: 'agent', body: meta.customerSees, meta, userId: user.id || null });
+  const agentRow = await store.addTestMessage(workspaceId, { role: 'agent', body: meta.customerSees || '', meta, userId: user.id || null });
   return { customer, agent: agentRow };
 }
 

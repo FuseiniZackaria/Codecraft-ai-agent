@@ -64,15 +64,21 @@ function AgentBubble({ m, agentName, corrected, onCorrect }) {
   }
   return (
     <div className="max-w-[85%] space-y-2">
-      <div className="p-3 rounded-lg bg-emerald-500/10 border border-emerald-500/20 text-sm whitespace-pre-wrap">
-        {m.body}
-        <div className="text-[10px] text-[var(--color-text-muted)] mt-1 text-right">{agentName} · {time(m.created_at)}</div>
-      </div>
+      {m.body ? (
+        <div className="p-3 rounded-lg bg-emerald-500/10 border border-emerald-500/20 text-sm whitespace-pre-wrap">
+          {m.body}
+          <div className="text-[10px] text-[var(--color-text-muted)] mt-1 text-right">{agentName} · {time(m.created_at)}</div>
+        </div>
+      ) : (
+        <div className="p-3 rounded-lg border border-dashed border-[var(--color-border)] text-xs text-[var(--color-text-muted)] italic">
+          No message sent to the customer - {agentName} waits for you.
+        </div>
+      )}
       <div className="p-3 rounded-lg bg-[var(--color-surface-2)] border border-[var(--color-border)] space-y-2">
         {meta.held ? (
           <div className="text-xs text-amber-500 flex items-start gap-1.5">
             <Clock size={12} className="mt-0.5 shrink-0" />
-            <span><span className="font-medium">A real customer would get the message above, and this would wait for your approval</span> because {meta.reason || 'the agent was unsure'}.</span>
+            <span><span className="font-medium">A real customer would get no reply yet - you'd be alerted to answer or approve</span> because {meta.reason || 'the agent was unsure'}.</span>
           </div>
         ) : (
           <div className="text-xs text-emerald-500 flex items-center gap-1.5">

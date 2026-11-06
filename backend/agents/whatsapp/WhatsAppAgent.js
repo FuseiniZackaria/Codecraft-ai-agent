@@ -17,18 +17,18 @@ const replyPolicy = require('../../core/whatsapp/replyPolicy');
  * WhatsAppAgent - triggered by the webhook receiver on each incoming customer
  * message, not a user goal, so it skips the standard plan/execute loop.
  *
- * How it speaks - its name, instructions, example replies and the "team will
- * follow up" message - is set per workspace on Settings -> General -> Agent
- * instructions (core/knowledge/agentSettings.js), and applies on the next reply.
+ * How it speaks - its name, instructions and example replies - is set per
+ * workspace on Settings -> General -> Agent instructions
+ * (core/knowledge/agentSettings.js), and applies on the next reply.
  *
  * With auto-reply on (WAHA: WA_AUTO_REPLY, default on; Twilio/Meta:
  * WHATSAPP_AUTO_REPLY_ENABLED):
  *   - general questions and enquiries are answered straight away, and the
  *     owner gets a Telegram FYI (nothing to approve);
- *   - pricing/quotes, deals, deadlines/promises, complaints or anything Ian
- *     doesn't know are HELD: the customer gets the "let me check with the
- *     team" reply, Ian's suggested answer waits on the Tasks page, and the
- *     owner is alerted (core/notifications.js).
+ *   - pricing/quotes, deals, deadlines/promises, payments, complaints or
+ *     anything Ian doesn't know are HELD: the customer gets NO message (never
+ *     "let me check with the team"), Ian's suggested answer waits on the Tasks
+ *     page, and the owner is alerted to reply or approve (core/notifications.js).
  * With auto-reply off, every reply waits for approval, as before.
  *
  * Every send - automatic or approved - goes through the same approval-task
@@ -37,15 +37,14 @@ const replyPolicy = require('../../core/whatsapp/replyPolicy');
 
 const TOOL = 'whatsapp.sendMessage';
 const GREETING_GAP_MS = 6 * 60 * 60 * 1000; // no message from Ian for 6h = a new conversation, greet again
-const HOLD_REPEAT_MS = 2 * 60 * 60 * 1000; // don't repeat "let me check with the team" within 2h
 // Sent when a customer says they've paid or sends proof: a person checks the money arrived first.
-const PAYMENT_HOLD_TEXT = 'Thank you! A team member will check and confirm your payment shortly.';
+
 
 const OUTPUT_FORMAT =
   'Answer with ONLY a JSON object, nothing else:\n' +
   '{"reply": "<your WhatsApp message to the customer>", "hold": <true or false>, "reason": "<if hold: why, in a few words; else empty>", "sources": [<labels of the Q&A, document parts or products you used, e.g. "Q2", "D1", "P1"; [] if none>], "photos": [<labels of products whose photo to send with your reply, e.g. "P1" - at most 3, only when they asked to see it, sent a photo of something similar, or it clearly helps; [] otherwise>]}\n' +
   'If hold is true, "reply" is your suggested answer for the team to check before it is sent.\n' +
-  "If the answer isn't in the business knowledge you were given, don't guess: say a team member will follow up and set hold to true.";
+  "If the answer isn't in the business knowledge you were given, don't guess: set hold to true (the team will answer it themselves). Never tell the customer you are checking with the team.";
 
 /** Stored messages keep their text in `body`. */
 const msgText = (m) => String(m.body ?? m.text ?? '');
@@ -100,7 +99,7 @@ class WhatsAppAgent extends BaseAgent {
         ? `This is the first time they have ever messaged ${profile?.business_name || 'the business'}.`
         : 'They have messaged before (not a first-time contact).',
       // A greeting must not be held because of an older question in the transcript.
-      "Decide \"hold\" from the customer's LATEST message only. If it is just a greeting, thanks or small talk, reply to it normally (hold = false), even if an earlier question is still waiting - you may add that a team member will get back to them about it.",
+      "Decide \"hold\" from the customer's LATEST message only. If it is just a greeting, thanks or small talk, reply to it normally (hold = false), even if an earlier question is still waiting.",
     ];
     const transcript = history.length
       ? `Conversation so far:\n${history.slice(-10).map((m) => `${m.direction === 'in' ? 'Customer' : v.agentName}: ${msgText(m)}`).join('\n')}\n\n`
@@ -228,8 +227,6 @@ class WhatsAppAgent extends BaseAgent {
       }
     }
     const { reply: draft, hold, reason: holdReason, kind } = drafted;
-    // A payment gets its own "we'll confirm" message - it is never confirmed by Ian.
-    const holdText = kind === 'payment' ? PAYMENT_HOLD_TEXT : v.hold;
     let held = hold;
     let reason = holdReason;
 
@@ -271,21 +268,13 @@ class WhatsAppAgent extends BaseAgent {
     result.approvalTaskId = approvalTask.id;
     await activityLog.record(this.role, 'auto_reply_blocked', from, { approvalTaskId: approvalTask.id, reason: result.reason, workspaceId });
 
-    // Tell the customer we're on it - once, not after every message.
-    if (autoReplyOn && result.autoSent === false && held) {
-      const lastOut = [...history].reverse().find((m) => m.direction === 'out');
-      const alreadyTold = lastOut && msgText(lastOut).trim() === holdText.trim() && now - new Date(lastOut.sent_at) < HOLD_REPEAT_MS;
-      if (!alreadyTold) {
-        const sent = await this.send({ from, text: holdText, session, workspaceId, label: 'Holding reply' })
-          .catch((err) => ({ sent: false, error: err }));
-        result.holdSent = !!sent.sent;
-      }
-    }
+    // The customer is NOT told "let me check with the team": Ian says nothing, and the
+    // owner replies themselves or approves Ian's suggestion (owner's rule, 2026-11-06).
 
     notifications
       .notifyOwnerPendingApproval({
         channel: 'whatsapp', from, customerMessage: body, draftReply: draft, approvalTaskId: approvalTask.id, workspaceId,
-        reason: result.reason, customerToldText: result.holdSent ? holdText : null,
+        reason: result.reason, customerToldText: null,
       })
       .catch((err) => console.warn(`[WhatsAppAgent] owner notification failed: ${err.message}`));
 
@@ -297,4 +286,4 @@ class WhatsAppAgent extends BaseAgent {
 WhatsAppAgent.retryDelayMs = Number(process.env.WA_AI_RETRY_DELAY_MS) || 20000;
 
 module.exports = WhatsAppAgent;
-module.exports.PAYMENT_HOLD_TEXT = PAYMENT_HOLD_TEXT;
+

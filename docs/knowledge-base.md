@@ -7,7 +7,7 @@ changes and no redeploy.
 | Tab | What it's for |
 |---|---|
 | **Profile** | Business name, contact details, what you offer, email signature. The agent uses the business details; your personal name and email signature stay out of WhatsApp. |
-| **Agent instructions** | The agent's name, how it talks (tone, reply length), rules, what it must never do, example replies, and the "team will follow up" message. Every save is a new version; roll back any time. |
+| **Agent instructions** | The agent's name, how it talks (tone, reply length), rules, what it must never do, and example replies. Every save is a new version; roll back any time. |
 | **Q&A** | Questions and answers the agent treats as approved facts. Each has an on/off switch. |
 | **Documents** | Menus, price lists, policies (PDF, Word, text, CSV, Excel - 10 MB max). The text is read automatically. |
 | **Test chat** | Talk to the agent as a customer. Nothing is sent to anyone. Each reply shows whether it would be sent or held (and why) and which Q&A/documents it used. |
@@ -32,9 +32,9 @@ different word endings ("deliver" / "delivery") and short follow-ups
 ## It never makes things up
 
 - The agent is told to answer only from the knowledge above. If the answer
-  isn't there it says a team member will follow up, and the message **waits
-  for your approval** (you get a Telegram/WhatsApp alert; the suggested answer
-  is on the Tasks page).
+  isn't there it **says nothing** to the customer (never "let me check with the
+  team") - you get a Telegram/WhatsApp alert with its suggested answer, and you
+  reply yourself or approve/edit the suggestion on the Tasks page.
 - As a safety net, any reply containing a **phone number, email, link or clock
   time** that isn't in your knowledge is held, even if the AI forgot to hold it.
 - These always wait for you: prices and quotes, deals, deadlines and delivery
@@ -113,8 +113,8 @@ How Ian uses it:
   (caption = name, never a price). If a photo can't be sent, the product link is sent
   with a preview.
 - **Payments are never confirmed by Ian** - "I've paid", MoMo/transfer messages and
-  receipt screenshots get "A team member will check and confirm your payment shortly"
-  and you're alerted.
+  receipt screenshots get no reply from Ian - you're alerted to check the money
+  and reply yourself.
 - Prices still wait for your approval (and no photos are sent while a reply waits).
 
 ## Several businesses (clients)

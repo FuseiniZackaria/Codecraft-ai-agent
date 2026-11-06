@@ -176,8 +176,9 @@ export default function AgentInstructionsTab() {
         </p>
 
         <label htmlFor="agent_name" className="block text-xs font-medium text-[var(--color-text-muted)] mb-1.5">Agent's name</label>
-        <input id="agent_name" className={`${inputCls} max-w-xs mb-4`} value={form.agent_name} maxLength={40}
+        <input id="agent_name" className={`${inputCls} max-w-xs`} value={form.agent_name} maxLength={40}
           onChange={(e) => set('agent_name', e.target.value)} placeholder="e.g. Ian" />
+        <p className="text-[11px] text-[var(--color-text-muted)] mt-1 mb-4">The name the agent calls itself - not your name. It must match the "You are ..." line in the instructions.</p>
 
         <label htmlFor="instructions" className="block text-xs font-medium text-[var(--color-text-muted)] mb-1.5">Instructions</label>
         <textarea id="instructions" rows={20} className={`${inputCls} font-[var(--font-mono)] leading-relaxed`}
@@ -227,12 +228,12 @@ export default function AgentInstructionsTab() {
       </section>
 
       <section className={cardCls}>
-        <h2 className="text-sm font-semibold mb-1">When the agent needs to check with you</h2>
-        <p className="text-xs text-[var(--color-text-muted)] mb-3">
-          Sent to the customer when a reply waits for your approval (prices, deals, complaints, or anything the agent doesn't know). The agent never makes up an answer.
+        <h2 className="text-sm font-semibold mb-1">When the agent isn't sure</h2>
+        <p className="text-xs text-[var(--color-text-muted)]">
+          For prices, deals, payments, complaints, or anything the agent doesn't know, it says <b>nothing</b> to the customer - it never says
+          "let me check with the team". You get an alert with its suggested answer: reply to the customer yourself, or approve or edit the
+          suggestion on the Tasks page. The agent never makes up an answer.
         </p>
-        <input className={inputCls} value={form.hold_reply} maxLength={500} onChange={(e) => set('hold_reply', e.target.value)}
-          placeholder="Let me check with the team and get back to you shortly." />
       </section>
 
       <section className={cardCls}>
@@ -308,7 +309,6 @@ export default function AgentInstructionsTab() {
                 ))}
               </div>
             )}
-            <div className="text-xs mb-4">Check-with-you message: <span className="text-[var(--color-text-muted)]">{preview.hold_reply || '(standard)'}</span></div>
             {preview.version !== versions[0]?.version && (
               <button type="button" className={btnCls} disabled={busyVersion === preview.id} onClick={() => rollBack(preview)}>
                 <RotateCcw size={12} /> Roll back to this version

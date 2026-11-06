@@ -97,11 +97,11 @@ const answer = (reply, hold = false, reason = '', sources = []) => JSON.stringif
     modelAnswer = answer('I think we might have gluten-free options.', true, "I don't know if we sell gluten-free bread");
     const r = await say('Do you have gluten-free bread?');
     assert.strictEqual(r.held, true);
-    assert.deepStrictEqual(sent, ['Thanks for asking - a team member will follow up with you shortly.']);
+    assert.deepStrictEqual(sent, [], 'nothing is sent - never "a team member will follow up"');
     assert.strictEqual(pending.length, 1, 'the owner is asked');
     assert(/don't know/.test(pending[0].reason), pending[0].reason);
-    assert.strictEqual(pending[0].customerToldText, 'Thanks for asking - a team member will follow up with you shortly.');
-    console.log('✓ when the agent doesn\'t know, the customer hears "a team member will follow up" and you approve the answer');
+    assert.strictEqual(pending[0].customerToldText, null);
+    console.log('✓ when the agent does not know, it says nothing and you reply or approve its suggestion');
   }
 
   // 3. Made-up details never go out, even if the AI forgets to hold.

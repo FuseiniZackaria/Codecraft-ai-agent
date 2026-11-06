@@ -42,7 +42,7 @@ const DEFAULT_INSTRUCTIONS = `## Who you are
 ## What to say
 - Answer what they actually asked.
 - Facts about the business - prices, services, opening hours, contact details, policies - come ONLY from the business knowledge you are given. Never invent them.
-- If the answer isn't in that knowledge, don't guess: say a team member will follow up, and set "hold" to true.
+- If the answer isn't in that knowledge, don't guess: set "hold" to true and the team will answer. Never tell the customer you're checking with the team.
 
 ## When to hold for the team
 Set "hold" to true (your reply then waits for the team as a suggestion) when the message is about:
@@ -78,10 +78,24 @@ function defaults() {
   };
 }
 
+/**
+ * The name the instructions give the agent ("You are Ian from ..."), or null.
+ * Used to catch an Agent's name box that says something else (e.g. the owner's
+ * name) - that made Ian's own "I'm Ian" look like a wrong name and held it.
+ */
+const NOT_A_NAME = new Set(['The', 'An', 'Not', 'Now', 'Only', 'Here', 'Never', 'Always', 'Our', 'Their', 'Its', 'Your']);
+function nameInInstructions(text) {
+  const m = String(text || '').match(/\b[Yy]ou are ([A-Z][a-z][a-zA-Z'-]*)/);
+  return m && !NOT_A_NAME.has(m[1]) ? m[1].replace(/'s$/, '') : null;
+}
+
 function fromRow(row) {
+  const saved = row.agent_name || config.assistant.name || 'Ian';
+  const instructed = nameInInstructions(row.instructions);
   return {
     source: 'saved', version: row.version, versionId: row.id,
-    agentName: row.agent_name || config.assistant.name || 'Ian',
+    // If the box and the instructions disagree, the instructions win (that's what the agent says).
+    agentName: instructed && instructed.toLowerCase() !== saved.toLowerCase() ? instructed : saved,
     instructions: row.instructions,
     examples: Array.isArray(row.examples) ? row.examples : [],
     holdReply: row.hold_reply || DEFAULT_HOLD,
@@ -170,6 +184,11 @@ function validate(input = {}) {
   const note = str(input.note);
 
   if (!instructions) errors.push('The instructions can\'t be empty.');
+  const instructed = nameInInstructions(instructions);
+  if (instructed && instructed.toLowerCase() !== agentName.toLowerCase() && !/\{\{\s*agent_name\s*\}\}/i.test(instructions)) {
+    errors.push(`The Agent's name is "${agentName}" but the instructions say "You are ${instructed}". `
+      + `The Agent's name is the name the agent calls itself (not the owner's name) - make them the same.`);
+  }
   if (instructions.length > LIMITS.instructions) errors.push(`The instructions are too long (max ${LIMITS.instructions} characters).`);
   if (agentName.length > LIMITS.agentName) errors.push(`The agent name is too long (max ${LIMITS.agentName} characters).`);
   if (holdReply.length > LIMITS.holdReply) errors.push(`The "team will follow up" message is too long (max ${LIMITS.holdReply} characters).`);
@@ -224,6 +243,6 @@ async function restore(workspaceId, versionId, user = {}) {
 }
 
 module.exports = {
-  getActive, forAgent, emailTone, validate, save, restore, invalidate, render,
+  getActive, forAgent, emailTone, validate, save, restore, invalidate, render, nameInInstructions,
   DEFAULT_INSTRUCTIONS, DEFAULT_HOLD, LIMITS,
 };

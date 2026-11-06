@@ -1,6 +1,6 @@
 // Payment rule: the agent NEVER confirms a payment. "I've paid" / "sent the
 // MoMo" / proof of payment, or a draft that says "payment received", always
-// waits for a person; the customer is told a team member will confirm; the
+// waits for a person; nothing is sent to the customer (you check and reply); the
 // owner is alerted. Ordinary payment questions ("how do I pay?") still get
 // normal answers. Nothing real is sent.
 
@@ -55,11 +55,11 @@ const reset = () => { sent.length = 0; pending.length = 0; };
     const r = await ask('Hi, I have sent the momo for the cake');
     assert.strictEqual(r.held, true);
     assert.strictEqual(r.reason, policy.PAYMENT_REASON);
-    assert.deepStrictEqual(sent, [WhatsAppAgent.PAYMENT_HOLD_TEXT], 'the customer only hears "a team member will confirm"');
+    assert.deepStrictEqual(sent, [], 'nothing is sent - you check the money and reply');
     assert(!sent.join(' ').includes('received your payment'));
     assert.strictEqual(pending.length, 1, 'the owner is alerted');
-    assert.strictEqual(pending[0].customerToldText, WhatsAppAgent.PAYMENT_HOLD_TEXT);
-    console.log('✓ "I\'ve sent the MoMo" -> held; the customer is told a team member will confirm; you are alerted');
+    assert.strictEqual(pending[0].customerToldText, null);
+    console.log('✓ "I have sent the MoMo" -> held; nothing is sent to the customer; you are alerted to check and reply');
   }
 
   // 3. Ian never says a payment arrived, whatever the customer wrote.
@@ -90,8 +90,8 @@ const reset = () => { sent.length = 0; pending.length = 0; };
     const { agent: reply } = await testChat.send(WS, 'I have paid, please check', { id: 'admin-1' });
     assert.strictEqual(reply.meta.held, true);
     assert.strictEqual(reply.meta.kind, 'payment');
-    assert.strictEqual(reply.meta.customerSees, WhatsAppAgent.PAYMENT_HOLD_TEXT);
-    console.log('✓ the Test chat shows the same "we\'ll confirm your payment" message');
+    assert.strictEqual(reply.meta.customerSees, null);
+    console.log('✓ the Test chat shows the payment is held with no reply sent');
   }
 
   console.log('All payment-rule checks passed.');

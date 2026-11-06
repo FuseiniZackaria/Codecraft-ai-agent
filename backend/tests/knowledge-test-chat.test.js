@@ -107,11 +107,11 @@ const answer = (reply, { hold = false, reason = '', sources = [] } = {}) => JSON
     const { agent } = r.body;
     assert.strictEqual(agent.meta.held, true);
     assert(/pric|cost|quote/i.test(agent.meta.reason), agent.meta.reason);
-    assert.strictEqual(agent.meta.customerSees, agentSettings.DEFAULT_HOLD);
-    assert.strictEqual(agent.body, agentSettings.DEFAULT_HOLD);
+    assert.strictEqual(agent.meta.customerSees, null, 'a real customer gets nothing until you reply');
+    assert.strictEqual(agent.body, '');
     assert.strictEqual(agent.meta.draft, 'A wedding cake is GHS 900.');
     assert.deepStrictEqual(leaks, []);
-    console.log('✓ a held reply shows the "check with the team" message the customer would get, plus the suggestion and why');
+    console.log('✓ a held reply shows that the customer gets nothing yet, plus the suggestion and why');
   }
 
   // 4. The conversation carries on, as the customer saw it.
@@ -119,7 +119,7 @@ const answer = (reply, { hold = false, reason = '', sources = [] } = {}) => JSON
     modelAnswer = answer('We are closed on Sundays.', { sources: ['Q2'] });
     await say('And on Sunday?');
     assert(lastPrompt.prompt.includes('Customer: Good morning, do you deliver?'));
-    assert(lastPrompt.prompt.includes(`Ian: ${agentSettings.DEFAULT_HOLD}`), 'history shows what the customer actually saw');
+    assert(!/^Ian:\s*$/m.test(lastPrompt.prompt), 'the unsent held reply is not in the conversation');
     assert(!lastPrompt.prompt.includes('GHS 900'), "the unsent suggestion isn't part of the conversation");
     assert(lastPrompt.system.includes("don't greet again"), 'mid-conversation');
     console.log('✓ follow-up messages see the conversation as the customer saw it');
@@ -209,7 +209,7 @@ const answer = (reply, { hold = false, reason = '', sources = [] } = {}) => JSON
     modelAnswer = JSON.stringify({ reply: 'Payment received!', hold: false, reason: '' });
     r = await call('POST', '/api/knowledge/test-chat', { text: 'paid', image: photo });
     assert.strictEqual(r.body.agent.meta.kind, 'payment');
-    assert.strictEqual(r.body.agent.meta.customerSees, require('../agents/whatsapp/WhatsAppAgent').PAYMENT_HOLD_TEXT);
+    assert.strictEqual(r.body.agent.meta.customerSees, null, 'a receipt photo gets no reply until you check');
     // the AI can't look at it -> explained
     visionAnswer = new Error('overloaded');
     r = await call('POST', '/api/knowledge/test-chat', { text: '', image: photo });

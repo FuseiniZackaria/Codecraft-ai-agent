@@ -77,17 +77,17 @@ const ask = (workspaceId, body = 'Hello') => agent.handleIncomingMessage({ from:
     console.log('✓ save: the next reply uses the new instructions and examples');
   }
 
-  // 3. The custom hold reply is what a waiting customer gets; the agent's own name is allowed.
+  // 3. A held reply sends the customer nothing; the agent's own name is allowed.
   {
     sent.length = 0;
     modelAnswer = JSON.stringify({ reply: "Hi, I'm Esi from Ama Bakery. Let me confirm that cake price.", hold: false, reason: '' });
     const r = await ask(WS_A, 'How much is a wedding cake?');
     assert.strictEqual(r.held, true);
-    assert.deepStrictEqual(sent, ['One moment, a team member will follow up.']);
+    assert.deepStrictEqual(sent, [], 'held: nothing is sent - never "let me check with the team"');
     modelAnswer = JSON.stringify({ reply: "Good morning! I'm Esi from Ama Bakery - happy to help.", hold: false, reason: '' });
     const ok = await ask(WS_A, 'Hi there');
     assert.strictEqual(ok.held, false, `the agent's own name is fine: ${ok.reason}`);
-    console.log('✓ hold reply and agent name come from the saved version');
+    console.log('✓ held replies send nothing; the agent name comes from the saved version');
   }
 
   // 4. Versions, preview and roll back (roll back adds a new version - history kept).
@@ -177,6 +177,28 @@ const ask = (workspaceId, body = 'Hello') => agent.handleIncomingMessage({ from:
     assert.strictEqual(run({ workspaceId: null }), 400);
     assert.strictEqual(run({ workspaceId: WS_A, workspaceRole: 'member' }), 403);
     console.log('✓ permissions: only the workspace\'s owner or an editor can change its knowledge base');
+  }
+
+  // 10. The "who are you?" bug: Agent's name box "Zackaria" (the owner's name), instructions "You are Ian".
+  {
+    const WS_C = 'cccccccc-0000-0000-0000-00000000000c';
+    profiles[WS_C] = { business_name: 'codecraftgh', display_name: 'Fuseini Zackaria' };
+    const store2 = require('../core/knowledge/store');
+    // Saved before this check existed (straight into the store):
+    await store2.addVersion(WS_C, { agent_name: 'Zackaria', instructions: '## Who you are\n- You are Ian from CodeCraft, CodeCraft\'s assistant.' });
+    agentSettings.invalidate(WS_C);
+    assert.strictEqual((await agentSettings.getActive(WS_C)).agentName, 'Ian', 'the instructions win');
+    sent.length = 0;
+    modelAnswer = JSON.stringify({ reply: "I'm Ian, CodeCraft's AI assistant. How can I help?", hold: false, reason: '' });
+    const r = await ask(WS_C, 'Who are you?');
+    assert.strictEqual(r.held, false, `"I'm Ian" must not be held: ${r.reason}`);
+    assert.deepStrictEqual(sent, ["I'm Ian, CodeCraft's AI assistant. How can I help?"]);
+    // And saving such a mismatch is now refused with a clear reason.
+    await assert.rejects(
+      agentSettings.save(WS_C, { agent_name: 'Zackaria', instructions: '- You are Ian from CodeCraft.' }, user),
+      (e) => e.code === 'INVALID' && /instructions say "You are Ian"/.test(e.message),
+    );
+    console.log('✓ "Who are you?" is answered even if the name box says the owner\'s name; saving that mismatch is refused');
   }
 
   console.log('All agent-settings checks passed.');

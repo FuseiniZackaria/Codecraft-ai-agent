@@ -224,8 +224,8 @@ To hand it over, that admin clicks **Disconnect**, then the other admin clicks
 ### Changing how Ian sounds
 
 Everything about how the agent replies is edited in the dashboard, under
-**Settings → General**: its name, instructions, example replies and the
-"team will follow up" message (with version history), Q&A entries, documents,
+**Settings → General**: its name, instructions and example replies (with
+version history), Q&A entries, documents, products,
 and a Test chat to try it safely. Changes apply on the agent's next reply - no
 deploy. See [knowledge-base.md](knowledge-base.md).
 
