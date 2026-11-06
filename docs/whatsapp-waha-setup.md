@@ -33,7 +33,8 @@ Your customer  <->  WhatsApp  <->  WAHA (Render, $7/month)  <->  CodeCraft backe
 > WhatsApp can ban numbers that message lots of strangers. CodeCraft protects
 > you: outreach only goes to people who messaged you first, never to anyone who
 > replied STOP, 30-90 seconds apart, at most `DAILY_WA_LIMIT` (20) a day, and
-> auto-replies are capped at 5 per contact per hour. Still, don't use your
+> auto-replies are capped at 10 per contact per hour (then Ian pauses for that
+> contact and you are alerted to take over). Still, don't use your
 > personal number.
 
 ---
@@ -155,7 +156,7 @@ Telling your backend where WAHA lives and which keys to use.
    | `WAHA_WEBHOOK_SECRET` | your **webhook secret** |
    | `DAILY_WA_LIMIT` | `20` |
    | `WA_OUTREACH_REQUIRE_CONSENT` | `true` |
-   | `WA_AUTO_REPLY_MAX_PER_CONTACT_HOUR` | `5` |
+   | `WA_AUTO_REPLY_MAX_PER_CONTACT_HOUR` | `10` |
    | `WHATSAPP_DEFAULT_COUNTRY_CODE` | `233` |
 
    You do **not** need `WAHA_WEBHOOK_BASE_URL`: the backend already knows its

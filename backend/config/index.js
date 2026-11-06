@@ -107,7 +107,8 @@ module.exports = {
     // Replies to incoming messages: auto-send (after the safety check) unless set to "false".
     autoReply: process.env.WA_AUTO_REPLY !== 'false',
     // Auto-replies to one contact per hour (stops endless back-and-forth with another bot).
-    autoReplyMaxPerContactPerHour: Number(process.env.WA_AUTO_REPLY_MAX_PER_CONTACT_HOUR) || 5,
+    // When it's reached, the owner is alerted to take over (nothing is silently dropped).
+    autoReplyMaxPerContactPerHour: Number(process.env.WA_AUTO_REPLY_MAX_PER_CONTACT_HOUR) || 10,
   },
   waha: {
     // WAHA (image devlikeapro/waha) running as its own Render web service. Unset = WAHA features report "not configured".

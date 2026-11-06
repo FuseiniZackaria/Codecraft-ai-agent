@@ -95,6 +95,8 @@ class WhatsAppAgent extends BaseAgent {
       firstContact
         ? `This is the first time they have ever messaged ${profile?.business_name || 'the business'}.`
         : 'They have messaged before (not a first-time contact).',
+      // A greeting must not be held because of an older question in the transcript.
+      "Decide \"hold\" from the customer's LATEST message only. If it is just a greeting, thanks or small talk, reply to it normally (hold = false), even if an earlier question is still waiting - you may add that a team member will get back to them about it.",
     ];
     const transcript = history.length
       ? `Conversation so far:\n${history.slice(-10).map((m) => `${m.direction === 'in' ? 'Customer' : v.agentName}: ${msgText(m)}`).join('\n')}\n\n`

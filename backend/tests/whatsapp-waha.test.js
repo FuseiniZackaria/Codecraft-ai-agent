@@ -238,10 +238,22 @@ const WS = 'wwwwwwww-wwww-wwww-wwww-wwwwwwwwwwww';
   for (let i = 0; i < config.whatsapp.autoReplyMaxPerContactPerHour; i++) {
     await store.saveMessage({ provider: 'waha', sessionName: sessionA, userId: USER_A, workspaceId: WS, direction: 'out', contactNumber: D, text: 'reply', source: 'auto_reply', waMessageId: `r-${i}` });
   }
-  const limited = await messaging.handleIncomingMessage({ providerName: 'waha', sessionName: sessionA, userId: USER_A, workspaceId: WS, message: { waMessageId: 'd-1', contactNumber: D, text: 'hello again', timestamp: new Date().toISOString() } });
+  const notificationsMod = require('../core/notifications');
+  const realAttention = notificationsMod.notifyOwnerAttention;
+  const limitAlerts = [];
+  notificationsMod.notifyOwnerAttention = async (a) => { limitAlerts.push(a); return { whatsapp: 'sent' }; };
+  const limited = await messaging.handleIncomingMessage({ providerName: 'waha', sessionName: sessionA, userId: USER_A, workspaceId: WS, message: { waMessageId: 'd-1', contactNumber: D, text: 'How much do you charge for a website?', timestamp: new Date().toISOString() } });
   assert.strictEqual(limited.reason, 'rate limited');
+  assert.strictEqual(limited.ownerAlerted, true, 'the owner is told instead of the message being silently dropped');
+  assert.strictEqual(limitAlerts.length, 1);
+  assert.strictEqual(limitAlerts[0].customerMessage, 'How much do you charge for a website?');
+  assert(/paused automatic replies/.test(limitAlerts[0].problem), limitAlerts[0].problem);
+  const again = await messaging.handleIncomingMessage({ providerName: 'waha', sessionName: sessionA, userId: USER_A, workspaceId: WS, message: { waMessageId: 'd-2', contactNumber: D, text: '??', timestamp: new Date().toISOString() } });
+  assert.strictEqual(again.reason, 'rate limited');
+  assert.strictEqual(limitAlerts.length, 1, 'one alert per contact per hour, not one per message');
+  notificationsMod.notifyOwnerAttention = realAttention;
   registry.getAgent = realGetAgent;
-  console.log(`✓ auto-replies capped at ${config.whatsapp.autoReplyMaxPerContactPerHour} per contact per hour (no endless bot loops)`);
+  console.log(`✓ auto-replies capped at ${config.whatsapp.autoReplyMaxPerContactPerHour} per contact per hour (no endless bot loops) - and the owner is alerted once to take over`);
 
   // 9d. Meta's official Cloud API sits behind the same interface
   const meta = require('../core/whatsapp/MetaCloudProvider');

@@ -77,6 +77,7 @@ async function sendAndRecord({ sessionName, to, text, userId = null, workspaceId
 const MEDIA_ONLY_TEXT = /^\[(voice note|image|sticker|video|file|media message)\]$/;
 const MEDIA_ALERT_GAP_MS = 10 * 60 * 1000;
 const lastMediaAlert = new Map(); // session|contact -> time the owner was last alerted about their media
+const lastRateLimitAlert = new Map(); // session|contact -> time the owner was last told Ian paused (reply limit)
 
 /**
  * Voice note / image / sticker / file with no text: Ian can't read it, so he
@@ -166,6 +167,18 @@ async function handleIncomingMessage({ providerName, sessionName, userId = null,
     if (recentReplies >= config.whatsapp.autoReplyMaxPerContactPerHour) {
       console.warn(`[whatsapp] ${message.contactNumber}: ${recentReplies} auto-replies in the last hour - not replying again (rate limit)`);
       await activityLog.record('WhatsApp', 'auto_reply_rate_limited', message.contactNumber, { session: sessionName, workspaceId }).catch(() => {});
+      // No automatic reply (that's what stops loops with other bots), but the owner is
+      // told - once per contact per hour - so a real customer is never silently ignored.
+      const key = `${sessionName}|${message.contactNumber}`;
+      if (Date.now() - (lastRateLimitAlert.get(key) || 0) >= 60 * 60 * 1000) {
+        lastRateLimitAlert.set(key, Date.now());
+        const results = await require('../notifications').notifyOwnerAttention({
+          channel: 'WhatsApp', from: message.contactNumber, contactName: message.contactName || null, customerMessage: text, workspaceId,
+          problem: `Ian has paused automatic replies to this client after ${recentReplies} in the last hour (safety limit)`,
+        }).catch((err) => ({ error: err.message }));
+        console.log(`[whatsapp] owner alerted about the reply limit for ${message.contactNumber}: ${JSON.stringify(results)}`);
+        return { handled: true, routed: false, reason: 'rate limited', ownerAlerted: true };
+      }
       return { handled: true, routed: false, reason: 'rate limited' };
     }
 
@@ -212,5 +225,5 @@ async function handleSessionStatus({ sessionName, status, phoneNumber, pushName 
 
 module.exports = {
   sendAndRecord, handleIncomingMessage, handleSessionStatus, randomBetween,
-  STOP_WORDS, START_WORDS, STOP_NOTICE, START_NOTICE, OptedOutError, timing, _lastMediaAlert: lastMediaAlert,
+  STOP_WORDS, START_WORDS, STOP_NOTICE, START_NOTICE, OptedOutError, timing, _lastMediaAlert: lastMediaAlert, _lastRateLimitAlert: lastRateLimitAlert,
 };

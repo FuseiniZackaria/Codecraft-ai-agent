@@ -85,6 +85,7 @@ const answer = (reply, hold = false, reason = '', sources = []) => JSON.stringif
     assert(s.includes('(hours.txt)') && s.includes('Monday to Saturday 7am to 6pm'), 'ready documents');
     assert(!s.includes('old.pdf'), 'failed documents never');
     assert(/don't guess/i.test(s), 'told never to guess');
+    assert(/LATEST message only/.test(s) && /greeting/.test(s), 'a greeting is not held because of an older question');
     assert.deepStrictEqual(sent, ['Good morning! Yes, we deliver within Accra.'], 'a known answer goes straight out');
     assert.strictEqual(fyi.length, 1, 'with an FYI to the owner');
     console.log('✓ the agent gets the profile, instructions, examples, switched-on Q&A and ready documents (never off/failed ones)');
