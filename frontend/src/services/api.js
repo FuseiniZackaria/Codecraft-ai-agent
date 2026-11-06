@@ -303,6 +303,11 @@ export const api = {
   addProductWord: (term, means) => request('/products/synonyms', { method: 'POST', body: JSON.stringify({ term, means }) }),
   removeProductWord: (id) => request(`/products/synonyms/${encodeURIComponent(id)}`, { method: 'DELETE' }),
   searchProducts: (q) => request(`/products/search?q=${encodeURIComponent(q)}`),
+  // Leads (Work -> Leads).
+  getLeads: () => request('/leads'),
+  updateLead: (id, patch) => request(`/leads/${encodeURIComponent(id)}`, { method: 'PATCH', body: JSON.stringify(patch) }),
+  saveLeadSettings: (s) => request('/leads/settings', { method: 'PUT', body: JSON.stringify(s) }),
+  previewLeadSummary: () => request('/leads/summary'),
 
   // --- Connections (Phase 2.5) ---
   listConnections: () => request('/connections'),

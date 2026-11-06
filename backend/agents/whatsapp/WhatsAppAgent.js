@@ -43,7 +43,9 @@ const GREETING_GAP_MS = 6 * 60 * 60 * 1000; // no message from Ian for 6h = a ne
 
 const OUTPUT_FORMAT =
   'Answer with ONLY a JSON object, nothing else:\n' +
-  '{"reply": "<your WhatsApp message to the customer>", "hold": <true or false>, "reason": "<if hold: why, in a few words; else empty>", "sources": [<labels of the Q&A, document parts or products you used, e.g. "Q2", "D1", "P1"; [] if none>], "photos": [<labels of products whose photo to send with your reply, e.g. "P1" - at most 3, only when they asked to see it, sent a photo of something similar, or it clearly helps; [] otherwise>]}\n' +
+  '{"reply": "<your WhatsApp message to the customer>", "hold": <true or false>, "reason": "<if hold: why, in a few words; else empty>", "sources": [<labels of the Q&A, document parts or products you used, e.g. "Q2", "D1", "P1"; [] if none>], "photos": [<labels of products whose photo to send with your reply, e.g. "P1" - at most 3, only when they asked to see it, sent a photo of something similar, or it clearly helps; [] otherwise>], ' +
+  '"lead": {"name": "<their name or null>", "business_type": "<e.g. restaurant, salon, or null>", "need": "<website | ecommerce | design | ai_assistant | seo | other | null>", "budget": "<as they said it, or null>", "timeline": "<as they said it, or null>", "location": "<or null>", "status": "<interested | not_interested | null>", "summary": "<one short sentence: who they are and what they want, from the whole conversation>"}}\n' +
+  'In "lead", only put what the customer actually said (in this message or earlier) - never guess; use null for anything unknown.\n' +
   'If hold is true, "reply" is your suggested answer for the team to check before it is sent.\n' +
   "If the answer isn't in the business knowledge you were given, don't guess: set hold to true (the team will answer it themselves). Never tell the customer you are checking with the team.";
 
@@ -102,6 +104,8 @@ class WhatsAppAgent extends BaseAgent {
         ? `This is the first time they have ever messaged ${profile?.business_name || 'the business'}.`
         : 'They have messaged before (not a first-time contact).',
       // A greeting must not be held because of an older question in the transcript.
+      // Lead capture: learned naturally, never like a form.
+      'Over the conversation, get to know them naturally: their name, type of business, what they need, budget or timeline, and where they are. Ask at most ONE of these per reply, only when it fits what they said, never a list of questions, and never something they already told you. Answering them always comes first.',
       "Decide \"hold\" from the customer's LATEST message only. If it is just a greeting, thanks or small talk, reply to it normally (hold = false), even if an earlier question is still waiting.",
     ];
     const transcript = history.length
@@ -131,7 +135,7 @@ class WhatsAppAgent extends BaseAgent {
       .filter((x) => x && (x.image_url || x.product_url))
       .slice(0, 3);
     return {
-      reply, ...decision, history, photos,
+      reply, ...decision, history, photos, lead: parsed.lead || null,
       knowledgeUsed: { qa: found.qa, docs: found.docs, products: catalog.products, links: shared.links, cited: parsed.sources || [] },
     };
   }
@@ -231,6 +235,12 @@ class WhatsAppAgent extends BaseAgent {
     }
     const { reply: draft, hold, reason: holdReason, kind } = drafted;
     let held = hold;
+
+    // Leads page: what Ian learned, the status, and a hot-lead alert (once a day).
+    if (workspaceId && session) {
+      await require('../../core/leads').applyFromAgent({ workspaceId, contactNumber: from, info: drafted.lead, incoming: body })
+        .catch((err) => console.warn(`[WhatsAppAgent] lead update failed: ${err.message}`));
+    }
     let reason = holdReason;
 
     const autoReplyOn = session ? config.whatsapp.autoReply : config.autoReply.whatsapp.enabled;

@@ -33,6 +33,7 @@ module.exports = [
   'tests/catalog.test.js',
   'tests/whatsapp-images.test.js',
   'tests/link-reader.test.js',
+  'tests/leads.test.js',
   'tests/whatsapp-waha.test.js',
   'tests/whatsapp-voice.test.js',
   'tests/composio-per-workspace.test.js',

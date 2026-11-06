@@ -218,6 +218,7 @@ app.use('/api/business-profile', requireAuth, requireRole('admin'), businessProf
 app.use('/api/agent-settings', requireAuth, requireRole('admin'), require('./api/agentSettingsRoutes'));
 app.use('/api/knowledge', requireAuth, requireRole('admin'), require('./api/knowledgeRoutes'));
 app.use('/api/products', requireAuth, requireRole('admin'), require('./api/productRoutes'));
+app.use('/api/leads', requireAuth, requireRole('admin'), require('./api/leadRoutes'));
 app.use('/api/connections', requireAuth, requireRole('admin'), connectionRoutes);
 app.use('/api/client-tracker', requireAuth, requireRole('admin'), clientTrackerRoutes);
 app.use('/api/whatsapp', requireAuth, requireRole('admin'), require('./api/whatsappRoutes'));

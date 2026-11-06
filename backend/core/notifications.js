@@ -193,7 +193,24 @@ async function notifyOwnerAttention({ channel, from, contactName = null, mediaTy
   return results;
 }
 
+/**
+ * A plain message to the owner (hot-lead alerts, the daily summary): Telegram
+ * and WhatsApp, email only if neither got through. Never throws.
+ */
+async function notifyOwner({ subject, text, workspaceId = null }) {
+  const results = {
+    telegram: await trySendTelegram(text),
+    whatsapp: await trySendWhatsapp(text),
+    email: 'not_attempted',
+  };
+  if (results.telegram !== 'sent' && results.whatsapp !== 'sent') {
+    results.email = await trySendEmail({ subject: subject || 'CodeCraft update', body: text, workspaceId });
+  }
+  return results;
+}
+
 module.exports = {
+  notifyOwner,
   notifyOwnerPendingApproval,
   notifyOwnerAttention,
   notifyOwnerFyi,

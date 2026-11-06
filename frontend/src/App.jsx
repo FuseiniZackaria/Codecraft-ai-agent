@@ -21,6 +21,7 @@ import Settings from './pages/Settings';
 import Connections from './pages/Connections';
 import ClientTracker from './pages/ClientTracker';
 import WhatsAppInbox from './pages/WhatsAppInbox';
+import Leads from './pages/Leads';
 import WhatsAppReconnectBanner from './components/WhatsAppReconnectBanner';
 import NotFound from './pages/NotFound';
 import { LogOut, WifiOff } from 'lucide-react';
@@ -275,6 +276,7 @@ function AdminLayout({ connectionError }) {
               <Route path="workflows" element={<Workflows />} />
               <Route path="clients" element={<ClientTracker />} />
               <Route path="inbox" element={<WhatsAppInbox />} />
+              <Route path="leads" element={<Leads />} />
             </Route>
             <Route path="/toolbox" element={<TabbedLayout navKey="toolbox" />}>
               {/* Connections is the Toolbox's main page (the old Plugins page duplicated it). */}

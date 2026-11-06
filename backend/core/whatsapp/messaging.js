@@ -74,6 +74,10 @@ async function sendAndRecord({ sessionName, to, text, userId = null, workspaceId
     provider: provider.name, sessionName, userId, workspaceId, direction: 'out',
     contactNumber, text: image ? `[photo] ${text || ''}`.trim() : text, waMessageId: result.id, source,
   }).catch((err) => console.warn(`[whatsapp] sent but not saved: ${err.message}`));
+  // Leads: when we last wrote to them (and a price sent = "Quote sent").
+  if (workspaceId && !['owner_alert', 'optout_notice'].includes(source)) {
+    await require('../leads').recordOutbound({ workspaceId, contactNumber, text, source });
+  }
   await activityLog.record('WhatsApp', 'message_sent', contactNumber, { session: sessionName, source, workspaceId }).catch(() => {});
   console.log(`[whatsapp] sent (${provider.name}/${sessionName} -> ${contactNumber}, ${source})`);
   return result;
@@ -160,6 +164,13 @@ async function handleIncomingMessage({ providerName, sessionName, userId = null,
 
     // The owner writing to the linked number (e.g. replying to an alert) is not a customer.
     if (isOwnerNumber(message.contactNumber)) return { handled: true, routed: false, reason: 'message from the owner' };
+
+    // Everyone who messages becomes a lead (Work -> Leads). Never blocks the reply.
+    if (workspaceId) {
+      await require('../leads').recordInbound({
+        workspaceId, sessionName, userId, contactNumber: message.contactNumber, contactName: message.contactName || null,
+      });
+    }
 
     // Photos (with or without a caption) go to Ian, who looks at them. Voice notes,
     // stickers, videos and files still get no reply - the owner is alerted instead.

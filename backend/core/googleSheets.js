@@ -312,8 +312,37 @@ function _resetForTests({ sheetsClient = null, credentials = null } = {}) {
   cachedCredentials = credentials;
 }
 
+/**
+ * Read the scraped leads back (read-only - nothing in the sheet is changed).
+ * Returns [{ row, date, name, email, phone, source, notes }] from the first
+ * worksheet, skipping the header and empty rows (at most `limit`).
+ */
+async function readLeads({ workspaceId = null, limit = 2000 } = {}) {
+  const sheetId = await resolveSheetId(workspaceId);
+  const { sheets, via } = await getClient(workspaceId);
+  try {
+    const { title } = await firstSheetTitle(sheets, sheetId);
+    const res = await sheets.spreadsheets.values.get({ spreadsheetId: sheetId, range: `${quoteTitle(title)}!A2:F${limit + 1}` });
+    return (res?.data?.values || [])
+      .map((r, i) => ({
+        row: i + 2,
+        date: String(r[0] || '').trim(),
+        name: String(r[1] || '').trim(),
+        email: String(r[2] || '').trim(),
+        phone: String(r[3] || '').trim(),
+        source: String(r[4] || '').trim(),
+        notes: String(r[5] || '').trim(),
+      }))
+      .filter((l) => l.name || l.email || l.phone);
+  } catch (err) {
+    if (err instanceof SheetsConfigError) throw err;
+    throw explainGoogleError(err, sheetId, via);
+  }
+}
+
 module.exports = {
   saveLead,
+  readLeads,
   checkAccess,
   isConfigured,
   sheetsStatus,

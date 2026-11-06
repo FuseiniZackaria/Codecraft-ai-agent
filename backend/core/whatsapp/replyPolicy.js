@@ -187,12 +187,14 @@ function parseDraft(text) {
           sources: labels(json.sources, /^[QDP]\d{1,3}$/),
           // Product photos to send with the reply ("P1"...).
           photos: labels(json.photos, /^P\d{1,3}$/).slice(0, 3),
+          // What Ian learned about the person (name, need, budget...) for the Leads page.
+          lead: json.lead && typeof json.lead === 'object' && !Array.isArray(json.lead) ? json.lead : null,
           parsed: true,
         };
       }
     } catch { /* fall through */ }
   }
-  return { reply: raw, hold: true, reason: "the AI's answer wasn't in the expected format", sources: [], photos: [], parsed: false };
+  return { reply: raw, hold: true, reason: "the AI's answer wasn't in the expected format", sources: [], photos: [], lead: null, parsed: false };
 }
 
 const SIGN_OFF_RE = /^\s*((best|kind|warm|warmest|with)\s+)?(regards|wishes)\s*,?\s*$|^\s*(sincerely|cheers|thanks|thank you|many thanks|yours (truly|faithfully|sincerely))\s*,\s*$|^\s*[-—–]{1,2}\s*\S/i;
@@ -263,4 +265,15 @@ function decideRouting({ incoming, draft, modelHold = false, modelReason = '', k
   return { hold: false, reason: 'general question - answered straight away' };
 }
 
-module.exports = { decideRouting, cleanReply, parseDraft, identityProblem, unverifiedDetail, isPaymentClaim, PAYMENT_REASON };
+/**
+ * Why a customer's message makes them a "hot" lead (asks for a price, wants to
+ * start, mentions a deadline) - the same rules that hold such replies - or null.
+ */
+function hotReason(text) {
+  const msg = String(text || '');
+  const hot = { 'pricing or a quote': 'asked about price', 'agreeing to a deal': 'wants to start', 'a deadline or promise': 'mentioned a deadline' };
+  for (const rule of INCOMING_RULES) if (rule.re.test(msg)) return hot[rule.reason] || rule.reason;
+  return null;
+}
+
+module.exports = { decideRouting, cleanReply, parseDraft, identityProblem, unverifiedDetail, isPaymentClaim, hotReason, PAYMENT_REASON };

@@ -49,6 +49,7 @@ export const NAV_ITEMS = [
       { label: 'Workflows', to: '/work/workflows' },
       { label: 'Clients', to: '/work/clients' },
       { label: 'Inbox', to: '/work/inbox' },
+      { label: 'Leads', to: '/work/leads' },
     ],
   },
   {

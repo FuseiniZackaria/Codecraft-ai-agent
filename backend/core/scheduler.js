@@ -200,6 +200,8 @@ async function tickOutreachAutomation(now = new Date()) {
 async function tick() {
   // Products: re-sync imported websites once a day (one at a time, never overlapping).
   require('./catalog').tickDailySync().catch((err) => console.warn(`[scheduler] product sync: ${err.message}`));
+  // Leads: follow-ups for quiet leads + the daily summary (does real work every 5 minutes).
+  require('./leads').tick().catch((err) => console.warn(`[scheduler] leads: ${err.message}`));
 
   // Phase 2.3c: per-workspace iteration via a single query, grouped in code.
   // One listWorkflows() call fetches every workspace's workflows at once -
