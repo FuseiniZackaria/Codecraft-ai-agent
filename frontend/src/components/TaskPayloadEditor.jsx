@@ -42,6 +42,7 @@ const REQUIRED_FIELDS = {
 
 function JobApplyPreview({ task }) {
   const { approveTask, rejectTask } = useStore();
+  const approving = useStore((s) => s.approvingIds.includes(task.id));
   const fields = task.payload?.fields || [];
   return (
     <div className="rounded-md border border-[var(--color-warning)]/30 bg-[var(--color-warning)]/5 p-3 space-y-3">
@@ -59,9 +60,10 @@ function JobApplyPreview({ task }) {
       <div className="flex items-center gap-2 pt-1">
         <button
           onClick={() => approveTask(task.id)}
-          className="flex items-center gap-1.5 text-xs font-medium px-3 py-1.5 rounded-md border border-[var(--color-success)]/40 text-[var(--color-success)] hover:bg-[var(--color-success)]/10"
+          disabled={approving}
+          className="flex items-center gap-1.5 text-xs font-medium px-3 py-1.5 rounded-md border border-[var(--color-success)]/40 text-[var(--color-success)] hover:bg-[var(--color-success)]/10 disabled:opacity-40"
         >
-          <Check size={13} /> Approve & submit
+          <Check size={13} /> {approving ? 'Submitting…' : 'Approve & submit'}
         </button>
         <button
           onClick={() => rejectTask(task.id)}
@@ -119,6 +121,7 @@ function LeadDetailsPanel({ lead }) {
 
 export default function TaskPayloadEditor({ task }) {
   const { approveTask, rejectTask, updateTaskPayload } = useStore();
+  const approving = useStore((s) => s.approvingIds.includes(task.id));
 
   if (task.toolCall?.tool === 'browser.applyForJob') {
     return <JobApplyPreview task={task} />;
@@ -237,11 +240,11 @@ export default function TaskPayloadEditor({ task }) {
           <>
             <button
               onClick={() => approveTask(task.id)}
-              disabled={!canApprove}
+              disabled={!canApprove || approving}
               title={!canApprove ? 'Fill the missing fields before approving' : undefined}
               className="flex items-center gap-1.5 text-xs font-medium px-3 py-1.5 rounded-md border border-[var(--color-success)]/40 text-[var(--color-success)] hover:bg-[var(--color-success)]/10 disabled:opacity-40 disabled:cursor-not-allowed"
             >
-              <Check size={13} /> {isSocialPrepareOnly ? 'Approve (mark as sent)' : 'Approve & send'}
+              <Check size={13} /> {approving ? 'Sending…' : isSocialPrepareOnly ? 'Approve (mark as sent)' : 'Approve & send'}
             </button>
             <button
               onClick={() => rejectTask(task.id)}

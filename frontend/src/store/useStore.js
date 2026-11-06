@@ -225,10 +225,20 @@ export const useStore = create((set, get) => ({
     return result;
   },
 
+  // Task ids whose approval is being sent right now. Repeat clicks are ignored
+  // (one slow approval clicked three times used to send the message three times).
+  approvingIds: [],
+
   async approveTask(id) {
     if (!get().connected) return;
-    await api.approveTask(id);
-    await get().refresh();
+    if (get().approvingIds.includes(id)) return;
+    set((s) => ({ approvingIds: [...s.approvingIds, id] }));
+    try {
+      await api.approveTask(id);
+      await get().refresh();
+    } finally {
+      set((s) => ({ approvingIds: s.approvingIds.filter((x) => x !== id) }));
+    }
   },
 
   async rejectTask(id) {

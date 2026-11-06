@@ -7,6 +7,7 @@ import { useStore } from '../store/useStore';
 export default function TaskRow({ task, expanded, onToggle, liveNarration, renderFooter, selectable, isSelected, onSelect }) {
   const { approveTask, rejectTask, deleteTask, resumeWorkflowRun, cancelWorkflowRun } = useStore();
   const needsApproval = task.status === 'pending_approval';
+  const approving = useStore((s) => s.approvingIds.includes(task.id));
   const isWorkflowTask = !!task.workflowRunId;
   const hasEditablePayload = needsApproval && !isWorkflowTask && task.payload && Object.keys(task.payload).length > 0;
   const hasWorkflowPreview = isWorkflowTask && task.payload?.preview;
@@ -88,7 +89,8 @@ export default function TaskRow({ task, expanded, onToggle, liveNarration, rende
             <div className="flex items-center gap-1.5" onClick={(e) => e.stopPropagation()}>
               <button
                 onClick={handleApprove}
-                className="p-1.5 rounded-md border border-[var(--color-success)]/30 text-[var(--color-success)] hover:bg-[var(--color-success)]/10 transition-colors"
+                disabled={approving}
+                className="p-1.5 rounded-md border border-[var(--color-success)]/30 text-[var(--color-success)] hover:bg-[var(--color-success)]/10 transition-colors disabled:opacity-40 disabled:cursor-wait"
                 aria-label={isWorkflowTask ? 'Resume workflow' : 'Approve task'}
                 title={isWorkflowTask ? 'Approve & resume workflow' : 'Approve'}
               >

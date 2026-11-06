@@ -54,7 +54,26 @@ async function submitGoal(goal, options = {}) {
  * approveTask: called from the dashboard/API when a human approves a
  * pending_approval task. Executes the originally requested tool call.
  */
+// Tasks whose approval is running right now. The task stays "pending_approval"
+// until the tool finishes, so without this a second (or third) Approve click
+// during a slow send passed the status check and sent the message again.
+const approvingNow = new Set();
+
 async function approveTask(taskId, options = {}) {
+  if (approvingNow.has(taskId)) {
+    const err = new Error('This task is already being approved - it will only be sent once.');
+    err.code = 'ALREADY_APPROVING';
+    throw err;
+  }
+  approvingNow.add(taskId);
+  try {
+    return await runApprovedTask(taskId, options);
+  } finally {
+    approvingNow.delete(taskId);
+  }
+}
+
+async function runApprovedTask(taskId, options = {}) {
   const task = await memory.getTask(taskId);
   if (!task) throw new Error(`Task not found: ${taskId}`);
   if (task.status !== 'pending_approval') {
