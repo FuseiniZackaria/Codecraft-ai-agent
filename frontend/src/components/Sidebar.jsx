@@ -5,6 +5,7 @@ import Logo from './Logo';
 import { useStore } from '../store/useStore';
 import { NAV_ITEMS } from './nav/navConfig';
 import { useNavBadges } from './nav/useNavBadges';
+import SidebarSetupCard from './onboarding/SidebarSetupCard';
 
 // Same 6 items (navConfig) in three layouts:
 //   desktop/laptop (>=1024px): sidebar, collapsible to an icon rail (remembered)
@@ -166,7 +167,7 @@ export default function Sidebar({ isOpen = false, onClose }) {
         }`}
       />
 
-      <aside className={`${asideClass} h-dvh border-r border-[var(--color-border)] bg-[var(--color-sidebar)] flex flex-col`}>
+      <aside data-tour="sidebar" className={`${asideClass} h-dvh border-r border-[var(--color-border)] bg-[var(--color-sidebar)] flex flex-col`}>
         <div className={`flex items-center gap-2 h-14 shrink-0 bg-[var(--color-brand)] text-white ${rail ? 'justify-center' : 'px-5'}`}>
           <Logo onDark />
           {!rail && (
@@ -255,6 +256,8 @@ export default function Sidebar({ isOpen = false, onClose }) {
             );
           })}
         </nav>
+
+        <SidebarSetupCard rail={rail} onOpen={closeAll} />
 
         {mode !== 'phone' && (
           <div className="px-3 pb-2 shrink-0">

@@ -303,6 +303,12 @@ export const api = {
   addProductWord: (term, means) => request('/products/synonyms', { method: 'POST', body: JSON.stringify({ term, means }) }),
   removeProductWord: (id) => request(`/products/synonyms/${encodeURIComponent(id)}`, { method: 'DELETE' }),
   searchProducts: (q) => request(`/products/search?q=${encodeURIComponent(q)}`),
+  // Onboarding: welcome screen, setup checklist, guided tour.
+  getOnboarding: () => request('/onboarding'),
+  onboardingWelcomeSeen: () => request('/onboarding/welcome-seen', { method: 'POST' }),
+  onboardingSkip: (step, skipped = true) => request('/onboarding/skip', { method: 'POST', body: JSON.stringify({ step, skipped }) }),
+  onboardingHide: (hidden = true) => request('/onboarding/hide', { method: 'POST', body: JSON.stringify({ hidden }) }),
+  onboardingTourSeen: () => request('/onboarding/tour-seen', { method: 'POST' }),
   // Leads (Work -> Leads).
   getLeads: () => request('/leads'),
   updateLead: (id, patch) => request(`/leads/${encodeURIComponent(id)}`, { method: 'PATCH', body: JSON.stringify(patch) }),
@@ -321,6 +327,7 @@ export const api = {
   // WhatsApp through WAHA: each admin's own linked phone (backend/api/whatsappRoutes.js)
   getWhatsappSession: () => request('/whatsapp/session'),
   startWhatsappSession: () => request('/whatsapp/session/start', { method: 'POST' }),
+  whatsappPairingCode: (phoneNumber) => request('/whatsapp/session/pairing-code', { method: 'POST', body: JSON.stringify({ phoneNumber }) }),
   disconnectWhatsappSession: () => request('/whatsapp/session/disconnect', { method: 'POST' }),
   getWhatsappConversations: () => request('/whatsapp/conversations'),
   getWhatsappMessages: (number) => request(`/whatsapp/conversations/${encodeURIComponent(number)}/messages`),

@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
+import EmptyState from '../components/EmptyState';
 import { Trash2, CheckCheck, ListChecks } from 'lucide-react';
 import { PageHeader, HeaderButton } from '../components/ui/Card';
 import { useStore } from '../store/useStore';
@@ -90,6 +91,7 @@ export default function Tasks() {
 
   return (
     <div className="p-4 md:p-6 max-w-5xl">
+      <div data-tour="tasks-header">
       <PageHeader
         icon={ListChecks}
         title="Tasks"
@@ -100,6 +102,7 @@ export default function Tasks() {
           </HeaderButton>
         )}
       />
+      </div>
 
       {sorted.length > 0 && (
         <div className="flex items-center gap-3 mb-3">
@@ -128,9 +131,12 @@ export default function Tasks() {
 
       <div className="rounded-lg border border-[var(--color-border)] bg-[var(--color-surface)]">
         {sorted.length === 0 ? (
-          <div className="p-8 text-center text-sm text-[var(--color-text-muted)]">
-            No tasks yet — submit a goal from the Chat page or command palette.
-          </div>
+          <EmptyState
+            icon={ListChecks}
+            title="Nothing here yet"
+            text="When your assistant needs your OK - a price, a payment, a follow-up - it waits here for you. You can also ask Ian to do something in Chat."
+            action={{ label: 'Ask Ian in Chat', to: '/chat' }}
+          />
         ) : (
           sorted.map((task) => (
             <TaskRow

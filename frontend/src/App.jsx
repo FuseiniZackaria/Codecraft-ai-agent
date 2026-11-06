@@ -23,6 +23,7 @@ import ClientTracker from './pages/ClientTracker';
 import WhatsAppInbox from './pages/WhatsAppInbox';
 import Leads from './pages/Leads';
 import WhatsAppReconnectBanner from './components/WhatsAppReconnectBanner';
+import OnboardingHost from './components/onboarding/OnboardingHost';
 import NotFound from './pages/NotFound';
 import { LogOut, WifiOff } from 'lucide-react';
 import { useStore } from './store/useStore';
@@ -254,6 +255,7 @@ function AdminLayout({ connectionError }) {
       <Sidebar isOpen={sidebarOpen} onClose={closeSidebar} />
       <div className="flex-1 flex flex-col overflow-hidden min-w-0">
         <TopBar onOpenSidebar={() => setSidebarOpen(true)} />
+        <OnboardingHost />
         <WhatsAppReconnectBanner />
         {connectionError && (
           <div className="flex items-center justify-center gap-2 bg-[var(--color-warning)]/10 border-b border-[var(--color-warning)]/30 px-4 py-1.5 text-xs text-[var(--color-warning)]">

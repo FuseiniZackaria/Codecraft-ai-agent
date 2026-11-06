@@ -1,12 +1,14 @@
 import { Link } from 'react-router-dom';
 import {
-  Radio, ArrowRight, Briefcase, CheckCircle2, Circle, Settings, Link2, MessageSquare, Bot, Clock,
+  Radio, ArrowRight, Briefcase, CheckCircle2, Link2, MessageSquare, Bot, Clock,
   AlertTriangle, PieChart, BarChart3, ListChecks, Zap, BookOpen, Inbox,
 } from 'lucide-react';
 import { useStore } from '../store/useStore';
 import Card, { PageHeader, HeaderButton } from '../components/ui/Card';
 import ScrambleText from '../components/ScrambleText';
 import Logo from '../components/Logo';
+import SetupChecklist from '../components/onboarding/SetupChecklist';
+import { useOnboarding } from '../components/onboarding/onboardingStore';
 
 // The CodeCraft logo in the page-title icon box.
 const BrandMark = () => <Logo onDark size={20} />;
@@ -17,50 +19,19 @@ const TITLE_IDLE_REPLAY_MS = 25000;
 import { KpiCard, TaskStatusBar, TasksPerDayChart, RecentTasksTable } from '../components/dashboard/DashboardWidgets';
 import StatusPill from '../components/StatusPill';
 
-function OnboardingBanner({ onboarding }) {
-  if (!onboarding) return null;
-  const steps = [
-    { done: onboarding.profileDone, label: 'Set up your business profile', to: '/settings', icon: Settings },
-    { done: onboarding.connectionsDone, label: 'Connect an account', to: '/connections', icon: Link2 },
-    { done: false, label: 'Send a test message', to: '/connections', icon: MessageSquare },
-  ];
-
-  const currentIdx = steps.findIndex((s) => !s.done);
-  if (currentIdx === -1) return null;
-
+// The setup checklist (welcome / tour / checklist live in components/onboarding).
+function SetupCard() {
+  const status = useOnboarding((st) => st.status);
+  if (!status || status.checklistHidden) return null;
   return (
-    <div className="rounded-lg border border-[var(--color-accent)]/30 bg-[var(--color-accent)]/5 p-4 mb-6">
-      <div className="text-sm font-medium mb-3">Welcome! Let's get your workspace ready.</div>
-      <div className="space-y-2">
-        {steps.map((step, i) => {
-          const Icon = step.done ? CheckCircle2 : Circle;
-          const isCurrent = i === currentIdx;
-          return (
-            <Link
-              key={step.label}
-              to={step.to}
-              className={`flex items-center gap-2.5 p-2 rounded-md transition-colors ${
-                isCurrent
-                  ? 'bg-[var(--color-accent)]/10 text-[var(--color-text)]'
-                  : step.done
-                    ? 'text-[var(--color-success)]'
-                    : 'text-[var(--color-text-muted)]'
-              } ${isCurrent ? 'hover:bg-[var(--color-accent)]/15' : ''}`}
-            >
-              <Icon size={16} className={step.done ? 'text-[var(--color-success)]' : isCurrent ? 'text-[var(--color-accent)]' : ''} />
-              <span className={`text-sm ${step.done ? 'line-through' : ''}`}>{step.label}</span>
-              {isCurrent && <ArrowRight size={14} className="ml-auto text-[var(--color-accent)]" />}
-            </Link>
-          );
-        })}
-      </div>
+    <div className="rounded-lg border border-[var(--color-accent)]/30 bg-[var(--color-surface)] p-4 mb-6 max-w-2xl">
+      <SetupChecklist />
     </div>
   );
 }
 
 export default function Dashboard() {
   const { summary, tasks } = useStore();
-  const user = useStore((s) => s.user);
   const pending = tasks.filter((t) => t.status === 'pending_approval');
   const outreachPipelines = tasks.filter((t) => t.payload?.pipelineType === 'job_outreach_pipeline');
   const scheduledCalls = outreachPipelines.filter((t) => t.payload.stage === 'call_scheduled').length;
@@ -101,7 +72,7 @@ export default function Dashboard() {
         )}
       />
 
-      <OnboardingBanner onboarding={user?.onboarding} />
+      <SetupCard />
 
       <div className="grid grid-cols-2 xl:grid-cols-4 gap-3 sm:gap-4 mb-5">
         <KpiCard tone="navy" icon={Bot} label="Active agents" value={summary.activeAgents} to="/departments" />

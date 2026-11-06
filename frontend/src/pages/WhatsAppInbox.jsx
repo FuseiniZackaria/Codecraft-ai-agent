@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { ArrowLeft, Loader2, MessageCircle, RefreshCw, Send } from 'lucide-react';
+import EmptyState from '../components/EmptyState';
 import { api } from '../services/api';
 import CorrectAnswerDialog, { CorrectButton, CorrectedBadge, questionBefore } from '../components/settings/CorrectAnswer';
 import LoadingScreen from '../components/LoadingScreen';
@@ -178,7 +179,13 @@ export default function WhatsAppInbox() {
           {loading ? (
             <LoadingScreen compact label="Loading conversations…" />
           ) : conversations.length === 0 ? (
-            <div className="p-4 text-sm text-[var(--color-text-muted)]">No messages yet. When someone messages your WhatsApp, the conversation shows up here.</div>
+            <EmptyState
+              compact
+              icon={MessageCircle}
+              title="No messages yet"
+              text="When customers message your WhatsApp, the conversations show up here - and you can reply from CodeCraft."
+              action={{ label: 'Connect WhatsApp', to: '/toolbox/connections' }}
+            />
           ) : (
             conversations.map((c) => (
               <button

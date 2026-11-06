@@ -1,6 +1,7 @@
 import { Search, Menu } from 'lucide-react';
 import { useStore } from '../store/useStore';
 import Logo from './Logo';
+import HelpMenu from './onboarding/HelpMenu';
 
 /**
  * The navy brand bar across the top of every page: (phone) menu + logo,
@@ -20,6 +21,7 @@ export default function TopBar({ onOpenSidebar }) {
             type="button"
             onClick={onOpenSidebar}
             aria-label="Open navigation"
+            data-tour="menu"
             className="md:hidden p-2 -ml-1 rounded-md text-white/80 hover:text-white hover:bg-white/10"
           >
             <Menu size={18} />
@@ -52,6 +54,7 @@ export default function TopBar({ onOpenSidebar }) {
           <span className="hidden sm:inline">Quick action</span>
           <kbd className="hidden sm:inline ml-1 text-[10px] font-[var(--font-mono)] px-1.5 py-0.5 rounded bg-white/10">⌘K</kbd>
         </button>
+        <HelpMenu />
         {user && (
           <div className="flex items-center gap-2 min-w-0" title={user.email}>
             <span className="w-8 h-8 rounded-full bg-[var(--color-accent)] text-[var(--color-brand)] font-semibold text-sm flex items-center justify-center shrink-0">

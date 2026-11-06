@@ -4,6 +4,7 @@ import {
 } from 'lucide-react';
 import { api } from '../../services/api';
 import LoadingScreen from '../LoadingScreen';
+import EmptyState from '../EmptyState';
 
 // Settings -> General -> Products.
 // The catalogue the WhatsApp agent uses: answering "do you have...?", matching
@@ -276,7 +277,13 @@ export default function ProductsTab() {
           </div>
         </div>
         {products.length === 0 ? (
-          <div className="text-xs italic text-[var(--color-text-muted)]">No products yet - import your website, upload a list or add one by hand.</div>
+          <EmptyState
+            compact
+            icon={Package}
+            title="No products yet"
+            text={'Import them from your website or a spreadsheet above, or add them one by one. Your assistant can then answer "do you have…?" and send photos.'}
+            action={{ label: 'Add a product', onClick: () => setEditing({}) }}
+          />
         ) : (
           <ul className="divide-y divide-[var(--color-border)]">
             {shown.map((p) => (

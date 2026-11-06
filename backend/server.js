@@ -136,19 +136,7 @@ app.get('/api/me', requireAuth, async (req, res) => {
     isAppOwner: !!(ownerEmail && req.user.email?.toLowerCase() === ownerEmail.toLowerCase()),
   };
 
-  if (req.user.role === 'admin' && req.user.workspaceId) {
-    try {
-      const profile = await memory.getBusinessProfile({ workspaceId: req.user.workspaceId });
-      const conns = await memory.listWorkspaceConnections(req.user.workspaceId);
-      const profileDone = !!(profile && profile.display_name);
-      const connectionsDone = Array.isArray(conns) && conns.some((c) => c.status === 'connected');
-      if (!profileDone || !connectionsDone) {
-        payload.onboarding = { profileDone, connectionsDone };
-      }
-    } catch {
-      // Non-fatal — skip onboarding hints if the lookup fails.
-    }
-  }
+  // Setup checklist / welcome / tour: GET /api/onboarding (core/onboarding).
 
   res.json(payload);
 });
@@ -219,6 +207,7 @@ app.use('/api/agent-settings', requireAuth, requireRole('admin'), require('./api
 app.use('/api/knowledge', requireAuth, requireRole('admin'), require('./api/knowledgeRoutes'));
 app.use('/api/products', requireAuth, requireRole('admin'), require('./api/productRoutes'));
 app.use('/api/leads', requireAuth, requireRole('admin'), require('./api/leadRoutes'));
+app.use('/api/onboarding', requireAuth, requireRole('admin'), require('./api/onboardingRoutes'));
 app.use('/api/connections', requireAuth, requireRole('admin'), connectionRoutes);
 app.use('/api/client-tracker', requireAuth, requireRole('admin'), clientTrackerRoutes);
 app.use('/api/whatsapp', requireAuth, requireRole('admin'), require('./api/whatsappRoutes'));

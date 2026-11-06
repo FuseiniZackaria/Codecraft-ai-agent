@@ -1,7 +1,7 @@
 const express = require('express');
 const config = require('../config');
 const store = require('../core/whatsapp/store');
-const { getProvider, isSharedNumberProvider, sessionNameForUser, webhookUrl } = require('../core/whatsapp');
+const { getProvider, isSharedNumberProvider, sessionNameForUser, webhookUrl, canConnectWhatsapp } = require('../core/whatsapp');
 const messaging = require('../core/whatsapp/messaging');
 const outbox = require('../core/whatsapp/outbox');
 const { normalizeNumber } = require('../core/whatsapp/phone');
@@ -46,6 +46,13 @@ async function heldByOther(req, provider, sessionName) {
   return null;
 }
 
+const NOT_AVAILABLE_MESSAGE =
+  "Connecting WhatsApp isn't available for your workspace yet - right now only one WhatsApp number can be linked to CodeCraft. "
+  + "We'll let you know as soon as you can connect your own.";
+
+// Single-session WAHA: only one person can link WhatsApp (see core/whatsapp canConnectWhatsapp).
+const canConnect = (req) => canConnectWhatsapp(req.user);
+
 function fail(res, err, status = 502) {
   console.warn(`[whatsapp] ${err.message}`);
   res.status(err.status === 401 ? 502 : status).json({ error: err.message });
@@ -59,6 +66,9 @@ router.get('/session', async (req, res) => {
   if (!provider.isConfigured()) return res.json({ ...base, status: 'NOT_CONFIGURED' });
 
   try {
+    if (!(await canConnect(req))) {
+      return res.json({ ...base, status: 'NOT_AVAILABLE', notAvailable: true, message: NOT_AVAILABLE_MESSAGE });
+    }
     if (await heldByOther(req, provider, sessionName)) {
       return res.json({ ...base, status: 'IN_USE', inUse: true, message: IN_USE_MESSAGE });
     }
@@ -115,6 +125,7 @@ router.post('/session/start', async (req, res) => {
   const sessionName = sessionNameFor(req);
   const hook = webhookUrl();
   try {
+    if (!(await canConnect(req))) return res.status(403).json({ error: NOT_AVAILABLE_MESSAGE, notAvailable: true });
     if (await heldByOther(req, provider, sessionName)) return res.status(409).json({ error: IN_USE_MESSAGE });
     const status = await provider.startSession(sessionName, {
       webhookUrl: hook,
@@ -135,6 +146,35 @@ router.post('/session/start', async (req, res) => {
       ...status,
       warning: hook ? null : 'WAHA_WEBHOOK_BASE_URL (or RENDER_EXTERNAL_URL) is not set, so incoming messages will not reach CodeCraft.',
     });
+  } catch (err) {
+    fail(res, err);
+  }
+});
+
+/**
+ * Link with a code instead of the QR: { phoneNumber } -> { code } to type in
+ * WhatsApp (Linked devices -> Link a device -> Link with phone number instead).
+ * Only while the caller's own session is waiting for a scan.
+ */
+router.post('/session/pairing-code', async (req, res) => {
+  const provider = getProvider();
+  if (provider.name !== 'waha' || typeof provider.requestPairingCode !== 'function') {
+    return res.status(400).json({ error: 'Pairing codes need the WAHA WhatsApp connection.' });
+  }
+  const phoneNumber = normalizeNumber(req.body?.phoneNumber);
+  if (!phoneNumber || phoneNumber.length < 9) {
+    return res.status(400).json({ error: 'Enter your WhatsApp number with the country code, e.g. 233201234567.' });
+  }
+  const sessionName = sessionNameFor(req);
+  try {
+    if (!(await canConnect(req))) return res.status(403).json({ error: NOT_AVAILABLE_MESSAGE, notAvailable: true });
+    const row = await store.getSessionByName(sessionName);
+    if (!row || row.user_id !== req.user.id) return res.status(409).json({ error: 'Click "Connect WhatsApp" first.' });
+    const live = await provider.getStatus(sessionName);
+    if (live.status !== 'SCAN_QR_CODE') {
+      return res.status(409).json({ error: live.status === 'WORKING' ? 'WhatsApp is already linked.' : 'WhatsApp is still getting ready - wait a few seconds and try again.' });
+    }
+    res.json({ code: await provider.requestPairingCode(sessionName, phoneNumber) });
   } catch (err) {
     fail(res, err);
   }

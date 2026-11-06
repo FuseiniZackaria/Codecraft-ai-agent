@@ -61,6 +61,7 @@ const TABLES = [
   'products',               // migration 0007
   'product_sources',        // migration 0007
   'product_synonyms',       // migration 0007
+  'workspace_onboarding',   // migration 0009
   'leads',                  // migration 0008
   'lead_settings',          // migration 0008
   'workflow_connections',   // reserved for Phase 2; may not exist yet

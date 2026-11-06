@@ -14,6 +14,66 @@ function formatNumber(n) {
   return n ? `+${n}` : '';
 }
 
+/** "Can't scan?" - link with an 8-character code typed into WhatsApp instead. */
+function PairingCode({ ready }) {
+  const [open, setOpen] = useState(false);
+  const [phone, setPhone] = useState('');
+  const [code, setCode] = useState('');
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState('');
+
+  async function getCode(e) {
+    e.preventDefault();
+    setBusy(true);
+    setError('');
+    setCode('');
+    try {
+      const r = await api.whatsappPairingCode(phone);
+      setCode(r.code);
+    } catch (err) {
+      setError(err.message);
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  if (!open) {
+    return (
+      <button type="button" onClick={() => setOpen(true)} className="mt-3 w-full text-xs text-[var(--color-accent)] hover:underline">
+        Can't scan? Link with a code instead
+      </button>
+    );
+  }
+  return (
+    <div className="mt-4 border-t border-[var(--color-border)] pt-3 space-y-2">
+      <div className="text-xs font-medium">Link with a code</div>
+      <form onSubmit={getCode} className="flex gap-2">
+        <input
+          type="tel" inputMode="numeric" autoComplete="tel" value={phone} onChange={(e) => setPhone(e.target.value)}
+          placeholder="Your WhatsApp number, e.g. 233201234567"
+          className="flex-1 min-w-0 text-sm px-3 py-2 rounded-md bg-[var(--color-bg)] border border-[var(--color-border)]"
+        />
+        <button type="submit" disabled={busy || !ready || phone.replace(/\D/g, '').length < 9}
+          className="px-3 py-1.5 rounded-md text-xs font-medium bg-[var(--color-accent)] text-black disabled:opacity-50">
+          {busy ? <Loader2 size={13} className="animate-spin" /> : 'Get code'}
+        </button>
+      </form>
+      {!ready && <p className="text-[11px] text-[var(--color-text-muted)]">Wait for the QR code to appear, then you can ask for a code.</p>}
+      {error && <p className="text-xs text-[var(--color-danger)]">{error}</p>}
+      {code && (
+        <>
+          <div className="text-center text-2xl font-[var(--font-mono)] tracking-[0.3em] py-2 select-all">{code}</div>
+          <ol className="text-xs text-[var(--color-text-muted)] space-y-1 list-decimal list-inside">
+            <li>In WhatsApp, open <strong>Linked devices</strong> → <strong>Link a device</strong>.</li>
+            <li>Tap <strong>Link with phone number instead</strong>.</li>
+            <li>Type the code above.</li>
+          </ol>
+        </>
+      )}
+    </div>
+  );
+}
+
 export default function WhatsAppConnectCard() {
   const [session, setSession] = useState(null);
   const [loading, setLoading] = useState(true);
@@ -84,6 +144,7 @@ export default function WhatsAppConnectCard() {
   if (loading) badge = <span className="flex items-center gap-1 text-xs text-[var(--color-text-muted)]"><Loader2 size={13} className="animate-spin" /> Checking…</span>;
   else if (linked) badge = <span className="flex items-center gap-1 text-xs font-medium text-emerald-600"><CheckCircle2 size={13} /> Connected</span>;
   else if (session?.needsReconnect || status === 'FAILED') badge = <span className="flex items-center gap-1 text-xs font-medium text-[var(--color-danger)]"><AlertCircle size={13} /> Needs reconnect</span>;
+  else if (status === 'NOT_AVAILABLE') badge = <span className="flex items-center gap-1 text-xs font-medium text-[var(--color-text-muted)]"><AlertCircle size={13} /> Not available yet</span>;
   else if (status === 'IN_USE') badge = <span className="flex items-center gap-1 text-xs font-medium text-[var(--color-text-muted)]"><AlertCircle size={13} /> Connected by another admin</span>;
   else if (status === 'UNREACHABLE') badge = <span className="flex items-center gap-1 text-xs font-medium text-[var(--color-warning)]"><AlertCircle size={13} /> WhatsApp server offline</span>;
   else badge = <span className="flex items-center gap-1 text-xs text-[var(--color-text-muted)]"><AlertCircle size={13} /> Not connected</span>;
@@ -121,9 +182,12 @@ export default function WhatsAppConnectCard() {
       )}
       {status === 'UNREACHABLE' && <p className="text-xs text-[var(--color-warning)]">{session.error}</p>}
       {status === 'IN_USE' && <p className="text-xs text-[var(--color-text-muted)]">{session.message}</p>}
+      {status === 'NOT_AVAILABLE' && (
+        <p className="text-xs rounded-md border border-[var(--color-border)] bg-[var(--color-surface-2)] p-2.5 text-[var(--color-text)]">{session.message}</p>
+      )}
       {error && <p className="text-xs text-[var(--color-danger)]">{error}</p>}
 
-      {!isTwilio && session?.configured && status !== 'IN_USE' && (
+      {!isTwilio && session?.configured && status !== 'IN_USE' && status !== 'NOT_AVAILABLE' && (
         <div className="flex gap-2">
           {linked ? (
             <button
@@ -175,6 +239,7 @@ export default function WhatsAppConnectCard() {
             <p className="text-[11px] text-[var(--color-text-muted)] mt-3 text-center">
               The code refreshes automatically. This window closes once your phone is linked.
             </p>
+            <PairingCode ready={session?.status === 'SCAN_QR_CODE'} />
           </div>
         </div>
       )}

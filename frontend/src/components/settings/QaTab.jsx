@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import { Plus, Search, Pencil, Trash2, Save, X, AlertCircle, HelpCircle, Wand2 } from 'lucide-react';
+import EmptyState from '../EmptyState';
 import { api } from '../../services/api';
 import LoadingScreen from '../LoadingScreen';
 
@@ -197,7 +198,13 @@ export default function QaTab() {
         </div>
 
         {entries.length === 0 ? (
-          <div className="text-xs italic text-[var(--color-text-muted)]">No Q&A yet. Add the questions customers ask most - prices, delivery, opening hours, how to order.</div>
+          <EmptyState
+            compact
+            icon={HelpCircle}
+            title="No questions and answers yet"
+            text="Add the questions customers ask most - prices, delivery, opening hours, how to order. Your assistant uses these word for word."
+            action={{ label: 'Add your first question', onClick: () => document.querySelector('[aria-label="New question"]')?.focus() }}
+          />
         ) : shown.length === 0 ? (
           <div className="text-xs italic text-[var(--color-text-muted)]">Nothing matches "{search}".</div>
         ) : (

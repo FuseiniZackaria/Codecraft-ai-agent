@@ -54,6 +54,7 @@ export default function Settings() {
           <button
             key={t.key}
             role="tab"
+            data-tour={`tab-${t.key}`}
             type="button"
             aria-selected={tab === t.key}
             onClick={() => setParams(t.key === 'profile' ? {} : { tab: t.key })}

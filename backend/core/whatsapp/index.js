@@ -44,4 +44,20 @@ function webhookUrl() {
   return config.waha.publicBackendUrl ? `${config.waha.publicBackendUrl}/api/webhooks/whatsapp` : null;
 }
 
-module.exports = { getProvider, isSharedNumberProvider, sessionNameForUser, webhookUrl };
+/**
+ * Can this person link WhatsApp? Single-session WAHA (e.g. the Core tier) has
+ * room for ONE number: only the app owner (APP_OWNER_EMAIL) or whoever already
+ * holds the session may connect; everyone else is told it isn't available yet.
+ * No owner email configured = first come, first served (the old rule).
+ */
+async function canConnectWhatsapp(user) {
+  const provider = getProvider();
+  if (config.waha.multiSession || provider.name !== 'waha') return true;
+  const ownerEmail = String(process.env.APP_OWNER_EMAIL || config.applicant?.email || '').toLowerCase();
+  if (!ownerEmail) return true;
+  if (String(user?.email || '').toLowerCase() === ownerEmail) return true;
+  const row = await require('./store').getSessionByName(sessionNameForUser(user?.id)).catch(() => null);
+  return !!row && row.user_id === user?.id;
+}
+
+module.exports = { getProvider, isSharedNumberProvider, sessionNameForUser, webhookUrl, canConnectWhatsapp };

@@ -127,6 +127,18 @@ async function getQR(sessionName) {
 }
 
 /**
+ * Instead of scanning the QR: an 8-character code to type in WhatsApp
+ * (Linked devices -> Link with phone number). Only while the session waits for
+ * a scan. phoneNumber: digits with country code, e.g. 233201234567.
+ */
+async function requestPairingCode(sessionName, phoneNumber) {
+  const json = await call('POST', `/api/${encodeURIComponent(sessionName)}/auth/request-code`, { body: { phoneNumber } });
+  const code = String(json?.code || '').trim();
+  if (!code) throw new WahaError('WhatsApp did not return a pairing code - try again, or scan the QR instead.');
+  return code;
+}
+
+/**
  * { status, phoneNumber, pushName }. status is WAHA's: STOPPED, STARTING,
  * SCAN_QR_CODE, WORKING, FAILED - or NOT_FOUND when the session doesn't exist.
  */
@@ -365,7 +377,7 @@ function handleIncomingWebhook(req) {
 }
 
 module.exports = {
-  name, isConfigured, startSession, getQR, getStatus, sendMessage, sendImage, downloadMedia, sendTyping, disconnect,
+  name, isConfigured, startSession, getQR, requestPairingCode, getStatus, sendMessage, sendImage, downloadMedia, sendTyping, disconnect,
   handleIncomingWebhook, verifySignature, inspectSignature, staleWebhooks, secretFingerprint, resolveLid, mediaKind,
   FINGERPRINT_HEADER, WahaError,
 };

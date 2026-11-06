@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { Upload, FileText, Trash2, RefreshCw, Eye, X, AlertCircle, CheckCircle2, Loader2, Replace } from 'lucide-react';
+import EmptyState from '../EmptyState';
 import { api } from '../../services/api';
 import LoadingScreen from '../LoadingScreen';
 
@@ -187,7 +188,13 @@ export default function DocumentsTab() {
         <input ref={replaceInput} type="file" accept={accept} className="hidden"
           onChange={(e) => { const f = e.target.files?.[0]; e.target.value = ''; replaceWith(f); }} />
         {docs.length === 0 ? (
-          <div className="text-xs italic text-[var(--color-text-muted)]">No documents yet.</div>
+          <EmptyState
+            compact
+            icon={FileText}
+            title="No documents yet"
+            text="Upload a price list, menu, FAQ or brochure (PDF, Word, Excel or text). Your assistant reads it and answers from it."
+            action={{ label: 'Upload a document', onClick: () => uploadInput.current?.click() }}
+          />
         ) : (
           <ul className="divide-y divide-[var(--color-border)]">
             {docs.map((doc) => (

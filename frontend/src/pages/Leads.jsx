@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { Users, RefreshCw, Download, Search, Settings as SettingsIcon, ChevronDown, ChevronRight, MessageCircle, FileSpreadsheet } from 'lucide-react';
 import { api } from '../services/api';
+import EmptyState from '../components/EmptyState';
 
 const card = 'bg-[var(--color-surface)] border border-[var(--color-border)] rounded-lg';
 const input = 'text-sm px-3 py-2 rounded-md bg-[var(--color-bg)] border border-[var(--color-border)]';
@@ -164,7 +165,7 @@ export default function Leads() {
   }, []);
   useEffect(() => { load(); }, [load]);
 
-  const leads = data?.leads || [];
+  const leads = useMemo(() => data?.leads || [], [data]);
   const shown = useMemo(() => {
     const term = q.trim().toLowerCase();
     return leads.filter((l) => (!status || l.status === status) && (!need || l.need === need) && (!source || l.source === source)
@@ -192,7 +193,7 @@ export default function Leads() {
   return (
     <div className="max-w-6xl mx-auto space-y-4">
       <div className="flex flex-wrap items-center justify-between gap-2">
-        <div>
+        <div data-tour="leads-header">
           <h1 className="text-lg font-semibold flex items-center gap-2"><Users size={18} /> Leads</h1>
           <p className="text-xs text-[var(--color-text-muted)]">Everyone who messages you on WhatsApp, plus the leads in your Google Sheet. Ian fills in the details as he chats.</p>
         </div>
@@ -272,8 +273,17 @@ export default function Leads() {
                   <LeadRow key={l.id} lead={l} open={open === l.id} onToggle={() => setOpen((o) => (o === l.id ? null : l.id))} onUpdate={(patch) => update(l, patch)} />
                 ))}
                 {!shown.length && (
-                  <tr><td colSpan={8} className="p-6 text-center text-[var(--color-text-muted)]">
-                    {leads.length ? 'No leads match these filters.' : 'No leads yet. When someone messages your WhatsApp, they show up here.'}
+                  <tr><td colSpan={8} className="p-0">
+                    {leads.length ? (
+                      <div className="p-6 text-center text-[var(--color-text-muted)]">No leads match these filters.</div>
+                    ) : (
+                      <EmptyState
+                        icon={Users}
+                        title="No leads yet"
+                        text="They'll appear here when customers message you on WhatsApp. Ian fills in their name, what they need and a short summary as he chats."
+                        action={{ label: 'Connect WhatsApp', to: '/toolbox/connections' }}
+                      />
+                    )}
                   </td></tr>
                 )}
               </tbody>
