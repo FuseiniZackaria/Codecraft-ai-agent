@@ -21,7 +21,7 @@ function SourceChip({ s }) {
         {open ? <ChevronDown size={11} /> : <ChevronRight size={11} />}
         <Icon size={11} className="shrink-0" />
         <span className="font-mono text-[10px] text-[var(--color-text-muted)]">{s.label}</span>
-        <span className="truncate max-w-[22rem]">{s.type === 'qa' ? `Q&A: ${s.title}` : s.type === 'product' ? `Product: ${s.title}` : `${s.title} (section ${s.section})`}</span>
+        <span className="truncate max-w-[22rem]">{s.type === 'qa' ? `Q&A: ${s.title}` : s.type === 'product' ? `Product: ${s.title}` : s.type === 'link' ? `Link: ${s.title}` : `${s.title} (section ${s.section})`}</span>
       </button>
       {open && <div className="ml-6 mt-1 p-2 rounded bg-[var(--color-surface-3)] whitespace-pre-wrap text-[var(--color-text-muted)]">{s.snippet}{s.snippet?.length >= 300 ? '…' : ''}</div>}
     </div>

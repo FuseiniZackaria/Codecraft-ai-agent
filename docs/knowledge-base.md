@@ -109,6 +109,9 @@ How Ian uses it:
 - **Customer photos**: he looks at the photo, matches it to your products and replies.
   If a photo can't be downloaded or read, you're alerted instead. Stickers and voice
   notes still alert you.
+- **Links customers send** ("can you build something like this?"): he opens the page and
+  reads its title, description, headings and text (no extra AI call) and answers from it.
+  Only public websites are opened; if a link can't be opened he asks about it instead.
 - **Product photos**: after a reply goes out, he can send up to 3 product photos
   (caption = name, never a price). If a photo can't be sent, the product link is sent
   with a preview.

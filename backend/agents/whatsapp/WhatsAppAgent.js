@@ -11,6 +11,7 @@ const agentSettings = require('../../core/knowledge/agentSettings');
 const retrieval = require('../../core/knowledge/retrieval');
 const catalogSearch = require('../../core/catalog/search');
 const imageUnderstanding = require('../../core/whatsapp/imageUnderstanding');
+const linkReader = require('../../core/whatsapp/linkReader');
 const replyPolicy = require('../../core/whatsapp/replyPolicy');
 
 /**
@@ -79,12 +80,14 @@ class WhatsAppAgent extends BaseAgent {
     // Business profile + the Q&A, documents and products that match this message.
     const previousIn = [...history].reverse().find((m) => m.direction === 'in');
     const previous = previousIn ? msgText(previousIn) : '';
-    const [profileLine, found, catalog] = await Promise.all([
+    const [profileLine, found, catalog, shared] = await Promise.all([
       businessContextLine(workspaceId, { forChat: true }),
       retrieval.forMessage(workspaceId, body, previous),
       catalogSearch.forMessage(workspaceId, { message: body, previous, extraTerms: photoTerms }),
+      // Links the customer sent: opened and read (no extra AI call).
+      linkReader.forMessage(body).catch(() => ({ links: [], block: '' })),
     ]);
-    const knowledge = `${profileLine}${catalog.block}${found.block}`;
+    const knowledge = `${profileLine}${catalog.block}${found.block}${shared.block}`;
     const time = voice.ghanaTime(now);
     const lastOut = [...history].reverse().find((m) => m.direction === 'out');
     const midConversation = !!(lastOut && now - new Date(lastOut.sent_at) < GREETING_GAP_MS);
@@ -129,7 +132,7 @@ class WhatsAppAgent extends BaseAgent {
       .slice(0, 3);
     return {
       reply, ...decision, history, photos,
-      knowledgeUsed: { qa: found.qa, docs: found.docs, products: catalog.products, cited: parsed.sources || [] },
+      knowledgeUsed: { qa: found.qa, docs: found.docs, products: catalog.products, links: shared.links, cited: parsed.sources || [] },
     };
   }
 

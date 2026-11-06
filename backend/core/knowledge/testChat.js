@@ -66,7 +66,11 @@ function describeSources(knowledgeUsed = {}) {
     snippet: [x.category, x.stock_status && x.stock_status.replace('_', ' '), x.description].filter(Boolean).join(' - ').slice(0, 300),
     used: cited.has(x.label),
   }));
-  return [...qa, ...docs, ...products];
+  const links = (knowledgeUsed.links || []).map((l, i) => ({
+    label: `L${i + 1}`, type: 'link', id: l.url, title: l.ok ? `${l.title || l.url}` : `${l.url} (couldn't open: ${l.error})`,
+    snippet: l.ok ? [l.description, l.text].filter(Boolean).join(' - ').slice(0, 300) : '', used: l.ok,
+  }));
+  return [...qa, ...docs, ...products, ...links];
 }
 
 function getAgent() {
