@@ -1,7 +1,7 @@
 import { Link } from 'react-router-dom';
 import {
-  Radio, ArrowRight, Briefcase, CheckCircle2, Link2, MessageSquare, Bot, Clock,
-  AlertTriangle, PieChart, BarChart3, ListChecks, Zap, BookOpen, Inbox,
+  Radio, ArrowRight, Briefcase, CheckCircle2, Link2, MessageSquare, UserRound, Clock,
+  AlertTriangle, PieChart, BarChart3, ListChecks, LayoutGrid, BookOpen, Inbox,
 } from 'lucide-react';
 import { useStore } from '../store/useStore';
 import Card, { PageHeader, HeaderButton } from '../components/ui/Card';
@@ -75,7 +75,7 @@ export default function Dashboard() {
       <SetupCard />
 
       <div className="grid grid-cols-2 xl:grid-cols-4 gap-3 sm:gap-4 mb-5">
-        <KpiCard tone="navy" icon={Bot} label="Active agents" value={summary.activeAgents} to="/departments" />
+        <KpiCard tone="navy" icon={UserRound} label="Active agents" value={summary.activeAgents} to="/departments" />
         <KpiCard tone="green" icon={CheckCircle2} label="Tasks done" value={counts.done ?? 0} to="/work" />
         <KpiCard tone="orange" icon={Clock} label="Awaiting approval" shortLabel="Awaiting you" value={counts.pending_approval ?? 0} to="/work" linkLabel="Review" />
         <KpiCard tone="red" icon={AlertTriangle} label="Failed" value={counts.failed ?? 0} to="/work" />
@@ -107,7 +107,7 @@ export default function Dashboard() {
         </Card>
 
         <div className="space-y-5">
-          <Card title="Quick actions" icon={Zap} bodyClassName="p-2">
+          <Card title="Quick actions" icon={LayoutGrid} bodyClassName="p-2">
             <ul>
               {quickLinks.map((q) => {
                 const Icon = q.icon;

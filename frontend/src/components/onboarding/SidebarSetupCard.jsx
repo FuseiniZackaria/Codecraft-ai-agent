@@ -31,7 +31,7 @@ export default function SidebarSetupCard({ rail = false, onOpen }) {
       <button
         type="button"
         onClick={click}
-        className="w-full text-left rounded-lg border border-[var(--color-accent)]/40 bg-white/70 hover:bg-white p-3 transition-colors"
+        className="w-full text-left rounded-lg border border-[var(--color-accent)]/40 bg-white hover:border-[var(--color-accent)] p-3 transition-colors"
       >
         <div className="flex items-center justify-between gap-2 text-xs">
           <span className="flex items-center gap-1.5 font-semibold text-[var(--color-text)]"><ListChecks size={14} className="text-[var(--color-accent)]" /> Setup</span>

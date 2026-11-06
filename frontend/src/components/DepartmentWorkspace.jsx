@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { useSearchParams, Link } from 'react-router-dom';
-import { Play, Copy, RotateCcw, Sparkles, AlertTriangle } from 'lucide-react';
+import { Play, Copy, RotateCcw, AlertTriangle } from 'lucide-react';
 import { useStore } from '../store/useStore';
 import { api } from '../services/api';
 import { createResilientEventSource } from '../services/resilientEventSource';
@@ -251,7 +251,6 @@ export default function DepartmentWorkspace({ departmentKey }) {
                 onClick={() => setInput(action)}
                 className="flex items-center gap-1 text-xs px-2.5 py-1 rounded-full border border-[var(--color-border)] text-[var(--color-text-muted)] hover:text-[var(--color-text)] hover:border-[var(--color-accent)]/40 transition-colors"
               >
-                <Sparkles size={10} />
                 {action}
               </button>
             ))}
@@ -307,7 +306,6 @@ export default function DepartmentWorkspace({ departmentKey }) {
           {activeTool && (
             <div className="flex items-center gap-2 text-xs text-[var(--color-text-muted)] mb-1.5">
               <span className="relative flex h-1.5 w-1.5 shrink-0">
-                <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-[var(--color-accent)] opacity-75" />
                 <span className="relative inline-flex h-1.5 w-1.5 rounded-full bg-[var(--color-accent)]" />
               </span>
               Running {activeTool}…

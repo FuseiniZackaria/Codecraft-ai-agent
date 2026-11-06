@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
-import { Plus, Search, Pencil, Trash2, Save, X, AlertCircle, HelpCircle, Wand2 } from 'lucide-react';
+import { Plus, Search, Pencil, Trash2, Save, X, AlertCircle, HelpCircle } from 'lucide-react';
 import EmptyState from '../EmptyState';
 import { api } from '../../services/api';
 import LoadingScreen from '../LoadingScreen';
@@ -88,7 +88,7 @@ function Entry({ entry, onSaved, onDeleted, limits }) {
             <div className="text-sm font-medium flex items-center gap-2 flex-wrap">
               {entry.question}
               {entry.source === 'correction' && (
-                <span className="text-[10px] px-1.5 py-0.5 rounded bg-sky-500/15 text-sky-500 flex items-center gap-1" title="Saved with 'Correct this answer'"><Wand2 size={10} /> from a correction</span>
+                <span className="text-[10px] px-1.5 py-0.5 rounded bg-sky-500/15 text-sky-500 flex items-center gap-1" title="Saved with 'Correct this answer'"><Pencil size={10} /> from a correction</span>
               )}
               {!entry.enabled && <span className="text-[10px] px-1.5 py-0.5 rounded bg-[var(--color-surface-3)] text-[var(--color-text-muted)]">off</span>}
             </div>

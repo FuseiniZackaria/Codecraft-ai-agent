@@ -1,5 +1,5 @@
 import { Link } from 'react-router-dom';
-import { CheckCircle2, Circle, ArrowRight, Clock, Undo2, X, Sparkles } from 'lucide-react';
+import { CheckCircle2, Circle, ArrowRight, Clock, Undo2, X, Compass } from 'lucide-react';
 import { useOnboarding } from './onboardingStore';
 
 export function ProgressBar({ done, total, className = '' }) {
@@ -90,7 +90,7 @@ export default function SetupChecklist({ onNavigate, showTitle = true }) {
 
       <div className="flex flex-wrap items-center justify-between gap-2 pt-1">
         <button type="button" onClick={startTour} className="inline-flex items-center gap-1 text-xs text-[var(--color-accent)] hover:underline">
-          <Sparkles size={12} /> Take the tour
+          <Compass size={12} /> Take the tour
         </button>
         {status.complete && (
           <button type="button" onClick={hide} className="inline-flex items-center gap-1 text-xs text-[var(--color-text-muted)] hover:text-[var(--color-text)]">

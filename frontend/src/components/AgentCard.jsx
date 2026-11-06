@@ -1,4 +1,4 @@
-import { Bot, Clock } from 'lucide-react';
+import { UserRound, Clock } from 'lucide-react';
 
 function scheduleLabel(intervalMinutes) {
   if (intervalMinutes <= 0) return null;
@@ -15,8 +15,8 @@ export default function AgentCard({ agent }) {
       {/* Header */}
       <div className="flex items-start gap-3">
         <div className="w-9 h-9 rounded-md bg-[var(--color-accent-dim)] flex items-center justify-center relative shrink-0 mt-0.5">
-          <Bot size={17} className="text-[var(--color-accent)]" />
-          <span className="absolute -top-0.5 -right-0.5 w-2 h-2 rounded-full bg-[var(--color-success)] pulse-live" />
+          <UserRound size={17} className="text-[var(--color-accent)]" />
+          <span className="absolute -top-0.5 -right-0.5 w-2 h-2 rounded-full bg-[var(--color-success)]" />
         </div>
         <div className="min-w-0">
           <div className="font-[var(--font-display)] font-semibold text-sm leading-tight">{agent.role}</div>

@@ -1,6 +1,6 @@
 import { useEffect, useRef } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
-import { X, Sparkles, MessageCircle, Users, CheckCircle2 } from 'lucide-react';
+import { X, ArrowRight, MessageCircle, Users, CheckCircle2 } from 'lucide-react';
 import { useOnboarding } from './onboardingStore';
 import SetupChecklist from './SetupChecklist';
 import { runTour } from './tour';
@@ -80,7 +80,7 @@ function Welcome() {
   ];
 
   return (
-    <div className="fixed inset-0 z-[60] flex items-end sm:items-center justify-center bg-black/50 backdrop-blur-sm p-0 sm:p-4" role="dialog" aria-modal="true" aria-labelledby="cc-welcome-title">
+    <div className="fixed inset-0 z-[60] flex items-end sm:items-center justify-center bg-black/50 p-0 sm:p-4" role="dialog" aria-modal="true" aria-labelledby="cc-welcome-title">
       <div className="w-full sm:max-w-md bg-[var(--color-surface)] border border-[var(--color-border)] rounded-t-2xl sm:rounded-2xl shadow-2xl overflow-hidden">
         <div className="bg-[var(--color-brand)] text-white px-6 py-5 flex items-center gap-3">
           <Logo onDark />
@@ -103,7 +103,7 @@ function Welcome() {
               Maybe later
             </button>
             <button type="button" onClick={start} className="inline-flex items-center justify-center gap-1.5 px-4 py-2 rounded-md text-sm font-medium bg-[var(--color-accent)] text-black hover:brightness-110">
-              <Sparkles size={15} /> Start setup
+              Start setup <ArrowRight size={15} />
             </button>
           </div>
         </div>

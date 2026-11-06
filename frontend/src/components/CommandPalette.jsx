@@ -58,11 +58,11 @@ export default function CommandPalette() {
 
   return (
     <div
-      className="fixed inset-0 z-50 flex items-start justify-center px-4 pt-[10vh] sm:pt-[15vh] bg-black/60 backdrop-blur-sm overflow-y-auto"
+      className="fixed inset-0 z-50 flex items-start justify-center px-4 pt-[10vh] sm:pt-[15vh] bg-black/60 overflow-y-auto"
       onClick={() => setPaletteOpen(false)}
     >
       <div
-        className="w-full max-w-lg rounded-lg border border-[var(--color-border)] bg-[var(--color-surface)]/90 backdrop-blur-md shadow-2xl overflow-hidden"
+        className="w-full max-w-lg rounded-lg border border-[var(--color-border)] bg-[var(--color-surface)] shadow-2xl overflow-hidden"
         onClick={(e) => e.stopPropagation()}
       >
         <div className="flex items-center gap-2 px-4 border-b border-[var(--color-border)]">

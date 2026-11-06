@@ -36,7 +36,7 @@ export default function TopBar({ onOpenSidebar }) {
           className="hidden md:inline-flex items-center gap-1.5 text-xs px-2 py-1 rounded-full bg-white/10 text-white/85"
           title={connected ? 'Connected to the backend' : 'Demo mode - backend not reachable'}
         >
-          <span className={`w-2 h-2 rounded-full ${connected ? 'bg-emerald-400 pulse-live' : 'bg-amber-400'}`} />
+          <span className={`w-2 h-2 rounded-full ${connected ? 'bg-emerald-400' : 'bg-amber-400'}`} />
           {status}
         </span>
       </div>

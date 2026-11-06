@@ -70,7 +70,6 @@ export default function TaskRow({ task, expanded, onToggle, liveNarration, rende
             {liveNarration ? (
               <div className="flex items-center gap-1.5 mt-0.5">
                 <span className="relative flex h-1.5 w-1.5 shrink-0">
-                  <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-[var(--color-accent)] opacity-75" />
                   <span className="relative inline-flex h-1.5 w-1.5 rounded-full bg-[var(--color-accent)]" />
                 </span>
                 <div className="text-[11px] text-[var(--color-text)] italic truncate">{liveNarration}</div>

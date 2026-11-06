@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
-import { Bot, Save, Plus, Trash2, History, RotateCcw, Eye, X, AlertCircle, CheckCircle2, MessageSquare, Info } from 'lucide-react';
+import { UserRound, Save, Plus, Trash2, History, RotateCcw, Eye, X, AlertCircle, CheckCircle2, MessageSquare, Info } from 'lucide-react';
 import { api } from '../../services/api';
 import LoadingScreen from '../LoadingScreen';
 
@@ -169,7 +169,7 @@ export default function AgentInstructionsTab() {
       )}
 
       <section className={cardCls}>
-        <h2 className="text-sm font-semibold mb-1 flex items-center gap-2"><Bot size={14} /> Agent instructions</h2>
+        <h2 className="text-sm font-semibold mb-1 flex items-center gap-2"><UserRound size={14} /> Agent instructions</h2>
         <p className="text-xs text-[var(--color-text-muted)] mb-4">
           How your WhatsApp agent talks and what it must and mustn't do: tone, reply length, rules, when to wait for you.
           {activeVersion ? ` In use now: version ${activeVersion}.` : ''}

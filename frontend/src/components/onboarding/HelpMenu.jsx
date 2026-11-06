@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
-import { HelpCircle, Sparkles, ListChecks } from 'lucide-react';
+import { HelpCircle, Compass, ListChecks } from 'lucide-react';
 import { useOnboarding } from './onboardingStore';
 
 /** "?" in the top bar: replay the tour or open the setup checklist, any time. */
@@ -35,7 +35,7 @@ export default function HelpMenu() {
       {open && (
         <div className="absolute right-0 mt-2 w-56 rounded-lg border border-[var(--color-border)] bg-[var(--color-surface)] shadow-xl py-1 z-50">
           <button type="button" className={item} onClick={() => { setOpen(false); startTour(); }}>
-            <Sparkles size={15} className="text-[var(--color-accent)]" /> Take the tour
+            <Compass size={15} className="text-[var(--color-accent)]" /> Take the tour
           </button>
           <button type="button" className={item} onClick={() => { setOpen(false); openChecklist(); }}>
             <ListChecks size={15} className="text-[var(--color-accent)]" /> Setup checklist

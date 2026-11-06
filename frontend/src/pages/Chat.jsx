@@ -1,5 +1,5 @@
 import { useState, useRef, useEffect, useCallback } from 'react';
-import { Send, ListChecks, Paperclip, Mic, MicOff, X, FileText, Image as ImageIcon, ChevronDown, ChevronUp, Volume2, VolumeX } from 'lucide-react';
+import { Send, ListChecks, Paperclip, Mic, MicOff, X, FileText, Image as ImageIcon, ChevronDown, ChevronUp, Volume2, VolumeX, Loader2 } from 'lucide-react';
 import { Link } from 'react-router-dom';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
@@ -518,10 +518,7 @@ export default function Chat({ scope = null }) {
             <div className="max-w-[80%] rounded-lg px-3.5 py-2.5 text-sm bg-[var(--color-surface)] border border-[var(--color-border)] text-[var(--color-text)]">
               {activeTool && (
                 <div className="flex items-center gap-2 text-xs text-[var(--color-text-muted)] mb-1.5">
-                  <span className="relative flex h-1.5 w-1.5 shrink-0">
-                    <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-[var(--color-accent)] opacity-75" />
-                    <span className="relative inline-flex h-1.5 w-1.5 rounded-full bg-[var(--color-accent)]" />
-                  </span>
+                  <Loader2 size={12} className="animate-spin text-[var(--color-accent)] shrink-0" />
                   Running {activeTool}…
                 </div>
               )}
@@ -531,10 +528,7 @@ export default function Chat({ scope = null }) {
                 </div>
               ) : !activeTool ? (
                 <div className="flex items-center gap-2">
-                  <span className="relative flex h-2 w-2 shrink-0">
-                    <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-[var(--color-accent)] opacity-75" />
-                    <span className="relative inline-flex h-2 w-2 rounded-full bg-[var(--color-accent)]" />
-                  </span>
+                  <Loader2 size={14} className="animate-spin text-[var(--color-accent)] shrink-0" />
                   <span className="text-[var(--color-text-muted)]">{liveNarration || '…'}</span>
                 </div>
               ) : null}
@@ -594,7 +588,7 @@ export default function Chat({ scope = null }) {
                 title={listening ? 'Stop listening' : 'Voice input'}
                 className={`p-2.5 rounded-md border transition shrink-0 disabled:opacity-40 ${
                   listening
-                    ? 'border-[var(--color-accent)] text-[var(--color-accent)] bg-[var(--color-accent-dim)] pulse-live'
+                    ? 'border-[var(--color-accent)] text-[var(--color-accent)] bg-[var(--color-accent-dim)]'
                     : 'border-[var(--color-border)] bg-[var(--color-surface)] text-[var(--color-text-muted)] hover:text-[var(--color-text)] hover:border-[var(--color-accent)]/40'
                 }`}
               >

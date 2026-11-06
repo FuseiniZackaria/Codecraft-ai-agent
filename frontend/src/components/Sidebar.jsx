@@ -162,7 +162,7 @@ export default function Sidebar({ isOpen = false, onClose }) {
       <div
         aria-hidden="true"
         onClick={() => (mode === 'tablet' ? setTabletExpanded(false) : closeAll())}
-        className={`fixed inset-0 z-40 bg-black/50 backdrop-blur-sm transition-opacity duration-200 ${
+        className={`fixed inset-0 z-40 bg-black/50 transition-opacity duration-200 ${
           showBackdrop ? 'opacity-100' : 'opacity-0 pointer-events-none'
         }`}
       />

@@ -36,7 +36,7 @@ function EventLine({ event }) {
 
   return (
     <div className="flex items-start gap-2.5 py-1.5">
-      <Icon size={13} className={`${color} shrink-0 mt-0.5 ${pulse ? 'pulse-live rounded-full' : ''}`} />
+      <Icon size={13} className={`${color} shrink-0 mt-0.5 ${pulse ? 'rounded-full' : ''}`} />
       <div className="min-w-0 flex-1">
         <div className="flex items-center gap-1.5 flex-wrap text-xs">
           <span className="text-[var(--color-text)] font-medium">{event.actor}</span>
@@ -75,7 +75,7 @@ function TraceCard({ taskId, events }) {
     <div className={`rounded-lg border p-3.5 ${statusColor}`}>
       <div className="flex items-center justify-between mb-2 gap-2">
         <div className="min-w-0 flex items-center gap-2">
-          {isRunning && <span className="w-1.5 h-1.5 rounded-full bg-[var(--color-warning)] pulse-live shrink-0" />}
+          {isRunning && <span className="w-1.5 h-1.5 rounded-full bg-[var(--color-warning)] shrink-0" />}
           <span className="text-sm font-medium truncate">
             {first.metadata?.instruction || first.target || taskId.slice(0, 8)}
           </span>
@@ -186,7 +186,7 @@ export default function Console() {
       <div className="flex items-center gap-1.5 mb-4 text-xs">
         <span
           className={`w-1.5 h-1.5 rounded-full ${
-            status === 'live' ? 'bg-[var(--color-success)] pulse-live' : status === 'error' ? 'bg-[var(--color-danger)]' : 'bg-[var(--color-warning)]'
+            status === 'live' ? 'bg-[var(--color-success)]' : status === 'error' ? 'bg-[var(--color-danger)]' : 'bg-[var(--color-warning)]'
           }`}
         />
         <span className="text-[var(--color-text-muted)]">

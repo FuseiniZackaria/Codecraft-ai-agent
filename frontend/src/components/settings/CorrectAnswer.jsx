@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { Link } from 'react-router-dom';
-import { Wand2, X, Save, CheckCircle2 } from 'lucide-react';
+import { Pencil, X, Save, CheckCircle2 } from 'lucide-react';
 import { api } from '../../services/api';
 
 // "Correct this answer" - used in the Test chat and the WhatsApp Inbox.
@@ -30,7 +30,7 @@ export function CorrectButton({ onClick, corrected }) {
     <button type="button" onClick={onClick}
       className="text-[11px] text-[var(--color-text-muted)] hover:text-[var(--color-text)] flex items-center gap-1"
       title={corrected ? 'Change the saved correction' : 'Save the right answer to your Q&A'}>
-      <Wand2 size={11} /> {corrected ? 'Edit correction' : 'Correct this answer'}
+      <Pencil size={11} /> {corrected ? 'Edit correction' : 'Correct this answer'}
     </button>
   );
 }
@@ -67,7 +67,7 @@ export default function CorrectAnswerDialog({ kind, messageId, question: q0, ans
     <div className="fixed inset-0 z-50 bg-black/60 flex items-center justify-center p-4" role="dialog" aria-modal="true" onClick={onClose}>
       <form onSubmit={save} className="bg-[var(--color-surface)] border border-[var(--color-border)] rounded-lg max-w-xl w-full p-5 space-y-3" onClick={(e) => e.stopPropagation()}>
         <div className="flex items-center justify-between">
-          <h3 className="font-semibold flex items-center gap-2"><Wand2 size={16} /> Correct this answer</h3>
+          <h3 className="font-semibold flex items-center gap-2"><Pencil size={16} /> Correct this answer</h3>
           <button type="button" onClick={onClose} className="p-1 text-[var(--color-text-muted)] hover:text-[var(--color-text)]" aria-label="Close"><X size={16} /></button>
         </div>
         <p className="text-xs text-[var(--color-text-muted)]">

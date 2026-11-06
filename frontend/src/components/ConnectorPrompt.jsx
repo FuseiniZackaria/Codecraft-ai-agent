@@ -1,5 +1,5 @@
 import { useEffect, useState, useRef } from 'react';
-import { Zap, X, ChevronDown, ChevronUp, Terminal, BookOpen } from 'lucide-react';
+import { Plug, X, ChevronDown, ChevronUp, Terminal, BookOpen } from 'lucide-react';
 import { api } from '../services/api';
 
 export default function ConnectorPrompt() {
@@ -109,7 +109,7 @@ export default function ConnectorPrompt() {
         <div className="rounded-lg border border-[var(--color-accent)]/40 bg-[var(--color-surface)] shadow-lg">
           <div className="flex items-start gap-3 p-4">
             <div className="mt-0.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-[var(--color-accent-dim)]">
-              <Zap size={16} className="text-[var(--color-accent)]" />
+              <Plug size={16} className="text-[var(--color-accent)]" />
             </div>
             <div className="min-w-0 flex-1">
               <p className="text-sm font-medium text-[var(--color-text)]">

@@ -7,7 +7,7 @@ import { api } from '../services/api';
 
 function PermissionDialog({ manifest, onCancel, onApprove }) {
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 overflow-y-auto bg-black/60 backdrop-blur-sm" onClick={onCancel}>
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 overflow-y-auto bg-black/60" onClick={onCancel}>
       <div
         className="w-full max-w-md max-h-[90dvh] overflow-y-auto rounded-lg border border-[var(--color-border)] bg-[var(--color-surface)] p-5"
         onClick={(e) => e.stopPropagation()}
