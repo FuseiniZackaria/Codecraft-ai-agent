@@ -7,13 +7,15 @@ module.exports = {
   irreversible: true, // sending a message is user-facing and hard to undo -> approval gate applies
 
   /**
-   * @param {{to: string, body: string, session?: string, outreach?: boolean, typing?: boolean, source?: string}} args
+   * @param {{to: string, body: string, session?: string, outreach?: boolean, typing?: boolean, source?: string, image?: {url: string}, linkPreview?: boolean}} args
+   *   image:       send a photo (WAHA only); body becomes its caption
+   *   linkPreview: show a preview for a link in the text (WAHA only)
    *   session:  the WAHA session to send from (set on replies to incoming messages)
    *   outreach: a cold/outreach message (Sales agent) - with WAHA it goes through the
    *             paced outreach queue (30-90s gaps, daily cap, skips "stop") instead of sending now
    * @param {{workspaceId?: string}} context
    */
-  async run({ to, body, session, outreach, typing, source }, context = {}) {
+  async run({ to, body, session, outreach, typing, source, image, linkPreview }, context = {}) {
     if (!to || !body) {
       throw new Error('sendMessage requires "to" (phone number) and "body"');
     }
@@ -37,6 +39,8 @@ module.exports = {
       workspaceId: context.workspaceId || null,
       typing: typing !== undefined ? !!typing : !!session, // replies show "typing..." first
       source: source || (session ? 'auto_reply' : 'agent'),
+      image: image || null,
+      linkPreview: !!linkPreview,
     });
     return { status: 'sent', to, ...result };
   },

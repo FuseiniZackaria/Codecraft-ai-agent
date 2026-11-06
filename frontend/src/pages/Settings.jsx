@@ -6,6 +6,7 @@ import { PageHeader } from '../components/ui/Card';
 import QaTab from '../components/settings/QaTab';
 import DocumentsTab from '../components/settings/DocumentsTab';
 import TestChatTab from '../components/settings/TestChatTab';
+import ProductsTab from '../components/settings/ProductsTab';
 import { api } from '../services/api';
 import LoadingScreen from '../components/LoadingScreen';
 
@@ -34,6 +35,7 @@ const TABS = [
   { key: 'agent',   label: 'Agent instructions' },
   { key: 'qa',      label: 'Q&A' },
   { key: 'docs',    label: 'Documents' },
+  { key: 'products', label: 'Products' },
   { key: 'test',    label: 'Test chat' },
 ];
 
@@ -67,6 +69,7 @@ export default function Settings() {
       {tab === 'agent' && <AgentInstructionsTab />}
       {tab === 'qa' && <QaTab />}
       {tab === 'docs' && <DocumentsTab />}
+      {tab === 'products' && <ProductsTab />}
       {tab === 'test' && <TestChatTab />}
     </div>
   );

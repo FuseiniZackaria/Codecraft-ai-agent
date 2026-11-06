@@ -170,10 +170,49 @@ function phoneFromPayload(payload, me) {
   return null;
 }
 
-async function sendMessage(sessionName, to, text) {
+async function sendMessage(sessionName, to, text, { linkPreview = false } = {}) {
   require('../sendGuard').assertRealSendsAllowed('WhatsApp (WAHA)'); // test runs never send for real
-  const json = await call('POST', '/api/sendText', { body: { session: sessionName, chatId: toChatId(to), text } });
+  const json = await call('POST', '/api/sendText', { body: { session: sessionName, chatId: toChatId(to), text, ...(linkPreview ? { linkPreview: true } : {}) } });
   return { id: json?.id?._serialized || json?.id || json?.key?.id || null };
+}
+
+/**
+ * Send a photo. image: { url } (a public link) or { data (base64), mimetype }.
+ * WhatsApp prefers JPEG; WAHA fetches a link itself.
+ */
+async function sendImage(sessionName, to, image, caption = '') {
+  require('../sendGuard').assertRealSendsAllowed('WhatsApp (WAHA)');
+  const ext = String(image.url || '').split('?')[0].toLowerCase().match(/\.(png|webp|gif|jpe?g)$/)?.[1];
+  const guessed = { png: 'image/png', webp: 'image/webp', gif: 'image/gif' }[ext] || 'image/jpeg';
+  const file = image.data
+    ? { mimetype: image.mimetype || 'image/jpeg', filename: image.filename || 'photo.jpg', data: image.data }
+    : { mimetype: image.mimetype || guessed, filename: image.filename || `photo.${ext === 'jpeg' ? 'jpg' : ext || 'jpg'}`, url: image.url };
+  const json = await call('POST', '/api/sendImage', { body: { session: sessionName, chatId: toChatId(to), file, caption: caption || undefined } });
+  return { id: json?.id?._serialized || json?.id || json?.key?.id || null };
+}
+
+const MAX_MEDIA_BYTES = 8 * 1024 * 1024;
+
+/**
+ * Download a photo/file a customer sent. WAHA labels its links with its own
+ * address (often http://localhost:3000 unless WAHA_BASE_URL is set on the WAHA
+ * service), so the path is fetched from WAHA's real address instead - only
+ * WAHA's own /api/files/ paths, with the API key.
+ * Returns { data (base64), mimetype, bytes }.
+ */
+async function downloadMedia(mediaUrl, mimetype = null) {
+  if (!isConfigured()) throw new WahaError('WAHA is not configured');
+  let path;
+  try { path = new URL(mediaUrl).pathname; } catch { throw new WahaError('Not a valid media link'); }
+  if (!path.startsWith('/api/files/')) throw new WahaError('Not a WAHA file link');
+  const res = await fetch(`${config.waha.baseUrl}${path}`, {
+    headers: config.waha.apiKey ? { 'X-Api-Key': config.waha.apiKey } : {},
+    signal: AbortSignal.timeout(config.waha.timeoutMs),
+  });
+  if (!res.ok) throw new WahaError(`Couldn't download the file from WAHA (HTTP ${res.status})`, res.status);
+  const buf = Buffer.from(await res.arrayBuffer());
+  if (buf.length > MAX_MEDIA_BYTES) throw new WahaError('The file is too big to read (over 8 MB)');
+  return { data: buf.toString('base64'), mimetype: res.headers.get('content-type') || mimetype || 'application/octet-stream', bytes: buf.length };
 }
 
 /** Show (on=true) or clear "typing..." in the contact's chat. Never throws. */
@@ -314,6 +353,9 @@ function handleIncomingWebhook(req) {
         contactName: payload._data?.notifyName || payload._data?.pushName || payload.notifyName || null,
         text,
         mediaType,
+        // Where WAHA stored the photo/file (downloaded with downloadMedia), and its type.
+        mediaUrl: payload.media?.url || null,
+        mediaMime: payload.media?.mimetype || null,
         timestamp: payload.timestamp ? new Date(payload.timestamp * 1000).toISOString() : new Date().toISOString(),
       },
     };
@@ -323,7 +365,7 @@ function handleIncomingWebhook(req) {
 }
 
 module.exports = {
-  name, isConfigured, startSession, getQR, getStatus, sendMessage, sendTyping, disconnect,
+  name, isConfigured, startSession, getQR, getStatus, sendMessage, sendImage, downloadMedia, sendTyping, disconnect,
   handleIncomingWebhook, verifySignature, inspectSignature, staleWebhooks, secretFingerprint, resolveLid, mediaKind,
   FINGERPRINT_HEADER, WahaError,
 };

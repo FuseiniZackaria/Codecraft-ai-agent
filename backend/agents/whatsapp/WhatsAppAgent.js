@@ -9,6 +9,8 @@ const notifications = require('../../core/notifications');
 const voice = require('../../core/whatsapp/voice');
 const agentSettings = require('../../core/knowledge/agentSettings');
 const retrieval = require('../../core/knowledge/retrieval');
+const catalogSearch = require('../../core/catalog/search');
+const imageUnderstanding = require('../../core/whatsapp/imageUnderstanding');
 const replyPolicy = require('../../core/whatsapp/replyPolicy');
 
 /**
@@ -41,7 +43,7 @@ const PAYMENT_HOLD_TEXT = 'Thank you! A team member will check and confirm your 
 
 const OUTPUT_FORMAT =
   'Answer with ONLY a JSON object, nothing else:\n' +
-  '{"reply": "<your WhatsApp message to the customer>", "hold": <true or false>, "reason": "<if hold: why, in a few words; else empty>", "sources": [<labels of the Q&A or document parts you used, e.g. "Q2", "D1"; [] if none>]}\n' +
+  '{"reply": "<your WhatsApp message to the customer>", "hold": <true or false>, "reason": "<if hold: why, in a few words; else empty>", "sources": [<labels of the Q&A, document parts or products you used, e.g. "Q2", "D1", "P1"; [] if none>], "photos": [<labels of products whose photo to send with your reply, e.g. "P1" - at most 3, only when they asked to see it, sent a photo of something similar, or it clearly helps; [] otherwise>]}\n' +
   'If hold is true, "reply" is your suggested answer for the team to check before it is sent.\n' +
   "If the answer isn't in the business knowledge you were given, don't guess: say a team member will follow up and set hold to true.";
 
@@ -74,14 +76,16 @@ class WhatsAppAgent extends BaseAgent {
   }
 
   /** Draft Ian's reply. Returns { reply, hold, reason } (reply already cleaned up). */
-  async draftReply({ body, history, workspaceId, v, profile, now = new Date() }) {
-    // Business profile + the Q&A entries that match this message (switched-on ones only).
+  async draftReply({ body, history, workspaceId, v, profile, now = new Date(), photoTerms = [], paymentPhoto = false }) {
+    // Business profile + the Q&A, documents and products that match this message.
     const previousIn = [...history].reverse().find((m) => m.direction === 'in');
-    const [profileLine, found] = await Promise.all([
+    const previous = previousIn ? msgText(previousIn) : '';
+    const [profileLine, found, catalog] = await Promise.all([
       businessContextLine(workspaceId, { forChat: true }),
-      retrieval.forMessage(workspaceId, body, previousIn ? msgText(previousIn) : ''),
+      retrieval.forMessage(workspaceId, body, previous),
+      catalogSearch.forMessage(workspaceId, { message: body, previous, extraTerms: photoTerms }),
     ]);
-    const knowledge = `${profileLine}${found.block}`;
+    const knowledge = `${profileLine}${catalog.block}${found.block}`;
     const time = voice.ghanaTime(now);
     const lastOut = [...history].reverse().find((m) => m.direction === 'out');
     const midConversation = !!(lastOut && now - new Date(lastOut.sent_at) < GREETING_GAP_MS);
@@ -115,22 +119,59 @@ class WhatsAppAgent extends BaseAgent {
     const ownerName = profile?.display_name && !v.instructions.toLowerCase().includes(String(profile.display_name).toLowerCase())
       ? profile.display_name : null;
     const decision = replyPolicy.decideRouting({
-      incoming: body, draft: reply, modelHold: parsed.hold, modelReason: parsed.reason, knowledge, ownerName,
+      // A photo of a receipt / MoMo screen counts as "I've paid": never confirmed by Ian.
+      incoming: paymentPhoto ? `${body} (proof of payment)` : body, draft: reply, modelHold: parsed.hold, modelReason: parsed.reason, knowledge, ownerName,
       agentName: v.agentName, businessName: profile?.business_name || null,
     });
-    return { reply, ...decision, history, knowledgeUsed: { qa: found.qa, docs: found.docs, cited: parsed.sources || [] } };
+    // Product photos to send with the reply: only products that have a photo or a link.
+    const photos = (parsed.photos || [])
+      .map((label) => catalog.products.find((x) => x.label === label))
+      .filter((x) => x && (x.image_url || x.product_url))
+      .slice(0, 3);
+    return {
+      reply, ...decision, history, photos,
+      knowledgeUsed: { qa: found.qa, docs: found.docs, products: catalog.products, cited: parsed.sources || [] },
+    };
   }
 
-  async send({ from, text, session, workspaceId, label }) {
+  async send({ from, text, session, workspaceId, label, image = null, linkPreview = false }) {
+    const payload = session ? { to: from, body: text, session } : { to: from, body: text };
+    if (image) payload.image = image; // { url } - a product photo; body is its caption
+    if (linkPreview) payload.linkPreview = true;
     const task = await this.createApprovalTask({
       instruction: `${label} on WhatsApp to ${from}`,
       tool: TOOL,
-      payload: session ? { to: from, body: text, session } : { to: from, body: text },
+      payload,
       workspaceId,
     });
     // Lazy require - see TelegramAgent.js (circular via core/orchestrator -> agents/registry -> this file).
     const done = await require('../../core/orchestrator').approveTask(task.id, { workspaceId });
     return { taskId: task.id, sent: !done || done.status !== 'failed' };
+  }
+
+  /**
+   * Send product photos after a reply went out. Caption = the product name only
+   * (prices always wait for approval). If a photo can't be sent - or there is
+   * no photo - the product's link is sent with a preview instead.
+   * Returns [{ product, how: 'photo' | 'link' | 'failed' }].
+   */
+  async sendPhotos({ from, session, workspaceId, photos }) {
+    const results = [];
+    for (const p of photos) {
+      let how = 'failed';
+      if (p.image_url) {
+        const sent = await this.send({ from, text: p.name, session, workspaceId, label: 'Product photo', image: { url: p.image_url } })
+          .catch(() => ({ sent: false }));
+        if (sent.sent) how = 'photo';
+      }
+      if (how === 'failed' && p.product_url) {
+        const sent = await this.send({ from, text: `${p.name}: ${p.product_url}`, session, workspaceId, label: 'Product link', linkPreview: true })
+          .catch(() => ({ sent: false }));
+        if (sent.sent) how = 'link';
+      }
+      results.push({ product: p.name, how });
+    }
+    return results;
   }
 
   /**
@@ -142,25 +183,39 @@ class WhatsAppAgent extends BaseAgent {
    * @param {string} [msg.userId] - admin who owns the session (for conversation history)
    * @returns {Promise<{draft: string, held: boolean, reason: string, autoSent: boolean, holdSent: boolean, approvalTaskId: string}>}
    */
-  async handleIncomingMessage({ from, body, workspaceId: wsFromWebhook, session = null, userId = null, now = new Date() }) {
+  async handleIncomingMessage({ from, body: rawBody = '', image = null, workspaceId: wsFromWebhook, session = null, userId = null, now = new Date() }) {
     const workspaceId = wsFromWebhook || null;
     const profile = workspaceId ? await businessProfile.getProfile(workspaceId).catch(() => null) : null;
     // This workspace's instructions, examples and hold reply (falls back to whatsapp-voice.md).
     const v = await agentSettings.forAgent(workspaceId, profile);
     v.hold = v.holdReply;
-    const history = await this.recentHistory({ session, from, userId, workspaceId, body });
+    const history = await this.recentHistory({ session, from, userId, workspaceId, body: rawBody || '[image]' });
+
+    // A photo: look at it first, then answer as if they'd described it.
+    let seen = null;
+    if (image) {
+      try {
+        seen = await imageUnderstanding.describe(image);
+      } catch (err) {
+        console.warn(`[WhatsAppAgent] couldn't read the photo from ${from}: ${err.message}`);
+        // No caption to go on: the owner is alerted instead (messaging.js).
+        if (!rawBody) return { draft: '', held: true, reason: "couldn't read the photo", autoSent: false, holdSent: false, approvalTaskId: null, imageUnreadable: true };
+      }
+    }
+    const body = seen ? imageUnderstanding.asMessageText(seen, rawBody) : rawBody;
+    const photoOpts = seen ? { photoTerms: seen.searchTerms, paymentPhoto: seen.payment } : {};
 
     // The AI service can be overloaded (Gemini 503 / timeouts). Try once more after a
     // short wait; if it's still down, the client must not be left in silence - the
     // owner is alerted to attend to them.
     let drafted;
     try {
-      drafted = await this.draftReply({ body, history, workspaceId, v, profile, now });
+      drafted = await this.draftReply({ body, history, workspaceId, v, profile, now, ...photoOpts });
     } catch (firstErr) {
       console.warn(`[WhatsAppAgent] AI couldn't draft a reply to ${from} (${firstErr.message}) - retrying in ${Math.round(WhatsAppAgent.retryDelayMs / 1000)}s`);
       await new Promise((resolve) => setTimeout(resolve, WhatsAppAgent.retryDelayMs));
       try {
-        drafted = await this.draftReply({ body, history, workspaceId, v, profile, now });
+        drafted = await this.draftReply({ body, history, workspaceId, v, profile, now, ...photoOpts });
       } catch (err) {
         console.warn(`[WhatsAppAgent] AI still unavailable for ${from} (${err.message}) - no reply sent, owner alerted`);
         await activityLog.record(this.role, 'ai_unavailable', from, { error: err.message, workspaceId }).catch(() => {});
@@ -187,7 +242,7 @@ class WhatsAppAgent extends BaseAgent {
       }
     }
 
-    const result = { draft, held: held || !autoReplyOn, reason: autoReplyOn ? reason : 'auto-reply is off', autoSent: false, holdSent: false, approvalTaskId: null };
+    const result = { seen, draft, held: held || !autoReplyOn, reason: autoReplyOn ? reason : 'auto-reply is off', autoSent: false, holdSent: false, approvalTaskId: null };
 
     if (autoReplyOn && !held) {
       const sent = await this.send({ from, text: draft, session, workspaceId, label: 'Reply' });
@@ -195,6 +250,8 @@ class WhatsAppAgent extends BaseAgent {
       result.autoSent = sent.sent;
       await activityLog.record(this.role, 'auto_reply_sent', from, { approvalTaskId: sent.taskId, reason, workspaceId });
       if (sent.sent) {
+        // Product photos the reply refers to (the reply itself went out first).
+        if (drafted.photos?.length) result.photos = await this.sendPhotos({ from, session, workspaceId, photos: drafted.photos });
         notifications.notifyOwnerFyi({ channel: 'whatsapp', from, customerMessage: body, sentReply: draft })
           .catch((err) => console.warn(`[WhatsAppAgent] FYI notification failed: ${err.message}`));
         return result;

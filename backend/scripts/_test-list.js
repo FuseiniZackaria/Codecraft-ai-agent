@@ -30,6 +30,8 @@ module.exports = [
   'tests/knowledge-isolation.test.js',
   'tests/payment-rule.test.js',
   'tests/approve-once.test.js',
+  'tests/catalog.test.js',
+  'tests/whatsapp-images.test.js',
   'tests/whatsapp-waha.test.js',
   'tests/whatsapp-voice.test.js',
   'tests/composio-per-workspace.test.js',

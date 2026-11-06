@@ -159,7 +159,7 @@ router.get('/documents/:id/text', async (req, res) => {
 
 // ---------- test chat ----------
 //   GET    /test-chat    the conversation so far
-//   POST   /test-chat    { text } -> the agent's reply (never sent to anyone)
+//   POST   /test-chat    { text, image? } -> the agent's reply (never sent to anyone); image = { data (base64), mimetype }
 //   DELETE /test-chat    start over
 
 const testChat = require('../core/knowledge/testChat');
@@ -175,7 +175,7 @@ router.get('/test-chat', async (req, res) => {
 
 router.post('/test-chat', async (req, res) => {
   try {
-    const result = await testChat.send(req.user.workspaceId, req.body?.text, req.user);
+    const result = await testChat.send(req.user.workspaceId, req.body?.text, req.user, req.body?.image || null);
     res.json(result);
   } catch (err) {
     fail(res, err);

@@ -39,11 +39,11 @@ function randomBetween(min, max) {
  * random 2-6 seconds first, so a reply doesn't land the instant a message arrives.
  * Throws on a send failure (after logging); the caller decides what that means.
  */
-async function sendAndRecord({ sessionName, to, text, userId = null, workspaceId = null, source, typing = false }) {
+async function sendAndRecord({ sessionName, to, text, userId = null, workspaceId = null, source, typing = false, image = null, linkPreview = false }) {
   const provider = getProvider();
   const contactNumber = normalizeNumber(to);
   if (!contactNumber) throw new Error(`Not a valid WhatsApp number: "${to}"`);
-  if (!text || !String(text).trim()) throw new Error('Message text is empty');
+  if (!image && (!text || !String(text).trim())) throw new Error('Message text is empty');
 
   // Every send passes here, so no path (agent, auto-reply, outreach, alerts) can message someone who said STOP.
   if (!ALLOWED_AFTER_STOP.has(source) && (await store.isOptedOut(sessionName, contactNumber).catch(() => false))) {
@@ -58,7 +58,12 @@ async function sendAndRecord({ sessionName, to, text, userId = null, workspaceId
 
   let result;
   try {
-    result = await provider.sendMessage(sessionName, contactNumber, text);
+    if (image) {
+      if (typeof provider.sendImage !== 'function') throw new Error(`${provider.name} can't send photos`);
+      result = await provider.sendImage(sessionName, contactNumber, image, text || '');
+    } else {
+      result = await provider.sendMessage(sessionName, contactNumber, text, { linkPreview });
+    }
   } catch (err) {
     console.warn(`[whatsapp] send failed (${provider.name}/${sessionName} -> ${contactNumber}, ${source}): ${err.message}`);
     await activityLog.record('WhatsApp', 'send_failed', contactNumber, { session: sessionName, source, error: err.message, workspaceId }).catch(() => {});
@@ -67,7 +72,7 @@ async function sendAndRecord({ sessionName, to, text, userId = null, workspaceId
 
   await store.saveMessage({
     provider: provider.name, sessionName, userId, workspaceId, direction: 'out',
-    contactNumber, text, waMessageId: result.id, source,
+    contactNumber, text: image ? `[photo] ${text || ''}`.trim() : text, waMessageId: result.id, source,
   }).catch((err) => console.warn(`[whatsapp] sent but not saved: ${err.message}`));
   await activityLog.record('WhatsApp', 'message_sent', contactNumber, { session: sessionName, source, workspaceId }).catch(() => {});
   console.log(`[whatsapp] sent (${provider.name}/${sessionName} -> ${contactNumber}, ${source})`);
@@ -156,10 +161,12 @@ async function handleIncomingMessage({ providerName, sessionName, userId = null,
     // The owner writing to the linked number (e.g. replying to an alert) is not a customer.
     if (isOwnerNumber(message.contactNumber)) return { handled: true, routed: false, reason: 'message from the owner' };
 
+    // Photos (with or without a caption) go to Ian, who looks at them. Voice notes,
+    // stickers, videos and files still get no reply - the owner is alerted instead.
+    const isPhoto = message.mediaType === 'image' && !!message.mediaUrl && providerName === 'waha';
     const mediaOnly = !!message.mediaType && MEDIA_ONLY_TEXT.test(text);
     if (!text || (!mediaOnly && text === '[media message]')) return { handled: true, routed: false };
-    // Voice note / image / sticker with no text: no reply to the customer; the owner is alerted instead.
-    if (mediaOnly) return alertOwnerAboutMedia({ sessionName, workspaceId, message });
+    if (mediaOnly && !isPhoto) return alertOwnerAboutMedia({ sessionName, workspaceId, message });
 
     // Rate limit: a contact (or another bot) can't keep the auto-reply going forever.
     const hourAgo = new Date(Date.now() - 60 * 60 * 1000).toISOString();
@@ -182,15 +189,29 @@ async function handleIncomingMessage({ providerName, sessionName, userId = null,
       return { handled: true, routed: false, reason: 'rate limited' };
     }
 
+    // A photo is downloaded from WAHA for Ian to look at. If that fails, the owner is
+    // alerted as before (the customer is never left without anyone seeing it).
+    let image = null;
+    if (isPhoto) {
+      try {
+        image = await getProvider().downloadMedia(message.mediaUrl, message.mediaMime);
+      } catch (err) {
+        console.warn(`[whatsapp] couldn't download the photo from ${message.contactNumber}: ${err.message}`);
+        if (mediaOnly) return alertOwnerAboutMedia({ sessionName, workspaceId, message });
+      }
+    }
+
     // Lazy require: agents/registry -> agents -> core modules would otherwise be circular.
     const agent = require('../../agents/registry').getAgent('whatsapp');
     const reply = await agent.handleIncomingMessage({
       from: message.contactNumber,
-      body: text,
+      body: mediaOnly ? '' : text, // a caption is the message; "[image]" alone is not
+      image,
       workspaceId,
       session: providerName === 'waha' ? sessionName : null,
       userId,
     });
+    if (image && reply?.imageUnreadable && mediaOnly) return alertOwnerAboutMedia({ sessionName, workspaceId, message });
     // reply: what the agent decided (sent / held and why) - for logs and tests.
     return { handled: true, routed: true, reply: reply || null };
   } catch (err) {

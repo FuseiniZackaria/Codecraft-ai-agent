@@ -281,13 +281,28 @@ export const api = {
 
   // Test chat: talk to the WhatsApp agent without anything being sent.
   getTestChat: () => request('/knowledge/test-chat'),
-  sendTestChat: (text) => request('/knowledge/test-chat', { method: 'POST', body: JSON.stringify({ text }) }),
+  // image (optional) = { data (base64), mimetype } - handled like a WhatsApp photo.
+  sendTestChat: (text, image = null) => request('/knowledge/test-chat', { method: 'POST', body: JSON.stringify({ text, image }) }),
   clearTestChat: () => request('/knowledge/test-chat', { method: 'DELETE' }),
 
   // "Correct this answer": kind 'test' (Test chat) or 'whatsapp' (Inbox).
   saveCorrection: ({ kind, messageId, question, answer }) =>
     request('/knowledge/corrections', { method: 'POST', body: JSON.stringify({ kind, messageId, question, answer }) }),
   getCorrections: () => request('/knowledge/corrections'),
+
+  // Products (Settings -> General -> Products).
+  getProducts: () => request('/products'),
+  createProduct: (p) => request('/products', { method: 'POST', body: JSON.stringify(p) }),
+  updateProduct: (id, patch) => request(`/products/${encodeURIComponent(id)}`, { method: 'PATCH', body: JSON.stringify(patch) }),
+  deleteProduct: (id) => request(`/products/${encodeURIComponent(id)}`, { method: 'DELETE' }),
+  importProductsFile: (file) => request('/products/import-csv', { method: 'POST', body: JSON.stringify(file) }),
+  addProductWebsite: (url, dailySync) => request('/products/sources', { method: 'POST', body: JSON.stringify({ url, daily_sync: dailySync }) }),
+  syncProductWebsite: (id) => request(`/products/sources/${encodeURIComponent(id)}/sync`, { method: 'POST' }),
+  setProductWebsiteDaily: (id, dailySync) => request(`/products/sources/${encodeURIComponent(id)}`, { method: 'PATCH', body: JSON.stringify({ daily_sync: dailySync }) }),
+  removeProductWebsite: (id) => request(`/products/sources/${encodeURIComponent(id)}`, { method: 'DELETE' }),
+  addProductWord: (term, means) => request('/products/synonyms', { method: 'POST', body: JSON.stringify({ term, means }) }),
+  removeProductWord: (id) => request(`/products/synonyms/${encodeURIComponent(id)}`, { method: 'DELETE' }),
+  searchProducts: (q) => request(`/products/search?q=${encodeURIComponent(q)}`),
 
   // --- Connections (Phase 2.5) ---
   listConnections: () => request('/connections'),

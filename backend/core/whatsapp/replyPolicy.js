@@ -162,6 +162,12 @@ function timesIn(text) {
   return new Set(timesInWithText(text).map((t) => t.minutes));
 }
 
+/** Clean list of knowledge labels ("[q1]" -> "Q1"), only ones matching `re`, no repeats. */
+function labels(list, re) {
+  if (!Array.isArray(list)) return [];
+  return [...new Set(list.map((s) => String(s).trim().replace(/^\[|\]$/g, '').toUpperCase()).filter((s) => re.test(s)))];
+}
+
 /**
  * The model answers with JSON: {"reply": "...", "hold": false, "reason": ""}.
  * Anything else is held (fails closed) - we can't tell whether it meant to hold.
@@ -178,15 +184,15 @@ function parseDraft(text) {
           hold: json.hold === true || json.hold === 'true',
           reason: String(json.reason || '').trim(),
           // Labels of the knowledge it used, e.g. ["Q2", "D1"] (shown in the Test chat).
-          sources: Array.isArray(json.sources)
-            ? [...new Set(json.sources.map((s) => String(s).trim().replace(/^\[|\]$/g, '').toUpperCase()).filter((s) => /^[QD]\d{1,3}$/.test(s)))]
-            : [],
+          sources: labels(json.sources, /^[QDP]\d{1,3}$/),
+          // Product photos to send with the reply ("P1"...).
+          photos: labels(json.photos, /^P\d{1,3}$/).slice(0, 3),
           parsed: true,
         };
       }
     } catch { /* fall through */ }
   }
-  return { reply: raw, hold: true, reason: "the AI's answer wasn't in the expected format", sources: [], parsed: false };
+  return { reply: raw, hold: true, reason: "the AI's answer wasn't in the expected format", sources: [], photos: [], parsed: false };
 }
 
 const SIGN_OFF_RE = /^\s*((best|kind|warm|warmest|with)\s+)?(regards|wishes)\s*,?\s*$|^\s*(sincerely|cheers|thanks|thank you|many thanks|yours (truly|faithfully|sincerely))\s*,\s*$|^\s*[-—–]{1,2}\s*\S/i;

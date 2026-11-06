@@ -117,7 +117,7 @@ const WS = 'wwwwwwww-wwww-wwww-wwww-wwwwwwwwwwww';
   };
   const ok = waha.handleIncomingWebhook(signed(msgEvent));
   assert.strictEqual(ok.type, 'message');
-  assert.deepStrictEqual(Object.keys(ok.message).sort(), ['contactName', 'contactNumber', 'lid', 'mediaType', 'text', 'timestamp', 'waMessageId']);
+  assert.deepStrictEqual(Object.keys(ok.message).sort(), ['contactName', 'contactNumber', 'lid', 'mediaMime', 'mediaType', 'mediaUrl', 'text', 'timestamp', 'waMessageId']);
   assert.strictEqual(ok.message.contactNumber, '233200000001');
   assert.strictEqual(ok.message.contactName, 'Ama');
   assert.strictEqual(waha.handleIncomingWebhook(signed(msgEvent, 'wrong-secret')).type, 'rejected');

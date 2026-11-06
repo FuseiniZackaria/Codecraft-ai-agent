@@ -60,7 +60,9 @@ function handleIncomingWebhook(req) {
     message: {
       waMessageId: MessageSid,
       lid: null,
-      mediaType: null, // media detection is WAHA-only for now
+      mediaType: null,
+        mediaUrl: null,
+        mediaMime: null, // media detection is WAHA-only for now
       contactNumber,
       contactName: ProfileName || null,
       text: Body || '',

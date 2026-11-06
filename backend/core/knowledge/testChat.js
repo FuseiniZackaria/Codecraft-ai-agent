@@ -44,7 +44,9 @@ function toHistory(rows) {
     .filter((m) => !m.meta?.error)
     .map((m) => ({
       direction: m.role === 'customer' ? 'in' : 'out',
-      body: m.role === 'customer' ? m.body : (m.meta?.customerSees ?? m.body),
+      body: m.role === 'customer'
+        ? (m.meta?.seen ? require('../whatsapp/imageUnderstanding').asMessageText(m.meta.seen, m.body === '[photo]' ? '' : m.body) : m.body)
+        : (m.meta?.customerSees ?? m.body),
       sent_at: m.created_at,
     }));
 }
@@ -59,7 +61,12 @@ function describeSources(knowledgeUsed = {}) {
     label: d.label, type: 'doc', id: d.documentId, title: d.filename, section: d.chunkIndex + 1,
     snippet: d.content.slice(0, 300), used: cited.has(d.label),
   }));
-  return [...qa, ...docs];
+  const products = (knowledgeUsed.products || []).map((x) => ({
+    label: x.label, type: 'product', id: x.id, title: x.name,
+    snippet: [x.category, x.stock_status && x.stock_status.replace('_', ' '), x.description].filter(Boolean).join(' - ').slice(0, 300),
+    used: cited.has(x.label),
+  }));
+  return [...qa, ...docs, ...products];
 }
 
 function getAgent() {
@@ -70,14 +77,55 @@ function getAgent() {
  * Send one test message. Returns { customer, agent } (the two saved rows).
  * The customer's message is saved even if the AI is unavailable.
  */
-async function send(workspaceId, text, user = {}) {
-  const body = typeof text === 'string' ? text.trim() : '';
-  if (!body) throw fail('INVALID', 'Type a message first.');
-  if (body.length > MAX_TEXT) throw fail('INVALID', `That message is too long (max ${MAX_TEXT} characters).`);
+const MAX_IMAGE_BYTES = 5 * 1024 * 1024;
+
+/** A photo from the Test chat: { data (base64), mimetype }. Returns it checked, or null. */
+function checkImage(image) {
+  if (!image) return null;
+  const mimetype = String(image.mimetype || '').toLowerCase();
+  if (!/^image\/(jpeg|jpg|png|webp|gif)$/.test(mimetype)) throw fail('INVALID', 'Send a photo (JPG, PNG, WebP or GIF).');
+  const data = String(image.data || '');
+  const bytes = Math.floor((data.length * 3) / 4);
+  if (!data || bytes < 10) throw fail('INVALID', 'That photo is empty.');
+  if (bytes > MAX_IMAGE_BYTES) throw fail('INVALID', 'That photo is too big (max 5 MB).');
+  return { data, mimetype };
+}
+
+/**
+ * @param {string} text - what the "customer" wrote (optional with a photo: it's the caption)
+ * @param {object} [image] - { data (base64), mimetype }: handled exactly like a WhatsApp photo
+ */
+async function send(workspaceId, text, user = {}, image = null) {
+  const caption = typeof text === 'string' ? text.trim() : '';
+  const photo = checkImage(image);
+  if (!caption && !photo) throw fail('INVALID', 'Type a message first.');
+  if (caption.length > MAX_TEXT) throw fail('INVALID', `That message is too long (max ${MAX_TEXT} characters).`);
   checkRate(workspaceId);
 
   const before = await store.listTestMessages(workspaceId, 12);
-  const customer = await store.addTestMessage(workspaceId, { role: 'customer', body, userId: user.id || null });
+
+  // A photo is looked at first (same as on WhatsApp). If the AI can't read it, say so.
+  let seen = null;
+  if (photo) {
+    try {
+      seen = await require('../whatsapp/imageUnderstanding').describe(photo);
+    } catch (err) {
+      const customerRow = await store.addTestMessage(workspaceId, { role: 'customer', body: caption || '[photo]', meta: { photo: true }, userId: user.id || null });
+      const agentRow = await store.addTestMessage(workspaceId, {
+        role: 'agent', body: '', userId: user.id || null,
+        meta: { error: `The AI couldn't look at the photo (${err.message}). On WhatsApp you'd get an alert to attend to this customer.` },
+      });
+      return { customer: customerRow, agent: agentRow };
+    }
+  }
+  const imageUnderstanding = require('../whatsapp/imageUnderstanding');
+  const body = seen ? imageUnderstanding.asMessageText(seen, caption) : caption;
+  const customer = await store.addTestMessage(workspaceId, {
+    role: 'customer',
+    body: caption || '[photo]',
+    meta: seen ? { photo: true, seen: { kind: seen.kind, description: seen.description, text: seen.text, searchTerms: seen.searchTerms } } : {},
+    userId: user.id || null,
+  });
 
   const profile = await businessProfile.getProfile(workspaceId).catch(() => null);
   const v = await agentSettings.forAgent(workspaceId, profile);
@@ -85,7 +133,10 @@ async function send(workspaceId, text, user = {}) {
 
   let drafted;
   try {
-    drafted = await agent.draftReply({ body, history: toHistory(before), workspaceId, v, profile, now: new Date() });
+    drafted = await agent.draftReply({
+      body, history: toHistory(before), workspaceId, v, profile, now: new Date(),
+      ...(seen ? { photoTerms: seen.searchTerms, paymentPhoto: seen.payment } : {}),
+    });
   } catch (err) {
     const agentRow = await store.addTestMessage(workspaceId, {
       role: 'agent', body: '', userId: user.id || null,
@@ -105,6 +156,8 @@ async function send(workspaceId, text, user = {}) {
     kind: drafted.kind || null,
     sources: describeSources(drafted.knowledgeUsed),
     cited: drafted.knowledgeUsed?.cited || [],
+    // Product photos a real customer would also get (only when the reply is sent straight away).
+    photos: held ? [] : (drafted.photos || []).map((x) => ({ name: x.name, image_url: x.image_url || null, product_url: x.product_url || null })),
     instructionsVersion: v.version,
     instructionsSource: v.source,
     autoReplyOn,

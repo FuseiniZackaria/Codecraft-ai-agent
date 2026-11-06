@@ -86,6 +86,37 @@ Optional settings (`backend/.env`, or Render → Environment):
 | `WA_TIMEZONE` | `Africa/Accra` | Time zone for "Good morning / afternoon / evening". |
 | `WA_PLACE` | `Ghana` | Where the business is, as told to the agent. |
 
+## Products, photos and payments
+
+**Settings → General → Products** is the catalogue Ian uses (run migration
+`0007_products.sql` once, same way as 0006):
+
+- **Import your website** - Shopify and WooCommerce shops (prices, stock, photos),
+  pages with schema.org product data, or any normal site (the AI reads the page and
+  lists your products/services; services are "always available"). **Sync now**, and an
+  optional **daily re-sync**. Items no longer on the site are switched off, not deleted.
+- **Upload CSV/Excel** with a Name column (optional Price, Stock/Qty, Category,
+  Description, Image, Link, Other names). Uploading again updates the same products.
+- **Add / edit by hand**, with an on/off switch per product.
+- **Local words** - Pidgin/Twi/slang customers use ("ahwenepa" → kente cloth). Common
+  Ghanaian ones are built in; misspellings ("jolof", "trowser") are handled automatically.
+
+How Ian uses it:
+
+- Up to 30 products are all shown to him (best matches first); more are searched.
+- **Stock**: website products are re-checked live (cached 10 minutes) before he talks
+  about them; file/manual products use the saved stock. "Unknown" is never promised.
+- **Customer photos**: he looks at the photo, matches it to your products and replies.
+  If a photo can't be downloaded or read, you're alerted instead. Stickers and voice
+  notes still alert you.
+- **Product photos**: after a reply goes out, he can send up to 3 product photos
+  (caption = name, never a price). If a photo can't be sent, the product link is sent
+  with a preview.
+- **Payments are never confirmed by Ian** - "I've paid", MoMo/transfer messages and
+  receipt screenshots get "A team member will check and confirm your payment shortly"
+  and you're alerted.
+- Prices still wait for your approval (and no photos are sent while a reply waits).
+
 ## Several businesses (clients)
 
 Everything here belongs to a **workspace** - one per business. Each workspace

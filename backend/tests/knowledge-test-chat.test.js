@@ -28,7 +28,14 @@ const WS_B = 'bbbbbbbb-0000-0000-0000-0000000000c2';
 let modelAnswer = '';
 let modelFails = false;
 let lastPrompt = null;
+let visionAnswer = null; // what an uploaded photo "shows"; an Error = the AI can't look at it
+let visionCalls = 0;
 mockProvider.complete = async (req) => {
+  if (req.content) { // a photo
+    visionCalls += 1;
+    if (visionAnswer instanceof Error) throw visionAnswer;
+    return { provider: 'mock', text: JSON.stringify(visionAnswer), costEstimate: 0 };
+  }
   lastPrompt = req;
   if (modelFails) throw new Error('AI provider error: Claude is overloaded right now');
   return { provider: 'mock', text: modelAnswer, costEstimate: 0 };
@@ -45,7 +52,7 @@ waha.sendMessage = async (...a) => { leaks.push(['waha.sendMessage', a]); return
 memory.getBusinessProfile = async () => ({ business_name: 'Ama Bakery' });
 
 const app = express();
-app.use(express.json());
+app.use(express.json({ limit: '35mb' })); // same as the real server
 app.use((req, _res, next) => { req.user = { id: 'user-1', role: 'admin', workspaceId: req.get('x-ws') || null, workspaceRole: 'owner' }; next(); });
 app.use('/api/knowledge', require('../api/knowledgeRoutes'));
 let base;
@@ -174,6 +181,44 @@ const answer = (reply, { hold = false, reason = '', sources = [] } = {}) => JSON
     assert.deepStrictEqual(p.sources, ['Q1', 'D2']);
     assert.deepStrictEqual(policy.parseDraft(JSON.stringify({ reply: 'x' })).sources, []);
     console.log('✓ the list of sources the agent reports is cleaned up (only real [Q..]/[D..] labels)');
+  }
+
+  // 11. Photos in the Test chat (G): looked at, matched to products, answered - nothing sent.
+  {
+    const catalogStore = require('../core/catalog/store');
+    await catalogStore.createProduct(WS_A, { name: 'Meat Pie', stock_status: 'in_stock', image_url: 'https://cdn.example.com/pie.jpg' });
+    await call('DELETE', '/api/knowledge/test-chat');
+    const photo = { data: Buffer.from('fake-jpeg-bytes-for-test').toString('base64'), mimetype: 'image/jpeg' };
+    visionAnswer = { kind: 'product', description: 'a golden meat pie', search_terms: ['meat', 'pie'] };
+    modelAnswer = JSON.stringify({ reply: 'Yes, we have meat pies!', hold: false, reason: '', sources: ['P1'], photos: ['P1'] });
+    let r = await call('POST', '/api/knowledge/test-chat', { text: '', image: photo });
+    assert.strictEqual(r.status, 200, JSON.stringify(r.body));
+    assert.strictEqual(r.body.customer.body, '[photo]');
+    assert.strictEqual(r.body.customer.meta.seen.description, 'a golden meat pie');
+    assert(lastPrompt.prompt.includes('[The customer sent a photo. It shows: a golden meat pie.'));
+    assert(lastPrompt.system.includes('[P1] Meat Pie'));
+    assert.deepStrictEqual(r.body.agent.meta.photos, [{ name: 'Meat Pie', image_url: 'https://cdn.example.com/pie.jpg', product_url: null }]);
+    assert(r.body.agent.meta.sources.some((x) => x.type === 'product' && x.title === 'Meat Pie' && x.used));
+    assert.deepStrictEqual(leaks, [], 'nothing sent');
+    // the next message remembers what the photo showed
+    modelAnswer = JSON.stringify({ reply: 'GHS 15 each.', hold: false, reason: '' });
+    await say('how much is it?');
+    assert(lastPrompt.prompt.includes('Customer: [The customer sent a photo. It shows: a golden meat pie.'), lastPrompt.prompt);
+    // a receipt photo is never confirmed
+    visionAnswer = { kind: 'payment', description: 'a MoMo transfer confirmation', text: 'You have sent GHS 30', search_terms: [] };
+    modelAnswer = JSON.stringify({ reply: 'Payment received!', hold: false, reason: '' });
+    r = await call('POST', '/api/knowledge/test-chat', { text: 'paid', image: photo });
+    assert.strictEqual(r.body.agent.meta.kind, 'payment');
+    assert.strictEqual(r.body.agent.meta.customerSees, require('../agents/whatsapp/WhatsAppAgent').PAYMENT_HOLD_TEXT);
+    // the AI can't look at it -> explained
+    visionAnswer = new Error('overloaded');
+    r = await call('POST', '/api/knowledge/test-chat', { text: '', image: photo });
+    assert(/couldn't look at the photo/.test(r.body.agent.meta.error));
+    // not a photo / too big
+    assert.strictEqual((await call('POST', '/api/knowledge/test-chat', { image: { data: photo.data, mimetype: 'application/pdf' } })).status, 400);
+    assert.strictEqual((await call('POST', '/api/knowledge/test-chat', { image: { data: 'A'.repeat(7 * 1024 * 1024), mimetype: 'image/png' } })).status, 400);
+    assert.deepStrictEqual(leaks, []);
+    console.log('✓ G: photos in the Test chat are looked at, matched to products and answered (receipts never confirmed); nothing is sent');
   }
 
   // 10. A delivery AREA is fine; a delivery TIME is a promise (held).

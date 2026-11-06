@@ -61,8 +61,11 @@ async function sendMessage(to, body, opts = {}) {
       workspaceId: opts.workspaceId || owner?.workspace_id || null,
       source: opts.source || 'agent',
       typing: !!opts.typing,
+      image: opts.image || null,
+      linkPreview: !!opts.linkPreview,
     });
   }
+  if (opts.image) throw new Error('Sending photos needs the WAHA WhatsApp connection');
   return provider.client.sendMessage(to, body);
 }
 

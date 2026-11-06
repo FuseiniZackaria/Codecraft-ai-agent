@@ -58,6 +58,9 @@ const TABLES = [
   'kb_documents',           // migration 0006
   'kb_document_chunks',     // migration 0006
   'agent_test_messages',    // migration 0006
+  'products',               // migration 0007
+  'product_sources',        // migration 0007
+  'product_synonyms',       // migration 0007
   'workflow_connections',   // reserved for Phase 2; may not exist yet
   'workflow_definitions',
   'workflow_members',       // reserved for Phase 2; may not exist yet
