@@ -9,17 +9,18 @@ import TestChatTab from '../components/settings/TestChatTab';
 import ProductsTab from '../components/settings/ProductsTab';
 import { api } from '../services/api';
 import LoadingScreen from '../components/LoadingScreen';
+import { PROFILE_RULES, validateProfileForm, fieldError, isEmail } from '../components/settings/profileRules';
 
 // Mirrors the backend's ALLOWED_FIELDS and column names in business_profile.
 // Keep in sync with backend/api/businessProfileRoutes.js when the schema grows.
 const FIELDS = [
-  { key: 'business_name',   label: 'Business name',         icon: Building2, placeholder: 'e.g. Zackaria & Co.' },
-  { key: 'display_name',    label: 'Your name',             icon: User,      placeholder: 'How you want messages signed off' },
+  { key: 'business_name',   label: 'Business name',         icon: Building2, placeholder: 'e.g. Zackaria & Co.', autoComplete: 'organization' },
+  { key: 'display_name',    label: 'Your name',             icon: User,      placeholder: 'How you want messages signed off', autoComplete: 'name' },
   { key: 'title',           label: 'Your title',            icon: User,      placeholder: 'e.g. Founder, Head of Sales' },
-  { key: 'business_email',  label: 'Business email',        icon: Mail,      placeholder: 'The address outreach is sent from' },
-  { key: 'phone',           label: 'Phone number',          icon: Phone,     placeholder: '+233 ...' },
-  { key: 'whatsapp',        label: 'WhatsApp number',       icon: Phone,     placeholder: '+233 ...' },
-  { key: 'website',         label: 'Website',               icon: Globe,     placeholder: 'https://...' },
+  { key: 'business_email',  label: 'Business email',        icon: Mail,      placeholder: 'The address outreach is sent from', type: 'email' },
+  { key: 'phone',           label: 'Phone number',          icon: Phone,     placeholder: '+233 ...', type: 'tel' },
+  { key: 'whatsapp',        label: 'WhatsApp number',       icon: Phone,     placeholder: '+233 ...', type: 'tel' },
+  { key: 'website',         label: 'Website',               icon: Globe,     placeholder: 'e.g. yourbusiness.com', type: 'url' },
   { key: 'location',        label: 'Location',              icon: MapPin,    placeholder: 'City, Country' },
 ];
 
@@ -76,58 +77,83 @@ export default function Settings() {
   );
 }
 
+/** "Required" or "Optional" next to a field's label. */
+function FieldTag({ required }) {
+  return required
+    ? <span className="ml-1 text-[10px] font-semibold uppercase tracking-wide text-[var(--color-danger)]">Required<span aria-hidden="true"> *</span></span>
+    : <span className="ml-1 text-[10px] font-normal uppercase tracking-wide text-[var(--color-text-muted)]">Optional</span>;
+}
+
+const inputBase = 'w-full px-3 py-2 text-sm bg-[var(--color-surface-2)] border rounded-md focus:outline-none';
+const inputCls = (bad) => `${inputBase} ${bad ? 'border-[var(--color-danger)] focus:border-[var(--color-danger)]' : 'border-[var(--color-border)] focus:border-[var(--color-accent)]'}`;
+
 function ProfileTab() {
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState(null);
+  const [fieldErrors, setFieldErrors] = useState({});
+  const [triedSave, setTriedSave] = useState(false);
   const [savedAt, setSavedAt] = useState(null);
   const [workspaceId, setWorkspaceId] = useState(null);
   const [form, setForm] = useState({});
   const [extraEmails, setExtraEmails] = useState([]);
   const [newEmail, setNewEmail] = useState('');
-  const originalRef = useRef(null);
+  const [emailError, setEmailError] = useState(null);
+  const formRef = useRef(null);
+
+  function fill(profile) {
+    const initial = {};
+    for (const f of [...FIELDS, ...LONG_FIELDS]) initial[f.key] = profile?.[f.key] || '';
+    setForm(initial);
+    setExtraEmails(Array.isArray(profile?.extra_email_addresses) ? profile.extra_email_addresses : []);
+  }
 
   useEffect(() => {
     (async () => {
       setLoading(true);
       setError(null);
-      const res = await api.getBusinessProfile();
-      if (!res?.ok && res?.error) {
-        setError(res.error);
+      try {
+        const res = await api.getBusinessProfile();
+        fill(res.profile || res);
+        setWorkspaceId(res.workspaceId || null);
+      } catch (err) {
+        setError(err.message);
+      } finally {
         setLoading(false);
-        return;
       }
-      const profile = res.profile || res;
-      const initial = {};
-      for (const f of [...FIELDS, ...LONG_FIELDS]) initial[f.key] = profile[f.key] || '';
-      setForm(initial);
-      setExtraEmails(Array.isArray(profile.extra_email_addresses) ? profile.extra_email_addresses : []);
-      setWorkspaceId(res.workspaceId || null);
-      originalRef.current = { ...initial, extra_email_addresses: [...(profile.extra_email_addresses || [])] };
-      setLoading(false);
     })();
   }, []);
 
   function setField(key, value) {
     setForm((prev) => ({ ...prev, [key]: value }));
     setSavedAt(null);
+    // Once they've tried to save (or a field already shows a problem), messages update as they type.
+    if (triedSave || fieldErrors[key]) {
+      setFieldErrors((prev) => {
+        const next = { ...prev };
+        const problem = fieldError(key, value);
+        if (problem) next[key] = problem; else delete next[key];
+        return next;
+      });
+    }
+  }
+
+  // Optional fields are checked when you leave them, so a typo shows straight away.
+  function onBlur(key) {
+    const problem = fieldError(key, form[key]);
+    const required = PROFILE_RULES[key]?.required;
+    if (problem && (!required || triedSave)) setFieldErrors((prev) => ({ ...prev, [key]: problem }));
   }
 
   function addEmail() {
     const trimmed = newEmail.trim().toLowerCase();
     if (!trimmed) return;
-    const re = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-    if (!re.test(trimmed)) {
-      setError(`"${trimmed}" doesn't look like an email address.`);
-      return;
-    }
-    if (extraEmails.includes(trimmed)) {
-      setError(`${trimmed} is already in the list.`);
-      return;
-    }
+    if (!isEmail(trimmed)) { setEmailError(`"${trimmed}" doesn't look like an email address.`); return; }
+    if (extraEmails.includes(trimmed)) { setEmailError(`${trimmed} is already in the list.`); return; }
+    if (extraEmails.length >= 20) { setEmailError('You can add up to 20 other email addresses.'); return; }
     setExtraEmails([...extraEmails, trimmed]);
     setNewEmail('');
-    setError(null);
+    setEmailError(null);
     setSavedAt(null);
   }
 
@@ -136,30 +162,51 @@ function ProfileTab() {
     setSavedAt(null);
   }
 
+  function focusFirst(errors) {
+    const first = [...FIELDS, ...LONG_FIELDS].find((f) => errors[f.key]);
+    if (!first) return;
+    const el = formRef.current?.querySelector(`#${first.key}`);
+    el?.focus();
+    el?.scrollIntoView({ block: 'center', behavior: 'smooth' });
+  }
+
   async function handleSave(e) {
     e.preventDefault();
-    setSaving(true);
+    setTriedSave(true);
     setError(null);
-    const patch = { extra_email_addresses: extraEmails };
-    for (const f of [...FIELDS, ...LONG_FIELDS]) {
-      // Send every field so a cleared value becomes null; the backend
-      // handles '' → null and respects the strict allowlist.
-      patch[f.key] = form[f.key] ?? '';
-    }
-    const res = await api.saveBusinessProfile(patch);
-    if (!res?.ok && res?.error) {
-      setError(res.error + (res.details ? `\n\n${res.details.join('\n')}` : ''));
-      setSaving(false);
+    setSavedAt(null);
+
+    // Check everything first: required fields filled in, optional ones (if filled in) valid.
+    const errors = validateProfileForm(form);
+    setFieldErrors(errors);
+    if (Object.keys(errors).length) {
+      focusFirst(errors);
       return;
     }
-    const next = res.profile || {};
-    const initial = {};
-    for (const f of [...FIELDS, ...LONG_FIELDS]) initial[f.key] = next[f.key] || '';
-    setForm(initial);
-    setExtraEmails(Array.isArray(next.extra_email_addresses) ? next.extra_email_addresses : []);
-    originalRef.current = { ...initial, extra_email_addresses: [...(next.extra_email_addresses || [])] };
-    setSaving(false);
-    setSavedAt(new Date());
+
+    setSaving(true);
+    const patch = { extra_email_addresses: extraEmails };
+    // Every field is sent, so a cleared optional field is saved as empty.
+    for (const f of [...FIELDS, ...LONG_FIELDS]) patch[f.key] = form[f.key] ?? '';
+    try {
+      const res = await api.saveBusinessProfile(patch);
+      fill(res.profile || {});
+      setFieldErrors({});
+      setTriedSave(false);
+      setSavedAt(new Date());
+    } catch (err) {
+      // The server checks the same rules; show its messages next to the fields.
+      const serverErrors = err.body?.fieldErrors || {};
+      if (Object.keys(serverErrors).length) {
+        setFieldErrors(serverErrors);
+        if (serverErrors.extra_email_addresses) setEmailError(serverErrors.extra_email_addresses);
+        focusFirst(serverErrors);
+      } else {
+        setError(err.message);
+      }
+    } finally {
+      setSaving(false);
+    }
   }
 
   if (loading) {
@@ -168,37 +215,68 @@ function ProfileTab() {
     );
   }
 
+  const problems = [...FIELDS, ...LONG_FIELDS].filter((f) => fieldErrors[f.key]);
+  const missingRequired = problems.filter((f) => PROFILE_RULES[f.key]?.required && !String(form[f.key] || '').trim());
+  const badOptional = problems.filter((f) => !missingRequired.includes(f));
+
+  const renderField = (f, long = false) => {
+    const Icon = f.icon;
+    const rule = PROFILE_RULES[f.key] || {};
+    const problem = fieldErrors[f.key];
+    const common = {
+      id: f.key,
+      value: form[f.key] || '',
+      onChange: (e) => setField(f.key, e.target.value),
+      onBlur: () => onBlur(f.key),
+      placeholder: f.placeholder,
+      maxLength: rule.max,
+      'aria-required': rule.required ? 'true' : undefined,
+      'aria-invalid': problem ? 'true' : undefined,
+      'aria-describedby': problem ? `${f.key}-error` : undefined,
+    };
+    return (
+      <div key={f.key}>
+        <label htmlFor={f.key} className="flex items-center gap-1.5 text-xs font-medium text-[var(--color-text-muted)] mb-1.5">
+          <Icon size={12} /> {f.label} <FieldTag required={rule.required} />
+        </label>
+        {long ? (
+          <textarea {...common} rows={f.key === 'signature' ? 4 : 3} className={`${inputCls(problem)} font-[var(--font-mono)]`} />
+        ) : (
+          <input
+            {...common}
+            type={f.type === 'email' ? 'email' : f.type === 'tel' ? 'tel' : 'text'}
+            inputMode={f.type === 'tel' ? 'tel' : f.type === 'url' ? 'url' : undefined}
+            autoComplete={f.autoComplete || (f.type === 'email' ? 'email' : f.type === 'tel' ? 'tel' : f.type === 'url' ? 'url' : 'off')}
+            className={inputCls(problem)}
+          />
+        )}
+        {problem && (
+          <p id={`${f.key}-error`} className="mt-1 text-xs text-[var(--color-danger)] flex items-center gap-1">
+            <AlertCircle size={11} className="shrink-0" /> {problem}
+          </p>
+        )}
+      </div>
+    );
+  };
+
   return (
     <div>
-      <p className="text-sm text-[var(--color-text-muted)] mb-6">
+      <p className="text-sm text-[var(--color-text-muted)] mb-2">
         Agents use these fields when they draft outreach, sign emails, triage the
-        inbox and reply on WhatsApp. Blank fields fall back to the server-wide defaults.
+        inbox and reply on WhatsApp.
+      </p>
+      <p className="text-xs text-[var(--color-text-muted)] mb-6">
+        Fields marked <span className="font-semibold text-[var(--color-danger)]">Required *</span> must be filled in before you can save.
+        Optional fields can be left empty - blank ones fall back to the server-wide defaults.
       </p>
 
-      <form onSubmit={handleSave} className="space-y-6">
+      <form ref={formRef} onSubmit={handleSave} noValidate className="space-y-6">
         <section className="bg-[var(--color-surface)] border border-[var(--color-border)] rounded-lg p-5">
           <h2 className="text-sm font-semibold text-[var(--color-text)] mb-4 flex items-center gap-2">
             <Building2 size={14} /> Business basics
           </h2>
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            {FIELDS.map((f) => {
-              const Icon = f.icon;
-              return (
-                <div key={f.key}>
-                  <label htmlFor={f.key} className="flex items-center gap-1.5 text-xs font-medium text-[var(--color-text-muted)] mb-1.5">
-                    <Icon size={12} /> {f.label}
-                  </label>
-                  <input
-                    id={f.key}
-                    type="text"
-                    value={form[f.key] || ''}
-                    onChange={(e) => setField(f.key, e.target.value)}
-                    placeholder={f.placeholder}
-                    className="w-full px-3 py-2 text-sm bg-[var(--color-surface-2)] border border-[var(--color-border)] rounded-md focus:outline-none focus:border-[var(--color-accent)]"
-                  />
-                </div>
-              );
-            })}
+            {FIELDS.map((f) => renderField(f))}
           </div>
         </section>
 
@@ -207,30 +285,13 @@ function ProfileTab() {
             <FileText size={14} /> Offers and signature
           </h2>
           <div className="space-y-4">
-            {LONG_FIELDS.map((f) => {
-              const Icon = f.icon;
-              return (
-                <div key={f.key}>
-                  <label htmlFor={f.key} className="flex items-center gap-1.5 text-xs font-medium text-[var(--color-text-muted)] mb-1.5">
-                    <Icon size={12} /> {f.label}
-                  </label>
-                  <textarea
-                    id={f.key}
-                    rows={f.key === 'signature' ? 4 : 3}
-                    value={form[f.key] || ''}
-                    onChange={(e) => setField(f.key, e.target.value)}
-                    placeholder={f.placeholder}
-                    className="w-full px-3 py-2 text-sm bg-[var(--color-surface-2)] border border-[var(--color-border)] rounded-md focus:outline-none focus:border-[var(--color-accent)] font-[var(--font-mono)]"
-                  />
-                </div>
-              );
-            })}
+            {LONG_FIELDS.map((f) => renderField(f, true))}
           </div>
         </section>
 
         <section className="bg-[var(--color-surface)] border border-[var(--color-border)] rounded-lg p-5">
           <h2 className="text-sm font-semibold text-[var(--color-text)] mb-1 flex items-center gap-2">
-            <Mail size={14} /> Other email addresses I use
+            <Mail size={14} /> Other email addresses I use <FieldTag />
           </h2>
           <p className="text-xs text-[var(--color-text-muted)] mb-4">
             Inbox triage treats emails from these addresses as yours and never
@@ -244,7 +305,7 @@ function ProfileTab() {
             )}
             {extraEmails.map((email) => (
               <div key={email} className="flex items-center justify-between gap-2 px-3 py-2 bg-[var(--color-surface-2)] rounded-md text-sm">
-                <span className="font-[var(--font-mono)]">{email}</span>
+                <span className="font-[var(--font-mono)] break-all">{email}</span>
                 <button
                   type="button"
                   onClick={() => removeEmail(email)}
@@ -261,7 +322,7 @@ function ProfileTab() {
             <input
               type="email"
               value={newEmail}
-              onChange={(e) => setNewEmail(e.target.value)}
+              onChange={(e) => { setNewEmail(e.target.value); setEmailError(null); }}
               onKeyDown={(e) => {
                 if (e.key === 'Enter') {
                   e.preventDefault();
@@ -269,7 +330,9 @@ function ProfileTab() {
                 }
               }}
               placeholder="another-address@example.com"
-              className="flex-1 px-3 py-2 text-sm bg-[var(--color-surface-2)] border border-[var(--color-border)] rounded-md focus:outline-none focus:border-[var(--color-accent)]"
+              aria-label="Another email address"
+              aria-invalid={emailError ? 'true' : undefined}
+              className={`flex-1 min-w-0 ${inputCls(emailError)}`}
             />
             <button
               type="button"
@@ -279,7 +342,27 @@ function ProfileTab() {
               <Plus size={14} /> Add
             </button>
           </div>
+          {emailError && (
+            <p className="mt-1 text-xs text-[var(--color-danger)] flex items-center gap-1"><AlertCircle size={11} className="shrink-0" /> {emailError}</p>
+          )}
+          {newEmail.trim() && !emailError && (
+            <p className="mt-1 text-[11px] text-[var(--color-text-muted)]">Click Add (or press Enter) to put it on the list.</p>
+          )}
         </section>
+
+        {problems.length > 0 && (
+          <div role="alert" className="flex items-start gap-2 p-3 bg-[var(--color-danger)]/10 border border-[var(--color-danger)]/30 rounded-md text-sm text-[var(--color-danger)]">
+            <AlertCircle size={14} className="mt-0.5 shrink-0" />
+            <div>
+              {missingRequired.length > 0 && (
+                <div>Please fill in the required {missingRequired.length === 1 ? 'field' : 'fields'}: <strong>{missingRequired.map((f) => f.label).join(', ')}</strong>.</div>
+              )}
+              {badOptional.length > 0 && (
+                <div>Please check: <strong>{badOptional.map((f) => f.label).join(', ')}</strong> - or leave {badOptional.length === 1 ? 'it' : 'them'} empty, {badOptional.length === 1 ? 'it is' : 'they are'} optional.</div>
+              )}
+            </div>
+          </div>
+        )}
 
         {error && (
           <div className="flex items-start gap-2 p-3 bg-[var(--color-danger)]/10 border border-[var(--color-danger)]/30 rounded-md text-sm text-[var(--color-danger)] whitespace-pre-wrap">
@@ -288,7 +371,7 @@ function ProfileTab() {
           </div>
         )}
 
-        <div className="flex items-center gap-3">
+        <div className="flex flex-wrap items-center gap-3">
           <button
             type="submit"
             disabled={saving}

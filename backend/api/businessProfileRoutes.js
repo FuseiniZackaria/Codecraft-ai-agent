@@ -1,6 +1,7 @@
 const express = require('express');
 const memory = require('../memory');
 const businessProfile = require('../core/businessProfile');
+const { validateProfile } = require('../core/businessProfileRules');
 
 const router = express.Router();
 
@@ -28,15 +29,7 @@ router.get('/', async (req, res) => {
   }
 });
 
-const ALLOWED_FIELDS = [
-  'display_name', 'business_name', 'title', 'business_email',
-  'extra_email_addresses', 'phone', 'whatsapp', 'website', 'location',
-  'offers', 'signature', 'tone', 'logo_url',
-];
-
-const MAX_STRING_LEN = 2000;
-const MAX_EXTRA_EMAILS = 20;
-const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+// Required fields, optional fields and their formats: core/businessProfileRules.js.
 
 /**
  * PATCH /api/business-profile
@@ -54,59 +47,11 @@ router.patch('/', async (req, res) => {
           'This deployment has no workspace yet — run migration 0001 so your admin owns a workspace.',
       });
     }
-    const body = req.body || {};
-    const patch = {};
-    const errors = [];
-
-    for (const key of ALLOWED_FIELDS) {
-      if (!(key in body)) continue;
-      const value = body[key];
-
-      if (key === 'extra_email_addresses') {
-        if (!Array.isArray(value)) {
-          errors.push('extra_email_addresses must be an array of strings');
-          continue;
-        }
-        if (value.length > MAX_EXTRA_EMAILS) {
-          errors.push(`extra_email_addresses: max ${MAX_EXTRA_EMAILS} entries`);
-          continue;
-        }
-        const cleaned = [];
-        for (const raw of value) {
-          if (typeof raw !== 'string') { errors.push('extra_email_addresses: entries must be strings'); continue; }
-          const trimmed = raw.trim().toLowerCase();
-          if (!trimmed) continue;
-          if (!EMAIL_RE.test(trimmed)) {
-            errors.push(`extra_email_addresses: "${trimmed}" is not a valid email`);
-            continue;
-          }
-          if (!cleaned.includes(trimmed)) cleaned.push(trimmed);
-        }
-        patch.extra_email_addresses = cleaned;
-        continue;
-      }
-
-      if (value === null || value === '') {
-        patch[key] = null;
-        continue;
-      }
-      if (typeof value !== 'string') {
-        errors.push(`${key} must be a string or null`);
-        continue;
-      }
-      if (value.length > MAX_STRING_LEN) {
-        errors.push(`${key}: max ${MAX_STRING_LEN} characters`);
-        continue;
-      }
-      if (key === 'business_email' && !EMAIL_RE.test(value.trim())) {
-        errors.push('business_email is not a valid email');
-        continue;
-      }
-      patch[key] = value.trim();
-    }
-
+    // Required fields must be filled in; optional ones may be empty but, if
+    // filled in, must look right. fieldErrors lets the form point at each field.
+    const { patch, fieldErrors, errors } = validateProfile(req.body || {});
     if (errors.length) {
-      return res.status(400).json({ error: 'Invalid input', details: errors });
+      return res.status(400).json({ error: 'Please fix the highlighted fields.', details: errors, fieldErrors });
     }
     if (Object.keys(patch).length === 0) {
       return res.status(400).json({ error: 'Nothing to update' });
