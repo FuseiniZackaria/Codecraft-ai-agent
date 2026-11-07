@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import { Plus, Search, Pencil, Trash2, Save, X, AlertCircle, HelpCircle } from 'lucide-react';
 import EmptyState from '../EmptyState';
+import { FieldTag, FieldError, FormSummary, invalidCls, a11y } from '../ui/FormField';
 import { api } from '../../services/api';
 import LoadingScreen from '../LoadingScreen';
 
@@ -43,6 +44,7 @@ function Entry({ entry, onSaved, onDeleted, limits }) {
   const [a, setA] = useState(entry.answer);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState(null);
+  const [editErrors, setEditErrors] = useState({});
 
   async function patch(fields) {
     setBusy(true);
@@ -74,10 +76,23 @@ function Entry({ entry, onSaved, onDeleted, limits }) {
     <li className={`p-4 rounded-md border border-[var(--color-border)] ${entry.enabled ? 'bg-[var(--color-surface-2)]' : 'bg-[var(--color-surface)] opacity-70'}`}>
       {editing ? (
         <div className="space-y-2">
-          <textarea rows={2} className={inputCls} value={q} maxLength={limits.question} onChange={(e) => setQ(e.target.value)} aria-label="Question" />
-          <textarea rows={4} className={inputCls} value={a} maxLength={limits.answer} onChange={(e) => setA(e.target.value)} aria-label="Answer" />
+          <div>
+            <label htmlFor={`qa-q-${entry.id}`} className="text-xs font-medium text-[var(--color-text-muted)]">Question <FieldTag required /></label>
+            <textarea rows={2} {...a11y(`qa-q-${entry.id}`, { required: true, error: editErrors.question })} className={`${inputCls} mt-1 ${invalidCls(editErrors.question)}`} value={q} maxLength={limits.question} onChange={(e) => setQ(e.target.value)} />
+            <FieldError id={`qa-q-${entry.id}-error`}>{editErrors.question}</FieldError>
+          </div>
+          <div>
+            <label htmlFor={`qa-a-${entry.id}`} className="text-xs font-medium text-[var(--color-text-muted)]">Answer <FieldTag required /></label>
+            <textarea rows={4} {...a11y(`qa-a-${entry.id}`, { required: true, error: editErrors.answer })} className={`${inputCls} mt-1 ${invalidCls(editErrors.answer)}`} value={a} maxLength={limits.answer} onChange={(e) => setA(e.target.value)} />
+            <FieldError id={`qa-a-${entry.id}-error`}>{editErrors.answer}</FieldError>
+          </div>
           <div className="flex gap-2">
-            <button type="button" className={btnCls} disabled={busy} onClick={() => patch({ question: q, answer: a })}><Save size={12} /> Save</button>
+            <button type="button" className={btnCls} disabled={busy} onClick={() => {
+              const problems = { question: q.trim() ? null : 'Question is required.', answer: a.trim() ? null : 'Answer is required.' };
+              setEditErrors(problems);
+              if (problems.question || problems.answer) return;
+              patch({ question: q, answer: a });
+            }}><Save size={12} /> Save</button>
             <button type="button" className={btnCls} disabled={busy} onClick={() => { setEditing(false); setQ(entry.question); setA(entry.answer); setError(null); }}><X size={12} /> Cancel</button>
           </div>
         </div>
@@ -116,6 +131,7 @@ export default function QaTab() {
   const [newA, setNewA] = useState('');
   const [adding, setAdding] = useState(false);
   const [addError, setAddError] = useState(null);
+  const [addErrors, setAddErrors] = useState({});
 
   useEffect(() => {
     (async () => {
@@ -142,8 +158,15 @@ export default function QaTab() {
 
   async function add(e) {
     e.preventDefault();
-    setAdding(true);
     setAddError(null);
+    // Both are required: say which one is missing instead of sending nothing.
+    const problems = { question: newQ.trim() ? null : 'Question is required.', answer: newA.trim() ? null : 'Answer is required.' };
+    setAddErrors(problems);
+    if (problems.question || problems.answer) {
+      document.getElementById(problems.question ? 'qa-new-question' : 'qa-new-answer')?.focus();
+      return;
+    }
+    setAdding(true);
     try {
       const res = await api.createQa({ question: newQ, answer: newA });
       setEntries((list) => [res.entry, ...list]);
@@ -178,11 +201,24 @@ export default function QaTab() {
         <p className="text-xs text-[var(--color-text-muted)] mb-4">
           The WhatsApp agent treats these as approved answers and uses them from its next reply. Write the answer the way you'd want it said; the agent puts it in its own words.
         </p>
-        <form onSubmit={add} className="space-y-2">
-          <input className={inputCls} value={newQ} maxLength={limits.question} onChange={(e) => setNewQ(e.target.value)} placeholder="Question, e.g. Do you deliver?" aria-label="New question" />
-          <textarea rows={3} className={inputCls} value={newA} maxLength={limits.answer} onChange={(e) => setNewA(e.target.value)} placeholder="Answer, e.g. Yes, we deliver anywhere in Accra for GHS 20. Same-day if you order before 2pm." aria-label="New answer" />
+        <form onSubmit={add} noValidate className="space-y-3">
+          <div>
+            <label htmlFor="qa-new-question" className="text-xs font-medium text-[var(--color-text-muted)]">Question <FieldTag required /></label>
+            <input {...a11y('qa-new-question', { required: true, error: addErrors.question })} className={`${inputCls} mt-1 ${invalidCls(addErrors.question)}`} value={newQ} maxLength={limits.question}
+              onChange={(e) => { setNewQ(e.target.value); if (addErrors.question && e.target.value.trim()) setAddErrors((x) => ({ ...x, question: null })); }}
+              placeholder="e.g. Do you deliver?" aria-label="New question" />
+            <FieldError id="qa-new-question-error">{addErrors.question}</FieldError>
+          </div>
+          <div>
+            <label htmlFor="qa-new-answer" className="text-xs font-medium text-[var(--color-text-muted)]">Answer <FieldTag required /></label>
+            <textarea rows={3} {...a11y('qa-new-answer', { required: true, error: addErrors.answer })} className={`${inputCls} mt-1 ${invalidCls(addErrors.answer)}`} value={newA} maxLength={limits.answer}
+              onChange={(e) => { setNewA(e.target.value); if (addErrors.answer && e.target.value.trim()) setAddErrors((x) => ({ ...x, answer: null })); }}
+              placeholder="e.g. Yes, we deliver anywhere in Accra for GHS 20. Same-day if you order before 2pm." aria-label="New answer" />
+            <FieldError id="qa-new-answer-error">{addErrors.answer}</FieldError>
+          </div>
+          <FormSummary missing={[addErrors.question && 'Question', addErrors.answer && 'Answer'].filter(Boolean)} />
           {addError && <div className="text-xs text-[var(--color-danger)] whitespace-pre-wrap">{addError}</div>}
-          <button type="submit" className={primaryCls} disabled={adding || !newQ.trim() || !newA.trim()}><Plus size={14} /> {adding ? 'Adding…' : 'Add'}</button>
+          <button type="submit" className={primaryCls} disabled={adding}><Plus size={14} /> {adding ? 'Adding…' : 'Add'}</button>
         </form>
       </section>
 

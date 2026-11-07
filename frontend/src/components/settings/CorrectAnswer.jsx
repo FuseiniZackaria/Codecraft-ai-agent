@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { Link } from 'react-router-dom';
 import { Pencil, X, Save, CheckCircle2 } from 'lucide-react';
 import { api } from '../../services/api';
+import { FieldTag, FieldError, FormSummary, invalidCls, a11y } from '../ui/FormField';
 
 // "Correct this answer" - used in the Test chat and the WhatsApp Inbox.
 // Saves the right answer straight into the Q&A, so the agent uses it from its
@@ -47,11 +48,19 @@ export default function CorrectAnswerDialog({ kind, messageId, question: q0, ans
   const [answer, setAnswer] = useState(a0 || '');
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState(null);
+  const [errors, setErrors] = useState({});
 
   async function save(e) {
     e.preventDefault();
-    setSaving(true);
     setError(null);
+    // Both are required: say which one is missing.
+    const problems = { question: question.trim() ? null : "The customer's question is required.", answer: answer.trim() ? null : 'The right answer is required.' };
+    setErrors(problems);
+    if (problems.question || problems.answer) {
+      document.getElementById(problems.question ? 'correct-question' : 'correct-answer')?.focus();
+      return;
+    }
+    setSaving(true);
     try {
       const res = await api.saveCorrection({ kind, messageId, question, answer });
       onSaved?.(res.entry, res.created);
@@ -65,7 +74,7 @@ export default function CorrectAnswerDialog({ kind, messageId, question: q0, ans
   const inputCls = 'w-full px-3 py-2 text-sm bg-[var(--color-surface-2)] border border-[var(--color-border)] rounded-md focus:outline-none focus:border-[var(--color-accent)]';
   return (
     <div className="fixed inset-0 z-50 bg-black/60 flex items-center justify-center p-4" role="dialog" aria-modal="true" onClick={onClose}>
-      <form onSubmit={save} className="bg-[var(--color-surface)] border border-[var(--color-border)] rounded-lg max-w-xl w-full p-5 space-y-3" onClick={(e) => e.stopPropagation()}>
+      <form onSubmit={save} noValidate className="bg-[var(--color-surface)] border border-[var(--color-border)] rounded-lg max-w-xl w-full p-5 space-y-3" onClick={(e) => e.stopPropagation()}>
         <div className="flex items-center justify-between">
           <h3 className="font-semibold flex items-center gap-2"><Pencil size={16} /> Correct this answer</h3>
           <button type="button" onClick={onClose} className="p-1 text-[var(--color-text-muted)] hover:text-[var(--color-text)]" aria-label="Close"><X size={16} /></button>
@@ -75,18 +84,23 @@ export default function CorrectAnswerDialog({ kind, messageId, question: q0, ans
           {kind === 'whatsapp' ? " This doesn't send anything to the customer - reply to them yourself below if needed." : ''}
         </p>
         <div>
-          <label className="block text-xs font-medium text-[var(--color-text-muted)] mb-1">Customer's question</label>
-          <textarea rows={2} className={inputCls} value={question} maxLength={500} onChange={(e) => setQuestion(e.target.value)} placeholder="e.g. Do you deliver on Sundays?" />
+          <label htmlFor="correct-question" className="block text-xs font-medium text-[var(--color-text-muted)] mb-1">Customer's question <FieldTag required /></label>
+          <textarea rows={2} {...a11y('correct-question', { required: true, error: errors.question })} className={`${inputCls} ${invalidCls(errors.question)}`} value={question} maxLength={500}
+            onChange={(e) => { setQuestion(e.target.value); if (e.target.value.trim()) setErrors((x) => ({ ...x, question: null })); }} placeholder="e.g. Do you deliver on Sundays?" />
+          <FieldError id="correct-question-error">{errors.question}</FieldError>
           <div className="text-[11px] text-[var(--color-text-muted)] mt-1">Tip: write it the general way customers ask, not just this one message.</div>
         </div>
         <div>
-          <label className="block text-xs font-medium text-[var(--color-text-muted)] mb-1">The right answer</label>
-          <textarea rows={4} className={inputCls} value={answer} maxLength={4000} onChange={(e) => setAnswer(e.target.value)} autoFocus />
+          <label htmlFor="correct-answer" className="block text-xs font-medium text-[var(--color-text-muted)] mb-1">The right answer <FieldTag required /></label>
+          <textarea rows={4} {...a11y('correct-answer', { required: true, error: errors.answer })} className={`${inputCls} ${invalidCls(errors.answer)}`} value={answer} maxLength={4000}
+            onChange={(e) => { setAnswer(e.target.value); if (e.target.value.trim()) setErrors((x) => ({ ...x, answer: null })); }} autoFocus />
+          <FieldError id="correct-answer-error">{errors.answer}</FieldError>
         </div>
+        <FormSummary missing={[errors.question && "Customer's question", errors.answer && 'The right answer'].filter(Boolean)} />
         {error && <div className="text-xs text-[var(--color-danger)]">{error}</div>}
         <div className="flex gap-2 justify-end">
           <button type="button" onClick={onClose} className="px-3 py-2 text-sm border border-[var(--color-border)] rounded-md hover:bg-[var(--color-surface-2)]">Cancel</button>
-          <button type="submit" disabled={saving || !question.trim() || !answer.trim()}
+          <button type="submit" disabled={saving}
             className="px-4 py-2 text-sm bg-[var(--color-accent)] text-black rounded-md hover:opacity-90 disabled:opacity-50 flex items-center gap-2 font-medium">
             <Save size={14} /> {saving ? 'Saving…' : 'Save to Q&A'}
           </button>

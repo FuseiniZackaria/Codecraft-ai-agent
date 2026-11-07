@@ -3,6 +3,7 @@ import { Link } from 'react-router-dom';
 import { Users, RefreshCw, Download, Search, Settings as SettingsIcon, ChevronDown, ChevronRight, MessageCircle, FileSpreadsheet } from 'lucide-react';
 import { api } from '../services/api';
 import EmptyState from '../components/EmptyState';
+import { FieldTag, FieldError, invalidCls, a11y } from '../components/ui/FormField';
 
 const card = 'bg-[var(--color-surface)] border border-[var(--color-border)] rounded-lg';
 const input = 'text-sm px-3 py-2 rounded-md bg-[var(--color-bg)] border border-[var(--color-border)]';
@@ -46,12 +47,29 @@ function SettingsPanel({ settings, onSaved }) {
   const [form, setForm] = useState(settings);
   const [busy, setBusy] = useState(false);
   const [msg, setMsg] = useState('');
+  const [errors, setErrors] = useState({});
   useEffect(() => setForm(settings), [settings]);
-  const set = (k, v) => setForm((f) => ({ ...f, [k]: v }));
+  const set = (k, v) => {
+    setForm((f) => ({ ...f, [k]: v }));
+    if (k === 'first_followup_days' || k === 'second_followup_days') setErrors({});
+  };
 
   async function save() {
-    setBusy(true);
     setMsg('');
+    // Both delays are required whole numbers; the second must come after the first.
+    const whole = (v, min, max) => String(v ?? '').trim() !== '' && Number.isInteger(Number(v)) && Number(v) >= min && Number(v) <= max;
+    const problems = {};
+    if (String(form.first_followup_days ?? '').trim() === '') problems.first = 'First follow-up is required.';
+    else if (!whole(form.first_followup_days, 1, 30)) problems.first = 'Use a whole number of days from 1 to 30.';
+    if (String(form.second_followup_days ?? '').trim() === '') problems.second = 'Second follow-up is required.';
+    else if (!whole(form.second_followup_days, 2, 60)) problems.second = 'Use a whole number of days from 2 to 60.';
+    else if (!problems.first && Number(form.second_followup_days) <= Number(form.first_followup_days)) problems.second = 'The second follow-up must come after the first.';
+    setErrors(problems);
+    if (problems.first || problems.second) {
+      document.getElementById(problems.first ? 'lead-first-days' : 'lead-second-days')?.focus();
+      return;
+    }
+    setBusy(true);
     try {
       const r = await api.saveLeadSettings({
         ...form,
@@ -79,12 +97,20 @@ function SettingsPanel({ settings, onSaved }) {
       {toggle('followups_enabled', 'Send follow-ups to WhatsApp leads who go quiet', 'Only people who messaged you first - never scraped leads, never cold messages. At most 2 per person, 8am-7pm, never on Sundays.')}
       {toggle('ask_before_followup', 'Ask me before sending follow-ups', 'Each follow-up waits on your Tasks page until you approve it. Follow-ups that mention a price always wait.')}
       <div className="flex flex-wrap gap-4 text-sm">
-        <label className="flex items-center gap-2">First follow-up after
-          <input type="number" min="1" max="30" className={`${input} w-20`} value={form.first_followup_days ?? 2} onChange={(e) => set('first_followup_days', e.target.value)} /> days
-        </label>
-        <label className="flex items-center gap-2">Second (last) after
-          <input type="number" min="2" max="60" className={`${input} w-20`} value={form.second_followup_days ?? 5} onChange={(e) => set('second_followup_days', e.target.value)} /> days
-        </label>
+        <div>
+          <label htmlFor="lead-first-days" className="flex items-center gap-2">First follow-up after
+            <input {...a11y('lead-first-days', { required: true, error: errors.first })} type="number" min="1" max="30" step="1" inputMode="numeric"
+              className={`${input} w-20 ${invalidCls(errors.first)}`} value={form.first_followup_days ?? ''} onChange={(e) => set('first_followup_days', e.target.value)} /> days <FieldTag required />
+          </label>
+          <FieldError id="lead-first-days-error">{errors.first}</FieldError>
+        </div>
+        <div>
+          <label htmlFor="lead-second-days" className="flex items-center gap-2">Second (last) after
+            <input {...a11y('lead-second-days', { required: true, error: errors.second })} type="number" min="2" max="60" step="1" inputMode="numeric"
+              className={`${input} w-20 ${invalidCls(errors.second)}`} value={form.second_followup_days ?? ''} onChange={(e) => set('second_followup_days', e.target.value)} /> days <FieldTag required />
+          </label>
+          <FieldError id="lead-second-days-error">{errors.second}</FieldError>
+        </div>
       </div>
       {toggle('daily_summary', 'Send me a daily summary', 'New leads, replies and follow-ups - on WhatsApp (or Telegram/email). Skipped on days with nothing new.')}
       <label className="flex items-center gap-2 text-sm">Summary time

@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { ArrowLeft, Loader2, MessageCircle, RefreshCw, Send } from 'lucide-react';
 import EmptyState from '../components/EmptyState';
+import { FieldTag, FieldError, invalidCls, a11y } from '../components/ui/FormField';
 import { api } from '../services/api';
 import CorrectAnswerDialog, { CorrectButton, CorrectedBadge, questionBefore } from '../components/settings/CorrectAnswer';
 import LoadingScreen from '../components/LoadingScreen';
@@ -31,11 +32,23 @@ function NewMessage({ onQueued }) {
   const [text, setText] = useState('');
   const [busy, setBusy] = useState(false);
   const [notice, setNotice] = useState(null);
+  const [errors, setErrors] = useState({});
 
   async function queue(e) {
     e.preventDefault();
-    setBusy(true);
     setNotice(null);
+    // Both are required: say which one is missing instead of doing nothing.
+    const digits = number.replace(/\D/g, '').length;
+    const problems = {
+      number: !number.trim() ? 'Number is required.' : digits < 9 || digits > 15 ? "This doesn't look like a phone number (e.g. 024 123 4567)." : null,
+      text: text.trim() ? null : 'Message is required.',
+    };
+    setErrors(problems);
+    if (problems.number || problems.text) {
+      document.getElementById(problems.number ? 'new-message-number' : 'new-message-text')?.focus();
+      return;
+    }
+    setBusy(true);
     try {
       const res = await api.queueWhatsappOutreach([{ number: number.trim(), text: text.trim() }]);
       if (!res.queued) throw new Error(res.rejected?.[0]?.reason || 'Not queued');
@@ -58,21 +71,31 @@ function NewMessage({ onQueued }) {
     );
   }
   return (
-    <form onSubmit={queue} className="mb-4 rounded-lg border border-[var(--color-border)] bg-[var(--color-surface)] p-3 space-y-2">
-      <div className="flex flex-col sm:flex-row gap-2">
-        <input
-          value={number}
-          onChange={(e) => setNumber(e.target.value)}
-          placeholder="Number, e.g. 024 123 4567 or +233241234567"
-          className="sm:w-64 rounded-md border border-[var(--color-border)] bg-[var(--color-bg)] px-3 py-2 text-sm focus:outline-none focus:border-[var(--color-accent)]"
-        />
-        <input
-          value={text}
-          onChange={(e) => setText(e.target.value)}
-          placeholder="Message"
-          className="flex-1 min-w-0 rounded-md border border-[var(--color-border)] bg-[var(--color-bg)] px-3 py-2 text-sm focus:outline-none focus:border-[var(--color-accent)]"
-        />
-        <button type="submit" disabled={busy || !number.trim() || !text.trim()} className="px-3 py-2 rounded-md text-sm font-medium bg-[var(--color-accent)] text-black disabled:opacity-50">
+    <form onSubmit={queue} noValidate className="mb-4 rounded-lg border border-[var(--color-border)] bg-[var(--color-surface)] p-3 space-y-2">
+      <div className="flex flex-col sm:flex-row gap-2 sm:items-end">
+        <div className="sm:w-64">
+          <label htmlFor="new-message-number" className="block text-[11px] text-[var(--color-text-muted)] mb-1">Number <FieldTag required /></label>
+          <input
+            {...a11y('new-message-number', { required: true, error: errors.number })}
+            type="tel"
+            inputMode="tel"
+            value={number}
+            onChange={(e) => { setNumber(e.target.value); if (errors.number) setErrors((x) => ({ ...x, number: null })); }}
+            placeholder="e.g. 024 123 4567 or +233241234567"
+            className={`w-full rounded-md border border-[var(--color-border)] bg-[var(--color-bg)] px-3 py-2 text-sm focus:outline-none focus:border-[var(--color-accent)] ${invalidCls(errors.number)}`}
+          />
+        </div>
+        <div className="flex-1 min-w-0">
+          <label htmlFor="new-message-text" className="block text-[11px] text-[var(--color-text-muted)] mb-1">Message <FieldTag required /></label>
+          <input
+            {...a11y('new-message-text', { required: true, error: errors.text })}
+            value={text}
+            onChange={(e) => { setText(e.target.value); if (errors.text) setErrors((x) => ({ ...x, text: null })); }}
+            placeholder="What do you want to say?"
+            className={`w-full rounded-md border border-[var(--color-border)] bg-[var(--color-bg)] px-3 py-2 text-sm focus:outline-none focus:border-[var(--color-accent)] ${invalidCls(errors.text)}`}
+          />
+        </div>
+        <button type="submit" disabled={busy} className="px-3 py-2 rounded-md text-sm font-medium bg-[var(--color-accent)] text-black disabled:opacity-50">
           {busy ? <Loader2 size={14} className="animate-spin" /> : 'Queue'}
         </button>
         <button type="button" onClick={() => setOpen(false)} className="px-2 py-2 text-sm text-[var(--color-text-muted)]">Cancel</button>
@@ -81,6 +104,8 @@ function NewMessage({ onQueued }) {
         To protect your number, this only works for people who have messaged your WhatsApp before and haven't replied STOP.
         Messages go out one at a time, 30-90 seconds apart.
       </p>
+      <FieldError id="new-message-number-error">{errors.number}</FieldError>
+      <FieldError id="new-message-text-error">{errors.text}</FieldError>
       {notice && <p className={`text-xs ${notice.ok ? 'text-emerald-600' : 'text-[var(--color-danger)]'}`}>{notice.text}</p>}
     </form>
   );

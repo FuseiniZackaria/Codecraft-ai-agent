@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import { UserRound, Save, Plus, Trash2, History, RotateCcw, Eye, X, AlertCircle, CheckCircle2, MessageSquare, Info } from 'lucide-react';
 import { api } from '../../services/api';
+import { FieldTag, FieldError, FormSummary, invalidCls, a11y } from '../ui/FormField';
 import LoadingScreen from '../LoadingScreen';
 
 // Settings -> General -> Agent instructions.
@@ -43,6 +44,7 @@ export default function AgentInstructionsTab() {
   const [note, setNote] = useState('');
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState(null);
+  const [fieldErrors, setFieldErrors] = useState({});
   const [savedMsg, setSavedMsg] = useState(null);
   const [preview, setPreview] = useState(null); // a full old version
   const [busyVersion, setBusyVersion] = useState(null);
@@ -71,13 +73,22 @@ export default function AgentInstructionsTab() {
 
   const dirty = useMemo(() => JSON.stringify(form) !== JSON.stringify(original), [form, original]);
 
+  // A field's message clears as soon as it's filled in.
+  const clearError = (...keys) => setFieldErrors((x) => {
+    if (!keys.some((k) => x[k])) return x;
+    const next = { ...x };
+    for (const k of keys) delete next[k];
+    return next;
+  });
   function set(key, value) {
     setForm((f) => ({ ...f, [key]: value }));
     setSavedMsg(null);
+    if (String(value).trim()) clearError(key);
   }
   function setExample(i, key, value) {
     setForm((f) => ({ ...f, examples: f.examples.map((e, j) => (j === i ? { ...e, [key]: value } : e)) }));
     setSavedMsg(null);
+    if (String(value).trim()) clearError(`ex-${i}-${key}`);
   }
   function addExample() {
     setForm((f) => ({ ...f, examples: [...f.examples, { customer: '', reply: '' }] }));
@@ -85,12 +96,39 @@ export default function AgentInstructionsTab() {
   function removeExample(i) {
     setForm((f) => ({ ...f, examples: f.examples.filter((_, j) => j !== i) }));
     setSavedMsg(null);
+    // Example numbers shift: drop the example messages (they come back on the next Save if still needed).
+    setFieldErrors((x) => Object.fromEntries(Object.entries(x).filter(([k]) => !k.startsWith('ex-'))));
+  }
+
+  /** Agent's name and instructions are required; an example needs both halves (or neither). */
+  function formErrors(f) {
+    const e = {};
+    if (!String(f.agent_name || '').trim()) e.agent_name = "The agent's name is required.";
+    if (!String(f.instructions || '').trim()) e.instructions = 'The instructions are required.';
+    else if (f.instructions.length > limits.instructions) e.instructions = `The instructions are too long (max ${limits.instructions.toLocaleString()} characters).`;
+    f.examples.forEach((ex, i) => {
+      const c = String(ex.customer || '').trim();
+      const r = String(ex.reply || '').trim();
+      if (c && !r) e[`ex-${i}-reply`] = 'Add the reply too - or remove this example.';
+      if (r && !c) e[`ex-${i}-customer`] = 'Add what the customer says too - or remove this example.';
+    });
+    return e;
   }
 
   async function save() {
-    setSaving(true);
     setError(null);
     setSavedMsg(null);
+    const problems = formErrors(form);
+    setFieldErrors(problems);
+    if (Object.keys(problems).length) {
+      const order = ['agent_name', 'instructions', ...form.examples.flatMap((_, i) => [`ex-${i}-customer`, `ex-${i}-reply`])];
+      const first = order.find((k) => problems[k]);
+      const el = document.getElementById(first === 'agent_name' || first === 'instructions' ? first : `agent-${first}`);
+      el?.focus();
+      el?.scrollIntoView({ block: 'center', behavior: 'smooth' });
+      return;
+    }
+    setSaving(true);
     try {
       const res = await api.saveAgentSettings({ ...form, note });
       setNote('');
@@ -154,6 +192,9 @@ export default function AgentInstructionsTab() {
   }
 
   const overLimit = form.instructions.length > limits.instructions;
+  const missing = [fieldErrors.agent_name && "Agent's name", fieldErrors.instructions && !form.instructions.trim() && 'Instructions'].filter(Boolean);
+  const exampleProblems = form.examples.map((_, i) => (fieldErrors[`ex-${i}-customer`] || fieldErrors[`ex-${i}-reply`] ? `Example ${i + 1}` : null)).filter(Boolean);
+  const invalid = [...(fieldErrors.instructions && form.instructions.trim() ? ['Instructions (too long)'] : []), ...exampleProblems];
 
   return (
     <div className="space-y-6">
@@ -175,14 +216,16 @@ export default function AgentInstructionsTab() {
           {activeVersion ? ` In use now: version ${activeVersion}.` : ''}
         </p>
 
-        <label htmlFor="agent_name" className="block text-xs font-medium text-[var(--color-text-muted)] mb-1.5">Agent's name</label>
-        <input id="agent_name" className={`${inputCls} max-w-xs`} value={form.agent_name} maxLength={40}
+        <label htmlFor="agent_name" className="block text-xs font-medium text-[var(--color-text-muted)] mb-1.5">Agent's name <FieldTag required /></label>
+        <input {...a11y('agent_name', { required: true, error: fieldErrors.agent_name })} className={`${inputCls} max-w-xs ${invalidCls(fieldErrors.agent_name)}`} value={form.agent_name} maxLength={40}
           onChange={(e) => set('agent_name', e.target.value)} placeholder="e.g. Ian" />
+        <FieldError id="agent_name-error">{fieldErrors.agent_name}</FieldError>
         <p className="text-[11px] text-[var(--color-text-muted)] mt-1 mb-4">The name the agent calls itself - not your name. It must match the "You are ..." line in the instructions.</p>
 
-        <label htmlFor="instructions" className="block text-xs font-medium text-[var(--color-text-muted)] mb-1.5">Instructions</label>
-        <textarea id="instructions" rows={20} className={`${inputCls} font-[var(--font-mono)] leading-relaxed`}
+        <label htmlFor="instructions" className="block text-xs font-medium text-[var(--color-text-muted)] mb-1.5">Instructions <FieldTag required /></label>
+        <textarea {...a11y('instructions', { required: true, error: fieldErrors.instructions })} rows={20} className={`${inputCls} font-[var(--font-mono)] leading-relaxed ${invalidCls(fieldErrors.instructions)}`}
           value={form.instructions} onChange={(e) => set('instructions', e.target.value)} />
+        <FieldError id="instructions-error">{fieldErrors.instructions}</FieldError>
         <div className={`text-xs mt-1 ${overLimit ? 'text-[var(--color-danger)]' : 'text-[var(--color-text-muted)]'}`}>
           {form.instructions.length.toLocaleString()} / {limits.instructions.toLocaleString()} characters
         </div>
@@ -200,7 +243,7 @@ export default function AgentInstructionsTab() {
       </section>
 
       <section className={cardCls}>
-        <h2 className="text-sm font-semibold mb-1 flex items-center gap-2"><MessageSquare size={14} /> Example replies</h2>
+        <h2 className="text-sm font-semibold mb-1 flex items-center gap-2"><MessageSquare size={14} /> Example replies <FieldTag /></h2>
         <p className="text-xs text-[var(--color-text-muted)] mb-4">
           Show the style you want. The agent copies the style, not the exact words.
         </p>
@@ -209,12 +252,14 @@ export default function AgentInstructionsTab() {
           {form.examples.map((ex, i) => (
             <div key={i} className="grid grid-cols-1 md:grid-cols-[1fr_1fr_auto] gap-2 items-start p-3 bg-[var(--color-surface-2)] rounded-md">
               <div>
-                <label className="block text-[11px] text-[var(--color-text-muted)] mb-1">Customer says</label>
-                <textarea rows={2} className={inputCls} value={ex.customer} onChange={(e) => setExample(i, 'customer', e.target.value)} placeholder="e.g. Do you deliver?" />
+                <label htmlFor={`agent-ex-${i}-customer`} className="block text-[11px] text-[var(--color-text-muted)] mb-1">Customer says</label>
+                <textarea rows={2} {...a11y(`agent-ex-${i}-customer`, { error: fieldErrors[`ex-${i}-customer`] })} className={`${inputCls} ${invalidCls(fieldErrors[`ex-${i}-customer`])}`} value={ex.customer} onChange={(e) => setExample(i, 'customer', e.target.value)} placeholder="e.g. Do you deliver?" />
+                <FieldError id={`agent-ex-${i}-customer-error`}>{fieldErrors[`ex-${i}-customer`]}</FieldError>
               </div>
               <div>
-                <label className="block text-[11px] text-[var(--color-text-muted)] mb-1">{form.agent_name || 'Agent'} replies</label>
-                <textarea rows={2} className={inputCls} value={ex.reply} onChange={(e) => setExample(i, 'reply', e.target.value)} placeholder="e.g. Yes! We deliver within Accra." />
+                <label htmlFor={`agent-ex-${i}-reply`} className="block text-[11px] text-[var(--color-text-muted)] mb-1">{form.agent_name || 'Agent'} replies</label>
+                <textarea rows={2} {...a11y(`agent-ex-${i}-reply`, { error: fieldErrors[`ex-${i}-reply`] })} className={`${inputCls} ${invalidCls(fieldErrors[`ex-${i}-reply`])}`} value={ex.reply} onChange={(e) => setExample(i, 'reply', e.target.value)} placeholder="e.g. Yes! We deliver within Accra." />
+                <FieldError id={`agent-ex-${i}-reply-error`}>{fieldErrors[`ex-${i}-reply`]}</FieldError>
               </div>
               <button type="button" onClick={() => removeExample(i)} className="mt-5 p-2 text-[var(--color-text-muted)] hover:text-[var(--color-danger)]" title="Remove this example" aria-label={`Remove example ${i + 1}`}>
                 <Trash2 size={14} />
@@ -237,9 +282,10 @@ export default function AgentInstructionsTab() {
       </section>
 
       <section className={cardCls}>
-        <label htmlFor="note" className="block text-xs font-medium text-[var(--color-text-muted)] mb-1.5">What did you change? (optional, shown in the history)</label>
+        <label htmlFor="note" className="block text-xs font-medium text-[var(--color-text-muted)] mb-1.5">What did you change? <FieldTag /> <span className="font-normal">(shown in the history)</span></label>
         <input id="note" className={`${inputCls} mb-3`} value={note} maxLength={200} onChange={(e) => setNote(e.target.value)} placeholder="e.g. Shorter replies, added delivery example" />
 
+        {(missing.length > 0 || invalid.length > 0) && <div className="mb-3"><FormSummary missing={missing} invalid={invalid} /></div>}
         {error && (
           <div className="flex items-start gap-2 p-3 mb-3 bg-[var(--color-danger)]/10 border border-[var(--color-danger)]/30 rounded-md text-sm text-[var(--color-danger)] whitespace-pre-wrap">
             <AlertCircle size={14} className="mt-0.5 shrink-0" />
@@ -247,7 +293,7 @@ export default function AgentInstructionsTab() {
           </div>
         )}
         <div className="flex items-center gap-3 flex-wrap">
-          <button type="button" onClick={save} disabled={saving || overLimit || (!dirty && source === 'saved')}
+          <button type="button" onClick={save} disabled={saving || (!dirty && source === 'saved')}
             className="px-4 py-2 text-sm bg-[var(--color-accent)] text-black rounded-md hover:opacity-90 disabled:opacity-50 flex items-center gap-2 font-medium">
             <Save size={14} /> {saving ? 'Saving…' : 'Save as new version'}
           </button>

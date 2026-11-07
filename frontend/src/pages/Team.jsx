@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { Users, Plus, Trash2, ShieldAlert, Activity, RefreshCw, Trash, Mail, Building, UserPlus, Clock, RotateCw, XCircle, AlertTriangle, Ban, UserCheck } from 'lucide-react';
 import { api } from '../services/api';
+import { FieldTag, FieldError, invalidCls, a11y, isEmailAddress } from '../components/ui/FormField';
 import { useStore } from '../store/useStore';
 import LoadingScreen from '../components/LoadingScreen';
 
@@ -181,6 +182,7 @@ function AddAdminForm({ onAdded }) {
   const [result, setResult] = useState(null);
   const [typoConfirm, setTypoConfirm] = useState(null);
   const [sendConfirm, setSendConfirm] = useState(null);
+  const [emailError, setEmailError] = useState(null);
   const user = useStore((s) => s.user);
   const isOwner = user?.workspaceRole === 'owner';
 
@@ -207,7 +209,17 @@ function AddAdminForm({ onAdded }) {
   function handleSubmit(e) {
     e.preventDefault();
     const trimmed = email.trim();
-    if (!trimmed) return setError('Enter an email.');
+    if (!trimmed) {
+      setEmailError('Email is required - enter the address to send the invite to.');
+      document.getElementById('invite-email')?.focus();
+      return;
+    }
+    if (!isEmailAddress(trimmed)) {
+      setEmailError("This doesn't look like an email address (e.g. teammate@example.com).");
+      document.getElementById('invite-email')?.focus();
+      return;
+    }
+    setEmailError(null);
 
     const clientTypo = detectEmailTypo(trimmed);
     if (clientTypo) {
@@ -232,21 +244,23 @@ function AddAdminForm({ onAdded }) {
     <div className="rounded-lg border border-[var(--color-border)] bg-[var(--color-surface)] p-4 mb-4 space-y-3">
       <div className="text-sm font-medium">Add someone</div>
 
-      <form onSubmit={handleSubmit} className="space-y-3">
+      <form onSubmit={handleSubmit} noValidate className="space-y-3">
         <div>
-          <label className="text-xs text-[var(--color-text-muted)] mb-1 block">Email</label>
+          <label htmlFor="invite-email" className="text-xs text-[var(--color-text-muted)] mb-1 block">Email <FieldTag required /></label>
           <input
+            {...a11y('invite-email', { required: true, error: emailError })}
             type="email"
             value={email}
-            onChange={(e) => setEmail(e.target.value)}
+            onChange={(e) => { setEmail(e.target.value); if (emailError) setEmailError(null); }}
             placeholder="teammate@example.com"
             autoComplete="off"
-            className="w-full px-3 py-2 rounded-md border border-[var(--color-border)] bg-[var(--color-bg)] text-base md:text-sm outline-none focus:border-[var(--color-accent)]/50"
+            className={`w-full px-3 py-2 rounded-md border border-[var(--color-border)] bg-[var(--color-bg)] text-base md:text-sm outline-none focus:border-[var(--color-accent)]/50 ${invalidCls(emailError)}`}
           />
+          <FieldError id="invite-email-error">{emailError}</FieldError>
         </div>
 
         <fieldset className="space-y-2">
-          <legend className="text-xs text-[var(--color-text-muted)] mb-1">How should they join?</legend>
+          <legend className="text-xs text-[var(--color-text-muted)] mb-1">How should they join? <FieldTag required /></legend>
 
           <label
             className={`flex items-start gap-3 p-3 rounded-md border cursor-pointer transition-colors ${

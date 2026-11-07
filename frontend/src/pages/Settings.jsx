@@ -10,6 +10,7 @@ import ProductsTab from '../components/settings/ProductsTab';
 import { api } from '../services/api';
 import LoadingScreen from '../components/LoadingScreen';
 import { PROFILE_RULES, validateProfileForm, fieldError, isEmail } from '../components/settings/profileRules';
+import { FieldTag } from '../components/ui/FormField';
 
 // Mirrors the backend's ALLOWED_FIELDS and column names in business_profile.
 // Keep in sync with backend/api/businessProfileRoutes.js when the schema grows.
@@ -75,13 +76,6 @@ export default function Settings() {
       {tab === 'test' && <TestChatTab />}
     </div>
   );
-}
-
-/** "Required" or "Optional" next to a field's label. */
-function FieldTag({ required }) {
-  return required
-    ? <span className="ml-1 text-[10px] font-semibold uppercase tracking-wide text-[var(--color-danger)]">Required<span aria-hidden="true"> *</span></span>
-    : <span className="ml-1 text-[10px] font-normal uppercase tracking-wide text-[var(--color-text-muted)]">Optional</span>;
 }
 
 const inputBase = 'w-full px-3 py-2 text-sm bg-[var(--color-surface-2)] border rounded-md focus:outline-none';

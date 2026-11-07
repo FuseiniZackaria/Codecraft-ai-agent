@@ -5,6 +5,7 @@ import {
 import { api } from '../../services/api';
 import LoadingScreen from '../LoadingScreen';
 import EmptyState from '../EmptyState';
+import { FieldTag, FieldError, FormSummary, invalidCls, a11y, focusFirst } from '../ui/FormField';
 
 // Settings -> General -> Products.
 // The catalogue the WhatsApp agent uses: answering "do you have...?", matching
@@ -47,16 +48,63 @@ function readAsBase64(file) {
 
 const EMPTY = { name: '', aliases: '', category: '', price: '', currency: 'GHS', stock_status: 'unknown', stock_qty: '', description: '', image_url: '', product_url: '', active: true };
 
+const PRODUCT_FIELDS = [
+  { key: 'name', label: 'Name', required: true },
+  { key: 'aliases', label: 'Other names' },
+  { key: 'category', label: 'Category' },
+  { key: 'price', label: 'Price' },
+  { key: 'currency', label: 'Currency' },
+  { key: 'stock_status', label: 'Stock' },
+  { key: 'stock_qty', label: 'Quantity left' },
+  { key: 'image_url', label: 'Photo link' },
+  { key: 'product_url', label: 'Product page link' },
+  { key: 'description', label: 'Description' },
+];
+const isHttp = (v) => /^https?:\/\/\S+\.\S+/i.test(String(v || '').trim());
+
+/** Problems in the product form: Name is required; the rest is optional but checked if filled in. */
+function productErrors(f) {
+  const e = {};
+  const name = String(f.name || '').trim();
+  if (!name) e.name = 'Name is required.';
+  else if (name.length > 200) e.name = 'The name is too long (max 200 characters).';
+  if (String(f.price) !== '' && (!Number.isFinite(Number(f.price)) || Number(f.price) < 0)) e.price = 'The price must be a number, 0 or more (or leave it empty).';
+  if (String(f.stock_qty) !== '' && (!Number.isInteger(Number(f.stock_qty)) || Number(f.stock_qty) < 0)) e.stock_qty = 'The quantity must be a whole number, 0 or more (or leave it empty).';
+  if (String(f.image_url || '').trim() && !isHttp(f.image_url)) e.image_url = 'The photo link must start with http:// or https:// (or leave it empty).';
+  if (String(f.product_url || '').trim() && !isHttp(f.product_url)) e.product_url = 'The page link must start with http:// or https:// (or leave it empty).';
+  if (String(f.category || '').length > 100) e.category = 'The category is too long (max 100 characters).';
+  if (String(f.description || '').length > 2000) e.description = 'The description is too long (max 2000 characters).';
+  return e;
+}
+
 function ProductForm({ initial, onCancel, onSaved }) {
   const [f, setF] = useState(() => ({ ...EMPTY, ...Object.fromEntries(Object.entries(initial || {}).map(([k, v]) => [k, v ?? ''])) }));
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState(null);
-  const set = (k, v) => setF((x) => ({ ...x, [k]: v }));
+  const [errors, setErrors] = useState({});
+  const [tried, setTried] = useState(false);
+  const formRef = useRef(null);
+  const set = (k, v) => {
+    const next = { ...f, [k]: v };
+    setF(next);
+    if (tried || errors[k]) setErrors(productErrors(next));
+  };
+  const check = (k) => {
+    const problem = productErrors(f)[k];
+    if (problem && (k !== 'name' || tried)) setErrors((x) => ({ ...x, [k]: problem }));
+  };
 
   async function save(e) {
     e.preventDefault();
-    setBusy(true);
+    setTried(true);
     setError(null);
+    const problems = productErrors(f);
+    setErrors(problems);
+    if (Object.keys(problems).length) {
+      focusFirst(PRODUCT_FIELDS.map((x) => `product-${x.key}`), Object.fromEntries(Object.keys(problems).map((k) => [`product-${k}`, true])), formRef.current);
+      return;
+    }
+    setBusy(true);
     const body = { ...f, stock_qty: f.stock_qty === '' ? null : f.stock_qty, price: f.price === '' ? null : f.price };
     for (const k of ['id', 'workspace_id', 'created_at', 'updated_at', 'source', 'source_id', 'external_id', 'stock_checked_at', 'search', 'score', 'label']) delete body[k];
     try {
@@ -68,56 +116,79 @@ function ProductForm({ initial, onCancel, onSaved }) {
     }
   }
 
+  const label = 'text-xs font-medium text-[var(--color-text-muted)]';
+  const field = (k, extra = {}) => ({
+    ...a11y(`product-${k}`, { required: k === 'name', error: errors[k] }),
+    value: f[k],
+    onChange: (e) => set(k, e.target.value),
+    onBlur: () => check(k),
+    className: `${inputCls} mt-1 ${invalidCls(errors[k])}`,
+    ...extra,
+  });
+  const err = (k) => <FieldError id={`product-${k}-error`}>{errors[k]}</FieldError>;
+  const labelOf = (k) => PRODUCT_FIELDS.find((x) => x.key === k)?.label || k;
+  const missing = errors.name && !String(f.name || '').trim() ? ['Name'] : [];
+  const invalid = Object.keys(errors).filter((k) => !(k === 'name' && missing.length)).map(labelOf);
+
   return (
     <div className="fixed inset-0 z-50 bg-black/60 flex items-center justify-center p-4" role="dialog" aria-modal="true" onClick={onCancel}>
-      <form onSubmit={save} className="bg-[var(--color-surface)] border border-[var(--color-border)] rounded-lg max-w-2xl w-full max-h-[90vh] overflow-auto p-5 space-y-3" onClick={(e) => e.stopPropagation()}>
+      <form ref={formRef} onSubmit={save} noValidate className="bg-[var(--color-surface)] border border-[var(--color-border)] rounded-lg max-w-2xl w-full max-h-[90vh] overflow-auto p-5 space-y-3" onClick={(e) => e.stopPropagation()}>
         <div className="flex items-center justify-between">
           <h3 className="font-semibold flex items-center gap-2"><Package size={16} /> {initial?.id ? 'Edit product' : 'Add a product or service'}</h3>
           <button type="button" onClick={onCancel} className="p-1 text-[var(--color-text-muted)] hover:text-[var(--color-text)]" aria-label="Close"><X size={16} /></button>
         </div>
+        <p className="text-xs text-[var(--color-text-muted)]">Only the name is required - fill in whatever else you know.</p>
         {initial?.source === 'website' && (
           <p className="text-xs text-amber-600">This came from your website: the next sync updates its name, price, stock and photo again. Other names you add here are kept.</p>
         )}
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-          <label className="sm:col-span-2 text-xs font-medium text-[var(--color-text-muted)]">Name
-            <input className={`${inputCls} mt-1`} value={f.name} onChange={(e) => set('name', e.target.value)} placeholder="e.g. Slim Black Trouser" required />
+          <label className={`sm:col-span-2 ${label}`}>Name <FieldTag required />
+            <input {...field('name', { placeholder: 'e.g. Slim Black Trouser', maxLength: 200 })} />
+            {err('name')}
           </label>
-          <label className="sm:col-span-2 text-xs font-medium text-[var(--color-text-muted)]">Other names customers use (comma-separated)
-            <input className={`${inputCls} mt-1`} value={f.aliases} onChange={(e) => set('aliases', e.target.value)} placeholder="e.g. trouser, pants, slacks" />
+          <label className={`sm:col-span-2 ${label}`}>Other names customers use (comma-separated) <FieldTag />
+            <input {...field('aliases', { placeholder: 'e.g. trouser, pants, slacks' })} />
           </label>
-          <label className="text-xs font-medium text-[var(--color-text-muted)]">Category
-            <input className={`${inputCls} mt-1`} value={f.category} onChange={(e) => set('category', e.target.value)} placeholder="e.g. Trousers" />
+          <label className={label}>Category <FieldTag />
+            <input {...field('category', { placeholder: 'e.g. Trousers', maxLength: 100 })} />
+            {err('category')}
           </label>
           <div className="grid grid-cols-[1fr_5rem] gap-2">
-            <label className="text-xs font-medium text-[var(--color-text-muted)]">Price
-              <input className={`${inputCls} mt-1`} type="number" min="0" step="0.01" value={f.price} onChange={(e) => set('price', e.target.value)} placeholder="optional" />
+            <label className={label}>Price <FieldTag />
+              <input {...field('price', { type: 'number', min: '0', step: '0.01', inputMode: 'decimal', placeholder: 'e.g. 150' })} />
+              {err('price')}
             </label>
-            <label className="text-xs font-medium text-[var(--color-text-muted)]">Currency
-              <input className={`${inputCls} mt-1`} value={f.currency} maxLength={5} onChange={(e) => set('currency', e.target.value.toUpperCase())} />
+            <label className={label}>Currency
+              <input {...field('currency', { maxLength: 5, onChange: (e) => set('currency', e.target.value.toUpperCase()) })} />
             </label>
           </div>
-          <label className="text-xs font-medium text-[var(--color-text-muted)]">Stock
-            <select className={`${inputCls} mt-1`} value={f.stock_status} onChange={(e) => set('stock_status', e.target.value)}>
+          <label className={label}>Stock
+            <select {...field('stock_status')}>
               {Object.entries(STOCK_LABEL).map(([k, v]) => <option key={k} value={k}>{v}</option>)}
             </select>
           </label>
-          <label className="text-xs font-medium text-[var(--color-text-muted)]">Quantity left (optional)
-            <input className={`${inputCls} mt-1`} type="number" min="0" step="1" value={f.stock_qty} onChange={(e) => set('stock_qty', e.target.value)} placeholder="e.g. 12" />
+          <label className={label}>Quantity left <FieldTag />
+            <input {...field('stock_qty', { type: 'number', min: '0', step: '1', inputMode: 'numeric', placeholder: 'e.g. 12' })} />
+            {err('stock_qty')}
           </label>
-          <label className="sm:col-span-2 text-xs font-medium text-[var(--color-text-muted)]">Photo link (sent to customers who ask to see it)
-            <input className={`${inputCls} mt-1`} value={f.image_url} onChange={(e) => set('image_url', e.target.value)} placeholder="https://..." />
+          <label className={`sm:col-span-2 ${label}`}>Photo link (sent to customers who ask to see it) <FieldTag />
+            <input {...field('image_url', { type: 'url', inputMode: 'url', placeholder: 'https://...' })} />
+            {err('image_url')}
           </label>
-          <label className="sm:col-span-2 text-xs font-medium text-[var(--color-text-muted)]">Product page link
-            <input className={`${inputCls} mt-1`} value={f.product_url} onChange={(e) => set('product_url', e.target.value)} placeholder="https://..." />
+          <label className={`sm:col-span-2 ${label}`}>Product page link <FieldTag />
+            <input {...field('product_url', { type: 'url', inputMode: 'url', placeholder: 'https://...' })} />
+            {err('product_url')}
           </label>
-          <label className="sm:col-span-2 text-xs font-medium text-[var(--color-text-muted)]">Description
-            <textarea rows={3} className={`${inputCls} mt-1`} value={f.description} onChange={(e) => set('description', e.target.value)} />
+          <label className={`sm:col-span-2 ${label}`}>Description <FieldTag />
+            <textarea rows={3} {...field('description', { maxLength: 2000 })} />
+            {err('description')}
           </label>
         </div>
+        <FormSummary missing={missing} invalid={invalid} />
         {error && <div className="text-xs text-[var(--color-danger)] whitespace-pre-wrap">{error}</div>}
         <div className="flex justify-end gap-2">
           <button type="button" onClick={onCancel} className="px-3 py-2 text-sm border border-[var(--color-border)] rounded-md hover:bg-[var(--color-surface-2)]">Cancel</button>
-          <button type="submit" disabled={busy || !f.name.trim()} className={primaryCls}><Save size={14} /> {busy ? 'Saving…' : 'Save'}</button>
+          <button type="submit" disabled={busy} className={primaryCls}><Save size={14} /> {busy ? 'Saving…' : 'Save'}</button>
         </div>
       </form>
     </div>
