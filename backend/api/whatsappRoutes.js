@@ -250,7 +250,8 @@ router.post('/outreach', async (req, res) => {
       const other = await heldByOther(req, getProvider(), sessionNameFor(req));
       return res.status(400).json({ error: other ? IN_USE_MESSAGE : 'Connect WhatsApp first.' });
     }
-    const result = await outbox.enqueue({ sessionName: session.session_name, userId: req.user.id, workspaceId: req.user.workspaceId || null, recipients: list });
+    // You typed these yourself, so they may be the first message to someone.
+    const result = await outbox.enqueue({ sessionName: session.session_name, userId: req.user.id, workspaceId: req.user.workspaceId || null, recipients: list, allowFirstContact: true });
     res.json({ ...result, dailyLimit: config.whatsapp.dailyLimit });
   } catch (err) {
     fail(res, err, 500);

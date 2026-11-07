@@ -24,18 +24,21 @@ let ticking = false;
 
 /**
  * Why this contact can't get outreach right now, or null if they can:
- * they replied STOP, or (with consent required) they've never messaged this number.
+ * they replied STOP (always), or - for AUTOMATIC messages - they've never
+ * messaged this number. allowFirstContact: a first message YOU approved or typed
+ * (the Sales agent's approved outreach, Inbox -> New message) may go to someone
+ * new; automatic ones (lead follow-ups) never do.
  */
-async function blockedReason(sessionName, contactNumber) {
+async function blockedReason(sessionName, contactNumber, { allowFirstContact = false } = {}) {
   if (await store.isOptedOut(sessionName, contactNumber)) return 'replied STOP';
-  if (config.whatsapp.outreachRequireConsent && !(await store.hasMessagedFirst(sessionName, contactNumber))) {
+  if (!allowFirstContact && config.whatsapp.outreachRequireConsent && !(await store.hasMessagedFirst(sessionName, contactNumber))) {
     return "hasn't messaged your WhatsApp first (outreach only goes to people who contacted you or sent START)";
   }
   return null;
 }
 
 /** Queue outreach messages for one admin's session. Returns { queued, rejected }. */
-async function enqueue({ sessionName, userId, workspaceId, recipients }) {
+async function enqueue({ sessionName, userId, workspaceId, recipients, allowFirstContact = false }) {
   const rows = [];
   const rejected = [];
   for (const r of recipients || []) {
@@ -43,7 +46,7 @@ async function enqueue({ sessionName, userId, workspaceId, recipients }) {
     const text = String(r.text || '').trim();
     if (!contactNumber) { rejected.push({ number: r.number, reason: 'not a valid phone number' }); continue; }
     if (!text) { rejected.push({ number: r.number, reason: 'empty message' }); continue; }
-    const blocked = await blockedReason(sessionName, contactNumber);
+    const blocked = await blockedReason(sessionName, contactNumber, { allowFirstContact });
     if (blocked) rejected.push({ number: r.number, reason: blocked });
     else rows.push({ sessionName, userId, workspaceId, contactNumber, text });
   }
@@ -58,7 +61,8 @@ async function processItem(item) {
   if (!session || session.status !== 'WORKING') return; // wait until it's linked again
 
   // Checked again at send time: they may have replied STOP after this was queued.
-  const blocked = await blockedReason(item.session_name, item.contact_number);
+  // (Who may be messaged first was decided when it was queued.)
+  const blocked = await blockedReason(item.session_name, item.contact_number, { allowFirstContact: true });
   if (blocked) {
     await store.updateOutbox(item.id, { status: 'skipped', error: blocked });
     await activityLog.record('WhatsApp', 'outreach_skipped', item.contact_number, { session: item.session_name, reason: blocked, workspaceId: item.workspace_id }).catch(() => {});

@@ -775,6 +775,28 @@ class SalesAgent extends BaseAgent {
         }
       }
 
+      // No website in the search snippets doesn't mean they have none: open their
+      // Instagram/Facebook/TikTok profile and read the bio link, else one quick search
+      // for their official site. Found one = they're NOT pitched "you need a website".
+      const { findWebsite } = require('../../core/leads/websiteFinder');
+      const noWebsite = leads.filter((l) => !l.website && looksLikeRealCompany(l.name)).slice(0, 12);
+      const searchFn = config.search.tavilyKey
+        ? async (query) => (await this.execute({ type: 'tool_call', tool: 'websearch.search', args: { query, maxResults: 5 } }, task))?.results || []
+        : null;
+      await Promise.all(noWebsite.map(async (lead) => {
+        const found = await findWebsite(lead, { search: searchFn, location: ctx.location || '' }).catch(() => null);
+        if (!found) return;
+        lead.website = found.website;
+        lead.websiteSource = found.source;
+        if (lead.needsWebsite) {
+          lead.needsWebsite = false;
+          lead.needsWebsiteReason = `They already have a website (${found.website}) - found via ${/instagram|facebook|tiktok/i.test(found.source) ? 'their social profile' : 'a web search'}.`;
+        }
+        if (/no (proper |working )?website|without a website|lacks? a website/i.test(lead.reason || '')) {
+          lead.reason = `Has a website (${found.website}); ${lead.reason.replace(/[^.;]*no (proper |working )?website[^.;]*[.;]?\s*/i, '').trim() || 'worth contacting.'}`;
+        }
+      }));
+
       // Normalize "sources" (if the LLM returned a bare URL as "source",
       // promote it to an array). Then drop every lead with no source URL
       // and audit the drop - a lead with no provenance isn't a real lead,
@@ -874,8 +896,17 @@ class SalesAgent extends BaseAgent {
           const m = draftResult.text.match(/\[[\s\S]*\]/);
           const drafts = m ? JSON.parse(m[0]) : [];
           for (const d of drafts) {
-            if (!d.email || !d.subject || !d.body) continue;
-            const leadRow = emailLeads.find((l) => (l.name || '').toLowerCase() === (d.name || '').toLowerCase());
+            if (!d.subject || !d.body) continue;
+            // The address always comes from the lead itself (already checked), never from the
+            // AI's answer - a model can garble or swap an address. Matched by email, then name.
+            const leadRow = emailLeads.find((l) => l.email && cleanEmail(d.email) === l.email)
+              || emailLeads.find((l) => (l.name || '').trim().toLowerCase() === (d.name || '').trim().toLowerCase());
+            const to = cleanEmail(leadRow?.email);
+            if (!to) {
+              warnings.push(`Skipped a draft for "${d.name || 'unknown'}" - no valid email address for that lead.`);
+              continue;
+            }
+            d.email = to;
             await this.createApprovalTask({
               instruction: `Send outreach email to ${d.name} (${d.email})`,
               tool: 'gmail.sendEmail',
@@ -921,12 +952,21 @@ class SalesAgent extends BaseAgent {
           const m = draftResult.text.match(/\[[\s\S]*\]/);
           const drafts = m ? JSON.parse(m[0]) : [];
           for (const d of drafts) {
-            if (!d.phone || !d.message) continue;
+            if (!d.message) continue;
             // The whatsapp.sendMessage plugin reads `body`, not `message`.
             // Writing `message` here previously left the approval card's
             // "Message" field blank and crashed the plugin on approve with
             // 'sendMessage requires "to" (phone number) and "body"'.
-            const leadRow = whatsappOnlyLeads.find((l) => (l.name || '').toLowerCase() === (d.name || '').toLowerCase());
+            // The number always comes from the lead itself, never from the AI's answer.
+            const digits = (v) => String(v || '').replace(/\D/g, '');
+            const leadRow = whatsappOnlyLeads.find((l) => l.phone && digits(d.phone) && digits(l.phone) === digits(d.phone))
+              || whatsappOnlyLeads.find((l) => (l.name || '').trim().toLowerCase() === (d.name || '').trim().toLowerCase());
+            const phoneDigits = digits(leadRow?.phone);
+            if (phoneDigits.length < 9 || phoneDigits.length > 15) {
+              warnings.push(`Skipped a WhatsApp draft for "${d.name || 'unknown'}" - no valid phone number for that lead.`);
+              continue;
+            }
+            d.phone = leadRow.phone;
             await this.createApprovalTask({
               instruction: `Send WhatsApp message to ${d.name} (${d.phone})`,
               tool: 'whatsapp.sendMessage',
@@ -1036,7 +1076,8 @@ class SalesAgent extends BaseAgent {
       console.warn(`[SalesAgent] failed to parse outreach draft: ${err.message}`);
     }
 
-    const to = draft?.to || extractEmail(task.instruction);
+    // The address named in the request wins; the AI's is used only if it is a valid email.
+    const to = extractEmail(task.instruction) || cleanEmail(draft?.to);
     let note;
     if (draft && to && draft.subject && draft.body) {
       await this.createApprovalTask({

@@ -17,6 +17,12 @@ module.exports = {
     if (missing.length) {
       throw new Error(`sendEmail is missing: ${missing.join(', ')}`);
     }
+    // Never hand Gmail a broken address (e.g. "shopname.com" or "info@shop"): stop here
+    // with a clear message, so the task can be fixed and approved again.
+    to = String(to).trim().replace(/^mailto:/i, '');
+    if (!/^[^\s@,;<>()]+@[^\s@,;<>()]+\.[a-z]{2,}$/i.test(to)) {
+      throw new Error(`"${to}" is not a valid email address - nothing was sent. Edit the To address on this task (it must look like name@business.com) and approve it again.`);
+    }
 
     // Guard rejects anything that bypasses the approval gate OR tampers with
     // the approved recipient/payload OR duplicates a recent send.

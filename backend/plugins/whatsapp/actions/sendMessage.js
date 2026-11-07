@@ -27,6 +27,8 @@ module.exports = {
       const s = sessions[0];
       const result = await require('../../../core/whatsapp/outbox').enqueue({
         sessionName: s.session_name, userId: s.user_id, workspaceId: s.workspace_id, recipients: [{ number: to, text: body }],
+        // You approved this exact message (Tasks page), so it may be the first one to this person.
+        allowFirstContact: !!context.approvedTaskId,
       });
       if (!result.queued) throw new Error(result.rejected[0]?.reason || 'Could not queue the message');
       return { status: 'queued', to, note: 'Queued for paced WhatsApp outreach (30-90s apart, daily limit applies).' };

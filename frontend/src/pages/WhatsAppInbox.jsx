@@ -101,8 +101,8 @@ function NewMessage({ onQueued }) {
         <button type="button" onClick={() => setOpen(false)} className="px-2 py-2 text-sm text-[var(--color-text-muted)]">Cancel</button>
       </div>
       <p className="text-[11px] text-[var(--color-text-muted)]">
-        To protect your number, this only works for people who have messaged your WhatsApp before and haven't replied STOP.
-        Messages go out one at a time, 30-90 seconds apart.
+        You can message anyone except people who replied STOP. To protect your number from being blocked by WhatsApp,
+        messages go out one at a time, 30-90 seconds apart, within your daily limit.
       </p>
       <FieldError id="new-message-number-error">{errors.number}</FieldError>
       <FieldError id="new-message-text-error">{errors.text}</FieldError>
