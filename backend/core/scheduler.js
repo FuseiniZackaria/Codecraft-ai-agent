@@ -202,6 +202,8 @@ async function tick() {
   require('./catalog').tickDailySync().catch((err) => console.warn(`[scheduler] product sync: ${err.message}`));
   // Leads: follow-ups for quiet leads + the daily summary (does real work every 5 minutes).
   require('./leads').tick().catch((err) => console.warn(`[scheduler] leads: ${err.message}`));
+  // Outreach emails that bounced ("address not found"): marked, never emailed again, you're told (every 30 min).
+  require('./emailBounces').tick().catch((err) => console.warn(`[scheduler] email bounces: ${err.message}`));
 
   // Phase 2.3c: per-workspace iteration via a single query, grouped in code.
   // One listWorkflows() call fetches every workspace's workflows at once -

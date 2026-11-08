@@ -870,6 +870,26 @@ class SalesAgent extends BaseAgent {
         }
       }
 
+      // Before drafting: drop emails whose domain can't receive mail, or that bounced
+      // before - those leads fall back to WhatsApp / social instead.
+      {
+        const { canReceiveEmail } = require('../../core/emailCheck');
+        const { hasBounced } = require('../../core/emailBounces');
+        const leadWs = task?.workspace_id || this._currentTask?.workspace_id || null;
+        await Promise.all(leads.filter((l) => l.email).map(async (l) => {
+          if (await hasBounced(l.email, leadWs)) {
+            warnings.push(`Not emailing ${l.name}: ${l.email} bounced before (the address doesn't exist).`);
+            l.email = null;
+            return;
+          }
+          const check = await canReceiveEmail(l.email);
+          if (!check.ok) {
+            warnings.push(`Not emailing ${l.name}: ${l.email} can't receive email (${check.reason}).`);
+            l.email = null;
+          }
+        }));
+      }
+
       const emailLeads = leads.filter((l) => l.email);
       const whatsappOnlyLeads = leads.filter((l) => l.phone && !l.email);
       const socialOnlyLeads = leads.filter((l) => !l.email && !l.phone && (l.platforms || []).length > 0);

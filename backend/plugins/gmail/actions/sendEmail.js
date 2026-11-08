@@ -23,6 +23,16 @@ module.exports = {
     if (!/^[^\s@,;<>()]+@[^\s@,;<>()]+\.[a-z]{2,}$/i.test(to)) {
       throw new Error(`"${to}" is not a valid email address - nothing was sent. Edit the To address on this task (it must look like name@business.com) and approve it again.`);
     }
+    // Not to an address that already bounced ("address not found"), nor to a domain that can't take email.
+    if (!context.systemDigest) {
+      if (await require('../../../core/emailBounces').hasBounced(to, context.workspaceId || null)) {
+        throw new Error(`${to} bounced before (the address doesn't exist) - nothing was sent. Try WhatsApp, a call or their social media instead.`);
+      }
+      const domain = await require('../../../core/emailCheck').canReceiveEmail(to);
+      if (!domain.ok) {
+        throw new Error(`${to} can't receive email (${domain.reason}) - nothing was sent. Check the address, or reach them another way.`);
+      }
+    }
 
     // Guard rejects anything that bypasses the approval gate OR tampers with
     // the approved recipient/payload OR duplicates a recent send.
@@ -41,7 +51,8 @@ module.exports = {
     // Composio when the Gmail API returns them.
     const threadId = result?.data?.threadId || result?.threadId || null;
     const messageId = result?.data?.id || result?.messageId || null;
-    if (threadId && verdict?.task) {
+    // Recorded even without a thread id, so a later bounce of this address is still caught.
+    if (verdict?.task) {
       await guard.recordSentThread({
         approvedTaskId: verdict.task.id,
         threadId,

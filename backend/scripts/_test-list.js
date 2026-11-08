@@ -37,6 +37,7 @@ module.exports = [
   'tests/onboarding.test.js',
   'tests/business-profile-validation.test.js',
   'tests/outreach-fixes.test.js',
+  'tests/email-bounces.test.js',
   'tests/whatsapp-waha.test.js',
   'tests/whatsapp-voice.test.js',
   'tests/composio-per-workspace.test.js',
