@@ -3,6 +3,7 @@ import { Link } from 'react-router-dom';
 import { create } from 'zustand';
 import { X, Send, Loader2, ExternalLink, MessageCircle } from 'lucide-react';
 import { api } from '../services/api';
+import { useNavRequest } from './AssistantNavigator';
 
 /**
  * A WhatsApp conversation in a pop-up window, opened from anywhere - e.g.
@@ -15,10 +16,11 @@ export const useChatPopup = create((set) => ({
   close: () => set({ chat: null }),
 }));
 
-/** Call with any assistant stream event: opens the chat when Ian's tool asks for it. */
+/** Call with any assistant stream event: opens a chat or a page when Ian's tool asks for it. */
 export function handleAssistantUi(event) {
   const ui = event?.type === 'tool_end' ? event.result?.ui : null;
   if (ui?.action === 'open_whatsapp_chat' && ui.number) useChatPopup.getState().open(ui.number, ui.name);
+  if (ui?.action === 'navigate' && ui.path) useNavRequest.getState().go(ui.path);
 }
 
 const REFRESH_MS = 5000;

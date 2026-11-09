@@ -73,6 +73,8 @@ function toolDefinition(tool) {
 const UTILITY_TOOLS = [
   // Pops a WhatsApp conversation open on the user's screen (core/assistant/openChat.js).
   require('./openChat').DEFINITION,
+  // Switches the app to one of its pages (core/assistant/openPage.js).
+  require('./openPage').DEFINITION,
   {
     name: 'list_pending_approvals',
     description:

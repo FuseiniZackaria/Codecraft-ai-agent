@@ -70,6 +70,23 @@ const say = (number, name, text, userId = 'admin-1') => wa.saveMessage({
   assert(/forModel\(result\)/.test(index), 'the AI gets the result without ui');
   console.log('✓ Ian has the tool; the "open this chat" action goes to your screen, not to the AI');
 
+  // 6. "Open the sales page": Ian switches the screen to a page from a fixed list.
+  const { openPage, PAGES } = require('../core/assistant/openPage');
+  assert(buildTools(null).some((t) => t.name === 'open_page'));
+  const sales = await invoke('open_page', { page: 'sales' }, ME);
+  assert.deepStrictEqual(sales.ui, { action: 'navigate', path: '/departments/sales' });
+  assert.strictEqual(openPage({ page: 'nowhere' }).ok, false, 'unknown pages are refused');
+  const fs = require('fs');
+  const path = require('path');
+  const nav = fs.readFileSync(path.join(__dirname, '../../frontend/src/components/nav/navConfig.js'), 'utf8');
+  const depts = fs.readFileSync(path.join(__dirname, '../../frontend/src/data/departmentConfig.js'), 'utf8');
+  for (const { path: p } of Object.values(PAGES)) {
+    const m = p.match(/^\/departments\/(\w+)\/(\w+)$/);
+    const exists = m ? depts.includes(`key: '${m[1]}'`) && depts.includes(`key: '${m[2]}'`) : nav.includes(`'${p}'`);
+    assert(exists, `${p} should be a real page in the app`);
+  }
+  console.log('✓ "open the sales page" switches the screen; only real pages can be opened');
+
   console.log('\nAll open-chat tests passed.');
   process.exit(0);
 })().catch((err) => {

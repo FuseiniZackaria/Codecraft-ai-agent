@@ -25,6 +25,7 @@ import Leads from './pages/Leads';
 import WhatsAppReconnectBanner from './components/WhatsAppReconnectBanner';
 import OnboardingHost from './components/onboarding/OnboardingHost';
 import WhatsAppChatPopup from './components/WhatsAppChatPopup';
+import AssistantNavigator from './components/AssistantNavigator';
 import NotFound from './pages/NotFound';
 import { LogOut, WifiOff } from 'lucide-react';
 import { useStore } from './store/useStore';
@@ -258,6 +259,7 @@ function AdminLayout({ connectionError }) {
         <TopBar onOpenSidebar={() => setSidebarOpen(true)} />
         <OnboardingHost />
         <WhatsAppChatPopup />
+        <AssistantNavigator />
         <WhatsAppReconnectBanner />
         {connectionError && (
           <div className="flex items-center justify-center gap-2 bg-[var(--color-warning)]/10 border-b border-[var(--color-warning)]/30 px-4 py-1.5 text-xs text-[var(--color-warning)]">
