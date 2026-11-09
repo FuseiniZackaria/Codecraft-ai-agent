@@ -49,7 +49,9 @@ function panelBeside(fab) {
   return clampPanel({ x: right ? fab.x + FAB - PANEL_W : fab.x, y: bottom ? fab.y + FAB - PANEL_H : fab.y });
 }
 
-const PAUSE_MS = 1500; // silence after speech that ends one voice message
+const PAUSE_MS = 2200; // silence after speech that ends one voice message (short pauses mid-sentence don't send it)
+const ECHO_LATE_MS = 8000; // the browser can finish transcribing Ian's own voice this long after he stops
+const INTERRUPT_WORDS = 3; // new words (not Ian's) needed to talk over him
 const MAX_VOICE_RESTARTS = 5; // failed restarts in a row before the mic gives up
 
 // Friendly text for SpeechRecognition error codes.
@@ -72,6 +74,12 @@ function isEcho(heard, spoken) {
   const said = new Set(wordsOf(spoken));
   if (!said.size) return false;
   return words.filter((w) => said.has(w)).length / words.length >= 0.6;
+}
+
+// How many words the mic heard that Ian didn't say - real talking-over, not his echo.
+function newWords(heard, spoken) {
+  const said = new Set(wordsOf(spoken));
+  return wordsOf(heard).filter((w) => !said.has(w)).length;
 }
 
 function PanelMessage({ msg, tasks }) {
@@ -173,6 +181,7 @@ export default function FloatingAssistant() {
   const speakTokenRef = useRef(0);
   const spokenTextRef = useRef('');
   const echoUntilRef = useRef(0);
+  const spokeUntilRef = useRef(0); // when Ian last stopped speaking
   const bufferRef = useRef(''); // final results not sent yet
   const interimRef = useRef('');
   const lastSpeechAtRef = useRef(0);
@@ -185,7 +194,7 @@ export default function FloatingAssistant() {
   function stopSpeaking() {
     speakTokenRef.current += 1;
     try { window.speechSynthesis?.cancel(); } catch {}
-    if (speakingRef.current) echoUntilRef.current = Date.now() + 1500;
+    if (speakingRef.current) { echoUntilRef.current = Date.now() + 2500; spokeUntilRef.current = Date.now(); }
     speakingRef.current = false;
     setSpeaking(false);
   }
@@ -215,7 +224,8 @@ export default function FloatingAssistant() {
       if (token !== speakTokenRef.current) return; // replaced or cancelled
       speakingRef.current = false;
       setSpeaking(false);
-      echoUntilRef.current = Date.now() + 1500; // late echo can still arrive
+      echoUntilRef.current = Date.now() + 2500; // late echo can still arrive
+      spokeUntilRef.current = Date.now();
       if (voiceModeRef.current) resetSilenceTimer();
     };
     utter.onend = done;
@@ -245,8 +255,9 @@ export default function FloatingAssistant() {
     if (!fromVoice) setInput('');
     const result = await sendMessage({ text: toSend, scope, voice: fromVoice });
 
-    // Don't read out an answer you've already started talking over.
-    if (useStore.getState().assistant.spokenReplies && result?.accumulated && !bufferRef.current) {
+    // Don't read out an answer while you're talking (or already talked over it).
+    const youAreTalking = bufferRef.current || interimRef.current || Date.now() - lastSpeechAtRef.current < 1200;
+    if (useStore.getState().assistant.spokenReplies && result?.accumulated && !youAreTalking) {
       speak(result.accumulated);
     }
     if (voiceModeRef.current) resetSilenceTimer();
@@ -289,6 +300,9 @@ export default function FloatingAssistant() {
     interimRef.current = '';
     setHeard('');
     if (wordsOf(text).length < 2) return; // one-word noise
+    // Ian's own words, transcribed late after he finished - not you. Drop them.
+    const recentlySpoke = speakingRef.current || Date.now() - spokeUntilRef.current < ECHO_LATE_MS;
+    if (recentlySpoke && isEcho(text, spokenTextRef.current)) return;
     trySendRef.current?.(text, { fromVoice: true });
   }
 
@@ -327,7 +341,8 @@ export default function FloatingAssistant() {
       const echoWindow = speakingRef.current || Date.now() < echoUntilRef.current;
       if (echoWindow && isEcho(now, spokenTextRef.current)) return;
       if (speakingRef.current) {
-        if (wordsOf(now).length < 2) return;
+        // Misheard bits of his own voice aren't you - only real new words stop him.
+        if (newWords(now, spokenTextRef.current) < INTERRUPT_WORDS) return;
         stopSpeaking(); // you talked over Ian: stop him and listen
       }
 
