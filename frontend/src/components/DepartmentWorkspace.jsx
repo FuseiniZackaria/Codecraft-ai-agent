@@ -6,6 +6,7 @@ import { api } from '../services/api';
 import { createResilientEventSource } from '../services/resilientEventSource';
 import { getDepartment } from '../data/departmentConfig';
 import TaskRow from './TaskRow';
+import { handleAssistantUi } from './WhatsAppChatPopup';
 
 export default function DepartmentWorkspace({ departmentKey }) {
   const [searchParams, setSearchParams] = useSearchParams();
@@ -133,6 +134,7 @@ export default function DepartmentWorkspace({ departmentKey }) {
               setActiveTool(event.name);
             } else if (event.type === 'tool_end') {
               setActiveTool(null);
+              handleAssistantUi(event);
             } else if (event.type === 'error') {
               setError(event.error);
             }

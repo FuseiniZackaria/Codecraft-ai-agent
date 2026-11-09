@@ -164,6 +164,7 @@ router.post('/chat/stream', async (req, res) => {
       scope: scope || null,
       voice: !!voice,
       workspaceId: req.user?.workspaceId || null,
+      userId: req.user?.id || null,
       timer,
       onEvent: (event) => {
         if (event.type === 'text_delta') {

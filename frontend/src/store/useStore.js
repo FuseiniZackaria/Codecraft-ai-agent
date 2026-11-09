@@ -1,6 +1,7 @@
 import { create } from 'zustand';
 import { api, DEMO, resetAuthFailure } from '../services/api';
 import { supabase } from '../services/supabaseClient';
+import { handleAssistantUi } from '../components/WhatsAppChatPopup';
 
 export const useStore = create((set, get) => ({
   connected: false,
@@ -306,6 +307,7 @@ export const useStore = create((set, get) => ({
             set((s) => ({ assistant: { ...s.assistant, activeTool: event.name } }));
           } else if (event.type === 'tool_end') {
             set((s) => ({ assistant: { ...s.assistant, activeTool: null } }));
+            handleAssistantUi(event); // e.g. Ian opening a WhatsApp chat on screen
             if (event.result?.task_id) taskIds.push(event.result.task_id);
           } else if (event.type === 'notice') {
             notice = event.text;

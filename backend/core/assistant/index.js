@@ -72,12 +72,19 @@ function toFunctionDeclarations(tools) {
  * @param {function} opts.onEvent - called with {type, ...} for each stream event
  * @returns {Promise<{reply: string, taskIds: string[], usage: object, iterations: number}>}
  */
+/** A tool result as the AI sees it: without `ui` (screen actions like opening a chat - for the browser only). */
+function forModel(result) {
+  if (!result || typeof result !== 'object' || Array.isArray(result) || !('ui' in result)) return result;
+  const { ui, ...rest } = result; // eslint-disable-line no-unused-vars
+  return rest;
+}
+
 async function runAssistant(opts) {
   if (config.llm.provider === 'anthropic') return runWithClaude({ timer: startTimer('ian'), onEvent: () => {}, ...opts });
   return runWithGemini(opts);
 }
 
-async function runWithGemini({ message, scope = null, voice = false, workspaceId = null, onEvent = () => {}, timer = startTimer('ian') }) {
+async function runWithGemini({ message, scope = null, voice = false, workspaceId = null, userId = null, onEvent = () => {}, timer = startTimer('ian') }) {
   if (!config.assistant.apiKey) {
     throw new Error('GEMINI_API_KEY is not set');
   }
@@ -104,7 +111,7 @@ async function runWithGemini({ message, scope = null, voice = false, workspaceId
   const contents = [...history, { role: 'user', parts: [{ text: message }] }];
 
   const collectedTaskIds = [];
-  const context = { history, collectedTaskIds, workspaceId, userMessage: message };
+  const context = { history, collectedTaskIds, workspaceId, userId, userMessage: message };
   const totalUsage = { input_tokens: 0, output_tokens: 0, cache_read_input_tokens: 0, cache_creation_input_tokens: 0 };
   const usageByModel = new Map(); // model -> usage, so each model is priced at its own rate
 
@@ -168,7 +175,7 @@ async function runWithGemini({ message, scope = null, voice = false, workspaceId
         const result = await invoke(call.name, call.args || {}, context);
         timer.mark(`tool ${call.name}`, { ok: result?.ok !== false });
         onEvent({ type: 'tool_end', name: call.name, result });
-        const response = result && typeof result === 'object' && !Array.isArray(result) ? result : { output: result };
+        const response = result && typeof result === 'object' && !Array.isArray(result) ? forModel(result) : { output: result };
         responseParts.push({ functionResponse: { ...(call.id ? { id: call.id } : {}), name: call.name, response } });
       }
       contents.push({ role: 'user', parts: responseParts });
@@ -208,7 +215,7 @@ function accumulateUsage(total, u) {
  * system prompt (and the tools before it) carry a cache breakpoint, so repeat
  * turns read them from the prompt cache at a fraction of the price.
  */
-async function runWithClaude({ message, scope = null, voice = false, workspaceId = null, onEvent, timer }) {
+async function runWithClaude({ message, scope = null, voice = false, workspaceId = null, userId = null, onEvent, timer }) {
   if (!config.llm.anthropicKey) throw new Error('ANTHROPIC_API_KEY is not set');
 
   const [overCap, rows, perRequest] = await Promise.all([
@@ -241,7 +248,7 @@ async function runWithClaude({ message, scope = null, voice = false, workspaceId
 
   const messages = [...history, { role: 'user', content: message }];
   const collectedTaskIds = [];
-  const context = { history, collectedTaskIds, workspaceId, userMessage: message };
+  const context = { history, collectedTaskIds, workspaceId, userId, userMessage: message };
   const totalUsage = { input_tokens: 0, output_tokens: 0, cache_read_input_tokens: 0, cache_creation_input_tokens: 0 };
   const usageByModel = new Map();
 
@@ -288,7 +295,7 @@ async function runWithClaude({ message, scope = null, voice = false, workspaceId
         const result = await invoke(block.name, block.input || {}, context);
         timer.mark(`tool ${block.name}`, { ok: result?.ok !== false });
         onEvent({ type: 'tool_end', name: block.name, result });
-        toolResults.push({ type: 'tool_result', tool_use_id: block.id, content: JSON.stringify(result ?? null), is_error: result?.ok === false });
+        toolResults.push({ type: 'tool_result', tool_use_id: block.id, content: JSON.stringify(forModel(result) ?? null), is_error: result?.ok === false });
       }
       messages.push({ role: 'user', content: toolResults });
       continue;

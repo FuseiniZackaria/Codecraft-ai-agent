@@ -169,6 +169,7 @@ const HANDLERS = {
   run_development_task: runDepartmentTask,
   list_pending_approvals: (_name, _input, context) => listPendingApprovals(context),
   check_task_result: (_name, input, context) => checkTaskResult(input, context),
+  open_whatsapp_chat: (_name, input, context) => require('./openChat').openWhatsappChat(input, context),
 };
 
 async function invoke(toolName, input, context) {
