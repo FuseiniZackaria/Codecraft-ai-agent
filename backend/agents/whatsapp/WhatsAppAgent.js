@@ -13,6 +13,7 @@ const catalogSearch = require('../../core/catalog/search');
 const imageUnderstanding = require('../../core/whatsapp/imageUnderstanding');
 const linkReader = require('../../core/whatsapp/linkReader');
 const replyPolicy = require('../../core/whatsapp/replyPolicy');
+const clientSettings = require('../../core/whatsapp/clientSettings');
 
 /**
  * WhatsAppAgent - triggered by the webhook receiver on each incoming customer
@@ -63,11 +64,12 @@ class WhatsAppAgent extends BaseAgent {
   }
 
   /** Recent messages with this contact (oldest first), not counting the one being answered. */
-  async recentHistory({ session, from, userId, workspaceId, body }) {
+  async recentHistory({ session, from, body }) {
     if (!session) return [];
     try {
       const store = require('../../core/whatsapp/store');
-      const messages = await store.listMessages({ userId, workspaceId }, from, 12);
+      // This number's conversation with this contact - never another number's.
+      const messages = await store.listSessionMessages(session, from, 12);
       const last = messages[messages.length - 1];
       if (last && last.direction === 'in' && msgText(last) === (body || '')) messages.pop();
       return messages;
@@ -78,7 +80,7 @@ class WhatsAppAgent extends BaseAgent {
   }
 
   /** Draft Ian's reply. Returns { reply, hold, reason } (reply already cleaned up). */
-  async draftReply({ body, history, workspaceId, v, profile, now = new Date(), photoTerms = [], paymentPhoto = false }) {
+  async draftReply({ body, history, workspaceId, v, profile, now = new Date(), photoTerms = [], paymentPhoto = false, client = null }) {
     // Business profile + the Q&A, documents and products that match this message.
     const previousIn = [...history].reverse().find((m) => m.direction === 'in');
     const previous = previousIn ? msgText(previousIn) : '';
@@ -96,7 +98,9 @@ class WhatsAppAgent extends BaseAgent {
     const firstContact = !history.some((m) => m.direction === 'in');
 
     const situation = [
-      `It is ${time.clock} where the business is (${process.env.WA_PLACE || 'Ghana'}) - ${time.partOfDay}.`,
+      `It is ${time.clock} where the business is (${client?.place || process.env.WA_PLACE || 'Ghana'}) - ${time.partOfDay}.`,
+      // This business's language choice (Settings -> WhatsApp).
+      clientSettings.LANGUAGE_RULES[client?.language] || clientSettings.LANGUAGE_RULES.match,
       midConversation
         ? "You're in the middle of a conversation: don't greet again, just answer."
         : `This starts a conversation: begin with "${time.greeting}".`,
@@ -195,7 +199,9 @@ class WhatsAppAgent extends BaseAgent {
     // This workspace's instructions, examples and hold reply (falls back to whatsapp-voice.md).
     const v = await agentSettings.forAgent(workspaceId, profile);
     v.hold = v.holdReply;
-    const history = await this.recentHistory({ session, from, userId, workspaceId, body: rawBody || '[image]' });
+    // This business's own WhatsApp settings: auto-reply, daily limit, town, language.
+    const client = await clientSettings.get(workspaceId);
+    const history = await this.recentHistory({ session, from, body: rawBody || '[image]' });
 
     // A photo: look at it first, then answer as if they'd described it.
     let seen = null;
@@ -209,7 +215,7 @@ class WhatsAppAgent extends BaseAgent {
       }
     }
     const body = seen ? imageUnderstanding.asMessageText(seen, rawBody) : rawBody;
-    const photoOpts = seen ? { photoTerms: seen.searchTerms, paymentPhoto: seen.payment } : {};
+    const photoOpts = { client, ...(seen ? { photoTerms: seen.searchTerms, paymentPhoto: seen.payment } : {}) };
 
     // The AI service can be overloaded (Gemini 503 / timeouts). Try once more after a
     // short wait; if it's still down, the client must not be left in silence - the
@@ -243,12 +249,17 @@ class WhatsAppAgent extends BaseAgent {
     }
     let reason = holdReason;
 
-    const autoReplyOn = session ? config.whatsapp.autoReply : config.autoReply.whatsapp.enabled;
+    const autoReplyOn = session ? client.auto_reply : config.autoReply.whatsapp.enabled;
     if (autoReplyOn && !held) {
-      const sentToday = await countSentToday(TOOL).catch(() => 0);
-      if (sentToday >= config.autoReply.dailyLimitPerChannel) {
+      // The daily limit is per number: one busy business never stops another's replies.
+      const store = require('../../core/whatsapp/store');
+      const limit = session ? client.daily_reply_limit : config.autoReply.dailyLimitPerChannel;
+      const sentToday = session
+        ? await store.countSentBySessionToday(session, ['auto_reply']).catch(() => 0)
+        : await countSentToday(TOOL).catch(() => 0);
+      if (sentToday >= limit) {
         held = true;
-        reason = `daily auto-reply limit (${config.autoReply.dailyLimitPerChannel}) reached`;
+        reason = `daily auto-reply limit (${limit}) reached for this number`;
       }
     }
 
@@ -262,7 +273,7 @@ class WhatsAppAgent extends BaseAgent {
       if (sent.sent) {
         // Product photos the reply refers to (the reply itself went out first).
         if (drafted.photos?.length) result.photos = await this.sendPhotos({ from, session, workspaceId, photos: drafted.photos });
-        notifications.notifyOwnerFyi({ channel: 'whatsapp', from, customerMessage: body, sentReply: draft })
+        notifications.notifyOwnerFyi({ channel: 'whatsapp', from, customerMessage: body, sentReply: draft, workspaceId })
           .catch((err) => console.warn(`[WhatsAppAgent] FYI notification failed: ${err.message}`));
         return result;
       }

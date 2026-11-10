@@ -211,6 +211,8 @@ app.use('/api/onboarding', requireAuth, requireRole('admin'), require('./api/onb
 app.use('/api/connections', requireAuth, requireRole('admin'), connectionRoutes);
 app.use('/api/client-tracker', requireAuth, requireRole('admin'), clientTrackerRoutes);
 app.use('/api/whatsapp', requireAuth, requireRole('admin'), require('./api/whatsappRoutes'));
+// The app owner's Clients page: every client business's WhatsApp, tier and limits.
+app.use('/api/clients', requireAuth, requireRole('admin'), require('./api/clientsRoutes'));
 app.get('/health', (req, res) => res.json({ status: 'ok', plugins: loadedPlugins }));
 
 app.listen(config.port, () => {

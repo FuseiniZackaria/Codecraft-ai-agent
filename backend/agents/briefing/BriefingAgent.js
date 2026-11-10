@@ -300,7 +300,10 @@ class BriefingAgent extends BaseAgent {
     const digest = truncated ? `${briefText.slice(0, MAX_DIGEST_CHARS)}...` : briefText;
     const message = `📰 ${goal}\n\n${digest}${truncated ? '\n\n(Full report saved - see the Intelligence dashboard for the complete version.)' : ''}`;
 
-    await whatsapp.sendMessage(matching.deliverWhatsappTo, message);
+    // Sent from that workflow's own business number (never another business's).
+    await whatsapp.sendMessage(matching.deliverWhatsappTo, message, {
+      workspaceId: matching.workspace_id || matching.workspaceId || null, source: 'briefing',
+    });
   }
 }
 

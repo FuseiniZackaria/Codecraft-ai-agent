@@ -269,6 +269,11 @@ router.post('/whatsapp/connect', async (req, res) => {
         },
         status: 'connected',
       });
+      // This business now runs on its own Meta number: its session row + channel.
+      const conn = await connections.getConnection(wsId, 'whatsapp');
+      await require('../core/whatsapp/MetaCloudProvider').ensureSession(wsId, conn);
+      const clientSettings = require('../core/whatsapp/clientSettings');
+      await clientSettings.save(wsId, { channel: 'meta' }, { userId: req.user?.id }).catch((err) => console.warn(`[connections] channel not saved: ${err.message}`));
 
       res.json({
         ok: true,
@@ -378,7 +383,15 @@ router.delete('/whatsapp', async (req, res) => {
   try {
     const wsId = req.user?.workspaceId;
     if (!wsId) return res.status(400).json({ error: 'No workspace resolved.' });
+    const conn = await connections.getConnection(wsId, 'whatsapp').catch(() => null);
     await connections.deleteConnection(wsId, 'whatsapp');
+    // Its Meta number stops sending at once.
+    if (conn?.provider_meta?.type === 'meta' && conn.provider_meta.phone_number_id) {
+      const MetaCloudProvider = require('../core/whatsapp/MetaCloudProvider');
+      await require('../core/whatsapp/store').updateSession(MetaCloudProvider.sessionNameFor(conn.provider_meta.phone_number_id), {
+        status: 'STOPPED', disconnected_by_user: true, needs_reconnect: false,
+      }).catch(() => {});
+    }
     res.json({ ok: true });
   } catch (err) {
     res.status(500).json({ error: err.message });

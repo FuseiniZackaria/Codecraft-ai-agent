@@ -1,7 +1,7 @@
 const config = require('../../config');
 const activityLog = require('../activityLog');
 const store = require('./store');
-const { getProvider } = require('./index');
+const { getProvider, getProviderForSession } = require('./index');
 const { normalizeNumber } = require('./phone');
 
 // The whole message must be the keyword: "cancel my order" must not unsubscribe anyone.
@@ -34,21 +34,72 @@ function randomBetween(min, max) {
   return Math.round(min + timing.random() * (max - min));
 }
 
+// Messages to the business itself (its alerts) and the one-time STOP/START notice.
+const SYSTEM_SOURCES = new Set(['owner_alert', 'optout_notice']);
+const META_WINDOW_MS = 24 * 60 * 60 * 1000;
+
+class SendNotAllowedError extends Error {
+  constructor(message, code) {
+    super(message);
+    this.name = 'SendNotAllowedError';
+    this.code = code;
+  }
+}
+
+/**
+ * The per-client rules every send must pass. Returns the workspace the session
+ * belongs to (filled in when the caller didn't say). Throws SendNotAllowedError.
+ */
+async function assertSendAllowed({ provider, sessionName, contactNumber, workspaceId, source, template }) {
+  const row = sessionName ? await store.getSessionByName(sessionName).catch(() => null) : null;
+  // 1. Never from another business's number.
+  if (row?.workspace_id && workspaceId && row.workspace_id !== workspaceId) {
+    console.warn(`[whatsapp] refused: ${sessionName} belongs to another business than ${workspaceId}`);
+    throw new SendNotAllowedError("That WhatsApp number belongs to another business - nothing was sent.", 'WRONG_BUSINESS');
+  }
+  const ws = workspaceId || row?.workspace_id || null;
+  if (SYSTEM_SOURCES.has(source)) return ws;
+
+  // 2. Reply-only (Tier 1): only people who messaged this number first, whoever approved it.
+  const settings = await require('./clientSettings').get(ws);
+  if (settings.tier === 'reply_only' && !(await store.hasMessagedFirst(sessionName, contactNumber).catch(() => false))) {
+    throw new SendNotAllowedError(
+      "This WhatsApp number is reply-only: it only messages people who messaged it first, so nothing was sent. (Outreach needs the Outreach tier - Meta's official API.)",
+      'REPLY_ONLY',
+    );
+  }
+
+  // 3. Meta: free text only within 24 hours of their last message; otherwise an approved template.
+  if (provider.name === 'meta' && String(sessionName || '').startsWith('meta_') && !template) {
+    const last = await store.lastInboundAt(sessionName, contactNumber).catch(() => null);
+    if (!last || Date.now() - new Date(last).getTime() > META_WINDOW_MS) {
+      throw new SendNotAllowedError(
+        "They haven't messaged this number in the last 24 hours, so Meta only allows an approved template - nothing was sent. Send a template from Work -> Inbox -> New message.",
+        'META_TEMPLATE_REQUIRED',
+      );
+    }
+  }
+  return ws;
+}
+
 /**
  * Send one message and record it. With `typing`, shows "typing..." and waits a
  * random 2-6 seconds first, so a reply doesn't land the instant a message arrives.
  * Throws on a send failure (after logging); the caller decides what that means.
  */
-async function sendAndRecord({ sessionName, to, text, userId = null, workspaceId = null, source, typing = false, image = null, linkPreview = false }) {
-  const provider = getProvider();
+async function sendAndRecord({ sessionName, to, text, userId = null, workspaceId = null, source, typing = false, image = null, linkPreview = false, template = null }) {
+  const provider = getProviderForSession(sessionName);
   const contactNumber = normalizeNumber(to);
   if (!contactNumber) throw new Error(`Not a valid WhatsApp number: "${to}"`);
-  if (!image && (!text || !String(text).trim())) throw new Error('Message text is empty');
+  if (!image && !template && (!text || !String(text).trim())) throw new Error('Message text is empty');
 
   // Every send passes here, so no path (agent, auto-reply, outreach, alerts) can message someone who said STOP.
   if (!ALLOWED_AFTER_STOP.has(source) && (await store.isOptedOut(sessionName, contactNumber).catch(() => false))) {
     throw new OptedOutError(contactNumber);
   }
+  // A number only ever sends for its own business; reply-only numbers only answer
+  // people who messaged first; Meta numbers follow Meta's 24-hour rule.
+  workspaceId = await assertSendAllowed({ provider, sessionName, contactNumber, workspaceId, source, template });
 
   if (typing) {
     await provider.sendTyping(sessionName, contactNumber, true);
@@ -58,7 +109,10 @@ async function sendAndRecord({ sessionName, to, text, userId = null, workspaceId
 
   let result;
   try {
-    if (image) {
+    if (template) {
+      if (typeof provider.sendTemplate !== 'function') throw new Error('Templates are only for Meta WhatsApp numbers.');
+      result = await provider.sendTemplate(sessionName, contactNumber, template);
+    } else if (image) {
       if (typeof provider.sendImage !== 'function') throw new Error(`${provider.name} can't send photos`);
       result = await provider.sendImage(sessionName, contactNumber, image, text || '');
     } else {
@@ -72,7 +126,9 @@ async function sendAndRecord({ sessionName, to, text, userId = null, workspaceId
 
   await store.saveMessage({
     provider: provider.name, sessionName, userId, workspaceId, direction: 'out',
-    contactNumber, text: image ? `[photo] ${text || ''}`.trim() : text, waMessageId: result.id, source,
+    contactNumber,
+    text: template ? (text || `[template: ${template.name}]`) : image ? `[photo] ${text || ''}`.trim() : text,
+    waMessageId: result.id, source,
   }).catch((err) => console.warn(`[whatsapp] sent but not saved: ${err.message}`));
   // Leads: when we last wrote to them (and a price sent = "Quote sent").
   if (workspaceId && !['owner_alert', 'optout_notice'].includes(source)) {
@@ -108,8 +164,15 @@ async function alertOwnerAboutMedia({ sessionName, workspaceId, message }) {
   return { handled: true, routed: false, ownerAlerted: true, results };
 }
 
-/** The owner's own number: their messages (e.g. answering an alert) never get an AI reply. */
-function isOwnerNumber(contactNumber) {
+/**
+ * The business's own number: messages from it (e.g. answering an alert) never
+ * get an AI reply. Yours (OWNER_WHATSAPP_NUMBER) on your workspace; a client's
+ * alert number on theirs.
+ */
+async function isOwnerNumber(contactNumber, workspaceId = null) {
+  const settings = await require('./clientSettings').get(workspaceId).catch(() => null);
+  if (settings?.alert_number && settings.alert_number === contactNumber) return true;
+  if (settings && !settings.operator) return false;
   const owner = normalizeNumber(config.notifications?.ownerWhatsappNumber || '');
   return !!owner && owner === contactNumber;
 }
@@ -163,7 +226,7 @@ async function handleIncomingMessage({ providerName, sessionName, userId = null,
     if (optedOut) return { handled: true, routed: false, reason: 'opted out' };
 
     // The owner writing to the linked number (e.g. replying to an alert) is not a customer.
-    if (isOwnerNumber(message.contactNumber)) return { handled: true, routed: false, reason: 'message from the owner' };
+    if (await isOwnerNumber(message.contactNumber, workspaceId)) return { handled: true, routed: false, reason: 'message from the owner' };
 
     // Everyone who messages becomes a lead (Work -> Leads). Never blocks the reply.
     if (workspaceId) {
@@ -219,7 +282,8 @@ async function handleIncomingMessage({ providerName, sessionName, userId = null,
       body: mediaOnly ? '' : text, // a caption is the message; "[image]" alone is not
       image,
       workspaceId,
-      session: providerName === 'waha' ? sessionName : null,
+      // The reply goes out from the same number (a client's own Meta number too).
+      session: providerName === 'waha' || String(sessionName || '').startsWith('meta_') ? sessionName : null,
       userId,
     });
     if (image && reply?.imageUnreadable && mediaOnly) return alertOwnerAboutMedia({ sessionName, workspaceId, message });
@@ -235,20 +299,45 @@ async function handleIncomingMessage({ providerName, sessionName, userId = null,
  * Record a WAHA session status change. FAILED, or STOPPED while it was linked
  * (and not by the admin pressing Disconnect), flags it for the Reconnect banner.
  */
+const lostAlertedAt = new Map(); // sessionName -> when its loss was alerted (also kept in the database)
+const LOST_ALERT_GAP_MS = 6 * 60 * 60 * 1000;
+
 async function handleSessionStatus({ sessionName, status, phoneNumber, pushName }) {
   try {
     const row = await store.getSessionByName(sessionName);
     if (!row) return;
     const lost = status === 'FAILED' || (status === 'STOPPED' && row.status === 'WORKING' && !row.disconnected_by_user);
-    const fields = { status, last_status_at: new Date().toISOString() };
-    if (status === 'WORKING') Object.assign(fields, { needs_reconnect: false, disconnected_by_user: false, last_error: null });
+    const nowIso = new Date().toISOString();
+    const fields = { status, last_status_at: nowIso };
+    if (status === 'WORKING') {
+      Object.assign(fields, { needs_reconnect: false, disconnected_by_user: false, last_error: null });
+      if (row.lost_alerted_at) fields.lost_alerted_at = null;
+      lostAlertedAt.delete(sessionName);
+      // Warm-up starts when a number is newly linked (QR / pairing code), or a different number replaces it.
+      const freshLink = !row.linked_at && ['SCAN_QR_CODE', 'STARTING'].includes(row.status);
+      const otherNumber = !!(phoneNumber && row.phone_number && phoneNumber !== row.phone_number);
+      if (freshLink || otherNumber) fields.linked_at = nowIso;
+    }
     if (lost) Object.assign(fields, { needs_reconnect: true, last_error: `WhatsApp session ${status.toLowerCase()}` });
     if (phoneNumber) fields.phone_number = phoneNumber;
     if (pushName) fields.push_name = pushName;
+
+    // Alert once per loss (not again until it has worked in between, or 6 hours later).
+    const alreadyAlerted = Math.max(new Date(row.lost_alerted_at || 0).getTime(), lostAlertedAt.get(sessionName) || 0);
+    const alertNow = lost && Date.now() - alreadyAlerted > LOST_ALERT_GAP_MS;
+    if (alertNow) {
+      fields.lost_alerted_at = nowIso;
+      lostAlertedAt.set(sessionName, Date.now());
+    }
     await store.updateSession(sessionName, fields);
     if (lost) {
       console.warn(`[whatsapp] session ${sessionName} is ${status} - admin needs to reconnect`);
       await activityLog.record('WhatsApp', 'session_lost', sessionName, { status, workspaceId: row.workspace_id }).catch(() => {});
+    }
+    if (alertNow) {
+      await require('../notifications').notifySessionLost({
+        sessionName, workspaceId: row.workspace_id, status, phoneNumber: row.phone_number || phoneNumber || null,
+      }).catch((err) => console.warn(`[whatsapp] lost-session alert failed: ${err.message}`));
     }
   } catch (err) {
     console.error(`[whatsapp] could not record status ${status} for ${sessionName}: ${err.message}`);
@@ -256,6 +345,7 @@ async function handleSessionStatus({ sessionName, status, phoneNumber, pushName 
 }
 
 module.exports = {
-  sendAndRecord, handleIncomingMessage, handleSessionStatus, randomBetween,
+  sendAndRecord, handleIncomingMessage, handleSessionStatus, randomBetween, assertSendAllowed, isOwnerNumber, SendNotAllowedError,
+  _lostAlertedAt: lostAlertedAt,
   STOP_WORDS, START_WORDS, STOP_NOTICE, START_NOTICE, OptedOutError, timing, _lastMediaAlert: lastMediaAlert, _lastRateLimitAlert: lastRateLimitAlert,
 };

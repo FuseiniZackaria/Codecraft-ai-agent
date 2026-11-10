@@ -2,6 +2,7 @@ import { Outlet } from 'react-router-dom';
 import PageTabs from '../PageTabs';
 import { navItem } from './navConfig';
 import { useNavBadges } from './useNavBadges';
+import { useStore } from '../../store/useStore';
 
 /**
  * A tabbed parent page: the tab bar from navConfig, then the active tab's page
@@ -11,7 +12,9 @@ import { useNavBadges } from './useNavBadges';
 export default function TabbedLayout({ navKey, fill = false }) {
   const item = navItem(navKey);
   const badges = useNavBadges();
-  const tabs = <PageTabs tabs={item.tabs} variant={item.tabsVariant} badges={badges} />;
+  const isAppOwner = useStore((s) => !!s.user?.isAppOwner);
+  const visible = item.tabs.filter((t) => !t.ownerOnly || isAppOwner);
+  const tabs = <PageTabs tabs={visible} variant={item.tabsVariant} badges={badges} />;
 
   if (fill) {
     return (

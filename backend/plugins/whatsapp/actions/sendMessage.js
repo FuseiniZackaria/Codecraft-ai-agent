@@ -20,11 +20,12 @@ module.exports = {
       throw new Error('sendMessage requires "to" (phone number) and "body"');
     }
 
-    if (outreach && config.whatsapp.provider === 'waha') {
-      const store = require('../../../core/whatsapp/store');
-      const sessions = await store.listWorkingSessions(context.workspaceId || null);
-      if (!sessions.length) throw new Error('No WhatsApp account is linked in this workspace - connect WhatsApp on the Connections page first.');
-      const s = sessions[0];
+    // Outreach goes through the paced queue of THIS business's own number (never another's).
+    const store = require('../../../core/whatsapp/store');
+    const ownSession = outreach && context.workspaceId ? (await store.listWorkingSessions(context.workspaceId))[0] : null;
+    if (outreach && (ownSession || config.whatsapp.provider === 'waha')) {
+      if (!ownSession) throw new Error('No WhatsApp account is linked in this workspace - connect WhatsApp on the Connections page first.');
+      const s = ownSession;
       const result = await require('../../../core/whatsapp/outbox').enqueue({
         sessionName: s.session_name, userId: s.user_id, workspaceId: s.workspace_id, recipients: [{ number: to, text: body }],
         // You approved this exact message (Tasks page), so it may be the first one to this person.

@@ -24,6 +24,19 @@ function getProvider() {
   return require('./WahaProvider');
 }
 
+/**
+ * The provider for ONE session (number): "meta" / "meta_<id>" -> Meta Cloud API
+ * (that business's own credentials), "twilio" -> Twilio, anything else -> WAHA.
+ * Lets WAHA clients and Meta clients run side by side.
+ */
+function getProviderForSession(sessionName) {
+  const s = String(sessionName || '');
+  if (s === 'meta' || s.startsWith('meta_')) return require('./MetaCloudProvider');
+  if (s === 'twilio') return require('./TwilioProvider');
+  if (!s) return getProvider();
+  return require('./WahaProvider');
+}
+
 /** Providers with one shared business number instead of a linked phone per admin. */
 function isSharedNumberProvider(name = config.whatsapp.provider) {
   return name === 'twilio' || name === 'meta';
@@ -60,4 +73,4 @@ async function canConnectWhatsapp(user) {
   return !!row && row.user_id === user?.id;
 }
 
-module.exports = { getProvider, isSharedNumberProvider, sessionNameForUser, webhookUrl, canConnectWhatsapp };
+module.exports = { getProvider, getProviderForSession, isSharedNumberProvider, sessionNameForUser, webhookUrl, canConnectWhatsapp };

@@ -21,7 +21,7 @@ function db() {
   return client;
 }
 
-const mem = { sessions: [], messages: [], outbox: [], optouts: [] };
+const mem = { sessions: [], messages: [], outbox: [], optouts: [], consent: [] };
 const now = () => new Date().toISOString();
 
 function check(error, where) {
@@ -74,7 +74,12 @@ async function updateSession(sessionName, fields) {
     if (s) Object.assign(s, patch);
     return s || null;
   }
-  const { data, error } = await db().from('whatsapp_sessions').update(patch).eq('session_name', sessionName).select().maybeSingle();
+  let { data, error } = await db().from('whatsapp_sessions').update(patch).eq('session_name', sessionName).select().maybeSingle();
+  // Migration 0010 not run yet: save everything except its new columns.
+  if (error && /linked_at|lost_alerted_at/.test(error.message)) {
+    const { linked_at, lost_alerted_at, ...rest } = patch; // eslint-disable-line no-unused-vars
+    ({ data, error } = await db().from('whatsapp_sessions').update(rest).eq('session_name', sessionName).select().maybeSingle());
+  }
   check(error, 'updateSession');
   return data;
 }
@@ -86,6 +91,32 @@ async function listWorkingSessions(workspaceId = null) {
   if (workspaceId) q = q.eq('workspace_id', workspaceId);
   const { data, error } = await q;
   check(error, 'listWorkingSessions');
+  return data || [];
+}
+
+/**
+ * The one WhatsApp number of a business (workspace): its working session if
+ * there is one, else its most recently updated one. Never another business's.
+ */
+async function getSessionForWorkspace(workspaceId) {
+  if (!workspaceId) return null;
+  const rows = db()
+    ? await (async () => {
+      const { data, error } = await db().from('whatsapp_sessions').select('*').eq('workspace_id', workspaceId);
+      check(error, 'getSessionForWorkspace');
+      return data || [];
+    })()
+    : mem.sessions.filter((s) => s.workspace_id === workspaceId);
+  if (!rows.length) return null;
+  const rank = (s) => (s.status === 'WORKING' ? 2 : s.disconnected_by_user ? 0 : 1);
+  return [...rows].sort((a, b) => rank(b) - rank(a) || String(b.updated_at || '').localeCompare(String(a.updated_at || '')))[0];
+}
+
+/** Every session row (all businesses) - for the app owner's Clients page and health checks. */
+async function listSessions() {
+  if (!db()) return mem.sessions.map((s) => ({ ...s }));
+  const { data, error } = await db().from('whatsapp_sessions').select('*');
+  check(error, 'listSessions');
   return data || [];
 }
 
@@ -124,7 +155,7 @@ async function saveMessage(msg) {
 
 /** Messages an admin may see: their own session's, plus workspace-level Twilio/Meta messages (shared business number). */
 function visibleTo(m, { userId, workspaceId }) {
-  return m.user_id === userId || (!m.user_id && ['twilio', 'meta'].includes(m.provider) && workspaceId && m.workspace_id === workspaceId);
+  return (!!userId && m.user_id === userId) || (!m.user_id && ['twilio', 'meta'].includes(m.provider) && workspaceId && m.workspace_id === workspaceId);
 }
 
 async function recentMessagesFor(viewer, limit = 1000) {
@@ -187,6 +218,88 @@ async function listMessages(viewer, contactNumber, limit = 200) {
     })()
     : mem.messages.filter((m) => m.contact_number === contactNumber && visibleTo(m, viewer)).sort((a, b) => (a.sent_at < b.sent_at ? 1 : -1)).slice(0, limit);
   return all.reverse(); // oldest first for display
+}
+
+/** One number's conversation with one contact (oldest first) - the history Ian reads before replying. */
+async function listSessionMessages(sessionName, contactNumber, limit = 12) {
+  if (!sessionName) return [];
+  if (!db()) {
+    return mem.messages.filter((m) => m.session_name === sessionName && m.contact_number === contactNumber)
+      .sort((a, b) => (a.sent_at < b.sent_at ? 1 : -1)).slice(0, limit).reverse();
+  }
+  const { data, error } = await db().from('whatsapp_chat_messages').select('*')
+    .eq('session_name', sessionName).eq('contact_number', contactNumber).order('sent_at', { ascending: false }).limit(limit);
+  check(error, 'listSessionMessages');
+  return (data || []).reverse();
+}
+
+/** Messages this number sent today, optionally only some sources (e.g. ['auto_reply']). */
+async function countSentBySessionToday(sessionName, sources = null) {
+  const since = startOfToday();
+  if (!db()) {
+    return mem.messages.filter((m) => m.session_name === sessionName && m.direction === 'out' && m.sent_at >= since
+      && (!sources || sources.includes(m.source))).length;
+  }
+  let q = db().from('whatsapp_chat_messages').select('id', { count: 'exact', head: true })
+    .eq('session_name', sessionName).eq('direction', 'out').gte('sent_at', since);
+  if (sources) q = q.in('source', sources);
+  const { count, error } = await q;
+  check(error, 'countSentBySessionToday');
+  return count || 0;
+}
+
+/** Messages received by this number today. */
+async function countReceivedToday(sessionName) {
+  const since = startOfToday();
+  if (!db()) return mem.messages.filter((m) => m.session_name === sessionName && m.direction === 'in' && m.sent_at >= since).length;
+  const { count, error } = await db().from('whatsapp_chat_messages').select('id', { count: 'exact', head: true })
+    .eq('session_name', sessionName).eq('direction', 'in').gte('sent_at', since);
+  check(error, 'countReceivedToday');
+  return count || 0;
+}
+
+/** When this contact last messaged this number (ISO), or null. Meta's 24-hour window starts here. */
+async function lastInboundAt(sessionName, contactNumber) {
+  if (!db()) {
+    const times = mem.messages.filter((m) => m.session_name === sessionName && m.contact_number === contactNumber && m.direction === 'in').map((m) => m.sent_at).sort();
+    return times[times.length - 1] || null;
+  }
+  const { data, error } = await db().from('whatsapp_chat_messages').select('sent_at')
+    .eq('session_name', sessionName).eq('contact_number', contactNumber).eq('direction', 'in')
+    .order('sent_at', { ascending: false }).limit(1).maybeSingle();
+  check(error, 'lastInboundAt');
+  return data?.sent_at || null;
+}
+
+// ---------- opt-ins (Meta outreach) ----------
+
+async function addConsent(workspaceId, numbers, { source = 'import', note = null, userId = null } = {}) {
+  const rows = [...new Set(numbers)].map((n) => ({ workspace_id: workspaceId, contact_number: n, source, note, created_by: userId, created_at: now() }));
+  if (!rows.length) return 0;
+  if (!db()) {
+    for (const r of rows) if (!mem.consent.some((c) => c.workspace_id === workspaceId && c.contact_number === r.contact_number)) mem.consent.push(r);
+    return rows.length;
+  }
+  const { error } = await db().from('whatsapp_consent').upsert(rows, { onConflict: 'workspace_id,contact_number' });
+  check(error, 'addConsent');
+  return rows.length;
+}
+
+async function hasConsent(workspaceId, contactNumber) {
+  if (!workspaceId) return false;
+  if (!db()) return mem.consent.some((c) => c.workspace_id === workspaceId && c.contact_number === contactNumber);
+  const { data, error } = await db().from('whatsapp_consent').select('contact_number').eq('workspace_id', workspaceId).eq('contact_number', contactNumber).maybeSingle();
+  if (error && /does not exist|schema cache/i.test(error.message)) return false;
+  check(error, 'hasConsent');
+  return !!data;
+}
+
+async function countConsent(workspaceId) {
+  if (!db()) return mem.consent.filter((c) => c.workspace_id === workspaceId).length;
+  const { count, error } = await db().from('whatsapp_consent').select('contact_number', { count: 'exact', head: true }).eq('workspace_id', workspaceId);
+  if (error && /does not exist|schema cache/i.test(error.message)) return 0;
+  check(error, 'countConsent');
+  return count || 0;
 }
 
 // ---------- opt-outs ----------
@@ -258,6 +371,7 @@ async function enqueueOutreach(rows) {
     workspace_id: r.workspaceId || null,
     contact_number: r.contactNumber,
     body: r.text,
+    ...(r.template ? { template: r.template } : {}), // column from migration 0010; only sent when used
     status: 'queued',
     created_at: now(),
     updated_at: now(),
@@ -306,6 +420,17 @@ async function countSentToday(sessionName) {
   return count || 0;
 }
 
+/** What this number queued or sent since `sinceIso` (for spotting copy-paste messages). */
+async function listRecentOutboxBodies(sessionName, sinceIso) {
+  if (!db()) {
+    return mem.outbox.filter((o) => o.session_name === sessionName && o.created_at >= sinceIso && ['queued', 'sending', 'sent'].includes(o.status)).map((o) => o.body);
+  }
+  const { data, error } = await db().from('whatsapp_outbox').select('body')
+    .eq('session_name', sessionName).in('status', ['queued', 'sending', 'sent']).gte('created_at', sinceIso).limit(500);
+  check(error, 'listRecentOutboxBodies');
+  return (data || []).map((o) => o.body);
+}
+
 async function listOutbox(userId, limit = 100) {
   if (!db()) return mem.outbox.filter((o) => o.user_id === userId).sort((a, b) => (a.created_at < b.created_at ? 1 : -1)).slice(0, limit);
   const { data, error } = await db().from('whatsapp_outbox').select('*').eq('user_id', userId).order('created_at', { ascending: false }).limit(limit);
@@ -319,12 +444,15 @@ function _resetMemory() {
   mem.messages.length = 0;
   mem.outbox.length = 0;
   mem.optouts.length = 0;
+  mem.consent.length = 0;
 }
 
 module.exports = {
-  getSessionByUser, getSessionByName, upsertSession, updateSession, listWorkingSessions,
-  saveMessage, listConversations, listMessages, getMessage,
+  getSessionByUser, getSessionByName, upsertSession, updateSession, listWorkingSessions, getSessionForWorkspace, listSessions,
+  saveMessage, listConversations, listMessages, getMessage, listSessionMessages,
+  countSentBySessionToday, countReceivedToday, lastInboundAt,
+  addConsent, hasConsent, countConsent,
   isOptedOut, addOptOut, removeOptOut, hasMessagedFirst, countSentToContact,
-  enqueueOutreach, nextQueuedPerSession, updateOutbox, countSentToday, listOutbox,
+  enqueueOutreach, nextQueuedPerSession, updateOutbox, countSentToday, listOutbox, listRecentOutboxBodies,
   _resetMemory,
 };

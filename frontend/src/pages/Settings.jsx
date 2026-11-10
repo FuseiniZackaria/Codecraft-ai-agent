@@ -7,6 +7,7 @@ import QaTab from '../components/settings/QaTab';
 import DocumentsTab from '../components/settings/DocumentsTab';
 import TestChatTab from '../components/settings/TestChatTab';
 import ProductsTab from '../components/settings/ProductsTab';
+import WhatsAppSettingsTab from '../components/settings/WhatsAppSettingsTab';
 import { api } from '../services/api';
 import LoadingScreen from '../components/LoadingScreen';
 import { PROFILE_RULES, validateProfileForm, fieldError, isEmail } from '../components/settings/profileRules';
@@ -39,6 +40,7 @@ const TABS = [
   { key: 'docs',    label: 'Documents' },
   { key: 'products', label: 'Products' },
   { key: 'test',    label: 'Test chat' },
+  { key: 'whatsapp', label: 'WhatsApp' },
 ];
 
 export default function Settings() {
@@ -74,6 +76,7 @@ export default function Settings() {
       {tab === 'docs' && <DocumentsTab />}
       {tab === 'products' && <ProductsTab />}
       {tab === 'test' && <TestChatTab />}
+      {tab === 'whatsapp' && <WhatsAppSettingsTab />}
     </div>
   );
 }

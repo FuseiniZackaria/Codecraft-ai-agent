@@ -64,6 +64,8 @@ const TABLES = [
   'workspace_onboarding',   // migration 0009
   'leads',                  // migration 0008
   'lead_settings',          // migration 0008
+  'whatsapp_client_settings', // migration 0010
+  'whatsapp_consent',       // migration 0010
   'workflow_connections',   // reserved for Phase 2; may not exist yet
   'workflow_definitions',
   'workflow_members',       // reserved for Phase 2; may not exist yet

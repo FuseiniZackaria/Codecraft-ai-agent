@@ -333,8 +333,20 @@ export const api = {
   getWhatsappMessages: (number) => request(`/whatsapp/conversations/${encodeURIComponent(number)}/messages`),
   replyWhatsapp: (number, text) =>
     request(`/whatsapp/conversations/${encodeURIComponent(number)}/reply`, { method: 'POST', body: JSON.stringify({ text }) }),
+  // recipients: [{ number, text }] or, on a Meta number, [{ number, template: { name, language, params } }]
   queueWhatsappOutreach: (recipients) =>
     request('/whatsapp/outreach', { method: 'POST', body: JSON.stringify({ recipients }) }),
+  // This business's own WhatsApp settings (alert number, town, language, auto-reply)
+  getWhatsappSettings: () => request('/whatsapp/settings'),
+  saveWhatsappSettings: (data) => request('/whatsapp/settings', { method: 'PUT', body: JSON.stringify(data) }),
+  // App owner only: every client business (backend/api/clientsRoutes.js)
+  getClients: () => request('/clients'),
+  saveClientSettings: (id, data) => request(`/clients/${id}/settings`, { method: 'PUT', body: JSON.stringify(data) }),
+  addClientOptIns: (id, data) => request(`/clients/${id}/consent`, { method: 'POST', body: JSON.stringify(data) }),
+  getClientWhatsapp: (id) => request(`/clients/${id}/whatsapp`),
+  startClientWhatsapp: (id) => request(`/clients/${id}/whatsapp/start`, { method: 'POST' }),
+  clientPairingCode: (id, phoneNumber) => request(`/clients/${id}/whatsapp/pairing-code`, { method: 'POST', body: JSON.stringify({ phoneNumber }) }),
+  disconnectClientWhatsapp: (id) => request(`/clients/${id}/whatsapp/disconnect`, { method: 'POST' }),
   connectComposio: (provider, data) => request(`/connections/${provider}/connect`, { method: 'POST', body: JSON.stringify(data || {}) }),
   checkComposio: (provider, connectionId) => request(`/connections/${provider}/check`, { method: 'POST', body: JSON.stringify({ connectionId }) }),
   disconnectProvider: (provider) => request(`/connections/${provider}`, { method: 'DELETE' }),

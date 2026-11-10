@@ -10,11 +10,11 @@ function assertConfigured() {
   }
 }
 
-async function graphRequest(path, options = {}) {
+async function graphRequest(path, options = {}, token = config.whatsapp.accessToken) {
   const res = await fetch(`https://graph.facebook.com/${API_VERSION}${path}`, {
     ...options,
     headers: {
-      Authorization: `Bearer ${config.whatsapp.accessToken}`,
+      Authorization: `Bearer ${token}`,
       'Content-Type': 'application/json',
       ...options.headers,
     },
@@ -47,4 +47,41 @@ async function checkStatus() {
   return graphRequest(`/${config.whatsapp.phoneNumberId}?fields=display_phone_number,verified_name`);
 }
 
-module.exports = { sendMessage, checkStatus };
+// ---- One client business's own Meta number: { phoneNumberId, accessToken } ----
+
+/** Free-form text (only delivers within 24 hours of the customer's last message). */
+async function sendTextWith(creds, to, body) {
+  require('./sendGuard').assertRealSendsAllowed('WhatsApp (Meta Cloud API)');
+  return graphRequest(`/${creds.phoneNumberId}/messages`, {
+    method: 'POST',
+    body: JSON.stringify({ messaging_product: 'whatsapp', to, type: 'text', text: { body } }),
+  }, creds.accessToken);
+}
+
+/**
+ * An approved template - the only thing Meta allows as a first message or
+ * outside the 24-hour window. template = { name, language, params: [text, ...] }.
+ */
+async function sendTemplateWith(creds, to, template) {
+  require('./sendGuard').assertRealSendsAllowed('WhatsApp (Meta Cloud API)');
+  const params = (template.params || []).map((text) => ({ type: 'text', text: String(text) }));
+  return graphRequest(`/${creds.phoneNumberId}/messages`, {
+    method: 'POST',
+    body: JSON.stringify({
+      messaging_product: 'whatsapp',
+      to,
+      type: 'template',
+      template: {
+        name: template.name,
+        language: { code: template.language || 'en' },
+        ...(params.length ? { components: [{ type: 'body', parameters: params }] } : {}),
+      },
+    }),
+  }, creds.accessToken);
+}
+
+async function checkStatusWith(creds) {
+  return graphRequest(`/${creds.phoneNumberId}?fields=display_phone_number,verified_name`, {}, creds.accessToken);
+}
+
+module.exports = { sendMessage, checkStatus, sendTextWith, sendTemplateWith, checkStatusWith };

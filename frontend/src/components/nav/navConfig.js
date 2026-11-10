@@ -86,6 +86,8 @@ export const NAV_ITEMS = [
     tabs: [
       { label: 'General', to: '/settings', end: true },
       { label: 'Team', to: '/settings/team' },
+      // Only the app owner (APP_OWNER_EMAIL) sees this tab: every client business's WhatsApp.
+      { label: 'Clients', to: '/settings/clients', ownerOnly: true },
     ],
   },
 ];

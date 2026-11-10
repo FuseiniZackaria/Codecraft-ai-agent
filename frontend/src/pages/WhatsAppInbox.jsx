@@ -33,6 +33,15 @@ function NewMessage({ onQueued }) {
   const [busy, setBusy] = useState(false);
   const [notice, setNotice] = useState(null);
   const [errors, setErrors] = useState({});
+  // This business's number: its plan (reply-only) and, on Meta, its approved templates.
+  const [session, setSession] = useState(null);
+  const [templateName, setTemplateName] = useState('');
+  const [params, setParams] = useState([]);
+  useEffect(() => {
+    if (open && !session) api.getWhatsappSession().then(setSession).catch(() => setSession({}));
+  }, [open, session]);
+  const templates = session?.provider === 'meta' ? session.templates || [] : [];
+  const template = templates.find((t) => t.name === templateName) || null;
 
   async function queue(e) {
     e.preventDefault();
@@ -41,7 +50,9 @@ function NewMessage({ onQueued }) {
     const digits = number.replace(/\D/g, '').length;
     const problems = {
       number: !number.trim() ? 'Number is required.' : digits < 9 || digits > 15 ? "This doesn't look like a phone number (e.g. 024 123 4567)." : null,
-      text: text.trim() ? null : 'Message is required.',
+      text: template
+        ? (params.slice(0, template.params).filter((p) => p?.trim()).length < template.params ? 'Fill in every template variable.' : null)
+        : (text.trim() ? null : 'Message is required.'),
     };
     setErrors(problems);
     if (problems.number || problems.text) {
@@ -50,7 +61,10 @@ function NewMessage({ onQueued }) {
     }
     setBusy(true);
     try {
-      const res = await api.queueWhatsappOutreach([{ number: number.trim(), text: text.trim() }]);
+      const recipient = template
+        ? { number: number.trim(), template: { name: template.name, language: template.language, params: params.slice(0, template.params).map((p) => p.trim()) } }
+        : { number: number.trim(), text: text.trim() };
+      const res = await api.queueWhatsappOutreach([recipient]);
       if (!res.queued) throw new Error(res.rejected?.[0]?.reason || 'Not queued');
       setNotice({ ok: true, text: `Queued. It goes out within about 30-90 seconds (limit ${res.dailyLimit} a day).` });
       setNumber('');
@@ -85,15 +99,54 @@ function NewMessage({ onQueued }) {
             className={`w-full rounded-md border border-[var(--color-border)] bg-[var(--color-bg)] px-3 py-2 text-sm focus:outline-none focus:border-[var(--color-accent)] ${invalidCls(errors.number)}`}
           />
         </div>
+        {templates.length > 0 && (
+          <div className="sm:w-48">
+            <label htmlFor="new-message-template" className="block text-[11px] text-[var(--color-text-muted)] mb-1">Send as <FieldTag required /></label>
+            <select
+              id="new-message-template"
+              value={templateName}
+              onChange={(e) => { setTemplateName(e.target.value); setParams([]); setErrors((x) => ({ ...x, text: null })); }}
+              className="w-full rounded-md border border-[var(--color-border)] bg-[var(--color-bg)] px-2 py-2 text-sm"
+            >
+              <option value="">A message (replies within 24h)</option>
+              {templates.map((t) => <option key={`${t.name}-${t.language}`} value={t.name}>Template: {t.name}</option>)}
+            </select>
+          </div>
+        )}
         <div className="flex-1 min-w-0">
-          <label htmlFor="new-message-text" className="block text-[11px] text-[var(--color-text-muted)] mb-1">Message <FieldTag required /></label>
-          <input
-            {...a11y('new-message-text', { required: true, error: errors.text })}
-            value={text}
-            onChange={(e) => { setText(e.target.value); if (errors.text) setErrors((x) => ({ ...x, text: null })); }}
-            placeholder="What do you want to say?"
-            className={`w-full rounded-md border border-[var(--color-border)] bg-[var(--color-bg)] px-3 py-2 text-sm focus:outline-none focus:border-[var(--color-accent)] ${invalidCls(errors.text)}`}
-          />
+          {template ? (
+            <>
+              <label htmlFor="new-message-text" className="block text-[11px] text-[var(--color-text-muted)] mb-1">
+                {template.params ? `Template variables (${template.params})` : 'Template'} <FieldTag required />
+              </label>
+              {template.body && <p className="text-[11px] text-[var(--color-text-muted)] mb-1">{template.body}</p>}
+              <div className="flex gap-2">
+                {Array.from({ length: template.params }).map((_, i) => (
+                  <input
+                    key={i}
+                    id={i === 0 ? 'new-message-text' : undefined}
+                    aria-label={`Variable {{${i + 1}}}`}
+                    value={params[i] || ''}
+                    onChange={(e) => { const p = [...params]; p[i] = e.target.value; setParams(p); setErrors((x) => ({ ...x, text: null })); }}
+                    placeholder={`{{${i + 1}}}`}
+                    className={`w-full rounded-md border border-[var(--color-border)] bg-[var(--color-bg)] px-3 py-2 text-sm ${invalidCls(errors.text)}`}
+                  />
+                ))}
+                {!template.params && <span className="text-xs text-[var(--color-text-muted)] py-2">No variables - it's sent as approved.</span>}
+              </div>
+            </>
+          ) : (
+            <>
+              <label htmlFor="new-message-text" className="block text-[11px] text-[var(--color-text-muted)] mb-1">Message <FieldTag required /></label>
+              <input
+                {...a11y('new-message-text', { required: true, error: errors.text })}
+                value={text}
+                onChange={(e) => { setText(e.target.value); if (errors.text) setErrors((x) => ({ ...x, text: null })); }}
+                placeholder="What do you want to say?"
+                className={`w-full rounded-md border border-[var(--color-border)] bg-[var(--color-bg)] px-3 py-2 text-sm focus:outline-none focus:border-[var(--color-accent)] ${invalidCls(errors.text)}`}
+              />
+            </>
+          )}
         </div>
         <button type="submit" disabled={busy} className="px-3 py-2 rounded-md text-sm font-medium bg-[var(--color-accent)] text-black disabled:opacity-50">
           {busy ? <Loader2 size={14} className="animate-spin" /> : 'Queue'}
@@ -101,8 +154,13 @@ function NewMessage({ onQueued }) {
         <button type="button" onClick={() => setOpen(false)} className="px-2 py-2 text-sm text-[var(--color-text-muted)]">Cancel</button>
       </div>
       <p className="text-[11px] text-[var(--color-text-muted)]">
-        You can message anyone except people who replied STOP. To protect your number from being blocked by WhatsApp,
-        messages go out one at a time, 30-90 seconds apart, within your daily limit.
+        {session?.tier === 'reply_only'
+          ? 'Reply-only plan: you can message people who messaged this number before - never someone new. '
+          : session?.provider === 'meta'
+            ? "Meta number: someone new, or anyone who hasn't written in 24 hours, needs an approved template and must have opted in. "
+            : 'You can message anyone except people who replied STOP. '}
+        To protect your number from being blocked by WhatsApp, messages go out one at a time, 30-90 seconds apart, within your daily limit,
+        and the same text can't go to many people.
       </p>
       <FieldError id="new-message-number-error">{errors.number}</FieldError>
       <FieldError id="new-message-text-error">{errors.text}</FieldError>

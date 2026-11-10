@@ -35,6 +35,7 @@ const PAGES = {
   settings: { path: '/settings', label: 'Settings' },
   business_profile: { path: '/settings', label: 'Settings (Business Profile)' },
   team: { path: '/settings/team', label: 'Team' },
+  clients: { path: '/settings/clients', label: 'Clients (app owner only)' },
 };
 
 function openPage(input = {}) {

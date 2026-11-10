@@ -175,10 +175,11 @@ const WS = 'wwwwwwww-wwww-wwww-wwww-wwwwwwwwwwww';
     recipients: [
       { number: '0200000001', text: 'Offer' },  // replied STOP above
       { number: '0200000077', text: 'Offer' },  // never messaged us: no consent
-      { number: '0200000011', text: 'Offer' },
-      { number: '0200000012', text: 'Offer' },
-      { number: '0200000013', text: 'Offer' },
-      { number: '0200000014', text: 'Offer' },
+      // Each person gets their own wording (copy-paste messages are refused - see multi-client.test.js).
+      { number: '0200000011', text: 'Hi Ama, your cake order is ready for pickup' },
+      { number: '0200000012', text: 'Kofi, the new menu is out - jollof Fridays are back' },
+      { number: '0200000013', text: 'Good news Esi: delivery to Tema starts Monday' },
+      { number: '0200000014', text: 'Yaw, thanks for visiting! Your table for Saturday is booked' },
       { number: 'not-a-number', text: 'Offer' },
     ],
   });

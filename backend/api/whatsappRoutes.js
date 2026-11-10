@@ -24,6 +24,38 @@ function viewer(req) {
   return { userId: req.user.id, workspaceId: req.user.workspaceId || null };
 }
 
+/** This business's own Meta number session (meta_<id>), or null when it uses WAHA. */
+async function metaSessionOf(req) {
+  const row = await store.getSessionForWorkspace(req.user.workspaceId).catch(() => null);
+  return row && String(row.session_name).startsWith('meta_') && !row.disconnected_by_user ? row : null;
+}
+
+/** The number this admin sends from: the business's Meta number, else their own WAHA session. */
+async function sendingSessionFor(req) {
+  const meta = await metaSessionOf(req);
+  return meta ? meta.session_name : sessionNameFor(req);
+}
+
+/**
+ * One WhatsApp number per business (multi-session mode): another admin of the
+ * same business already linked one (or it runs on Meta). Returns a message, or null.
+ */
+async function businessHasOtherNumber(req, sessionName) {
+  if (!req.user.workspaceId) return null;
+  const row = await store.getSessionForWorkspace(req.user.workspaceId).catch(() => null);
+  if (!row || row.session_name === sessionName || row.disconnected_by_user) return null;
+  if (String(row.session_name).startsWith('meta_')) {
+    return row.status === 'WORKING' ? "Your business uses Meta's official WhatsApp API. Disconnect it on Toolbox -> Connections before linking a phone." : null;
+  }
+  // Single-number mode has its own rule (heldByOther): one shared "default" session.
+  if (!config.waha.multiSession) return null;
+  const recent = Date.now() - new Date(row.updated_at || 0).getTime() < SCAN_WINDOW_MS;
+  if (row.status === 'WORKING' || (['STARTING', 'SCAN_QR_CODE'].includes(row.status) && recent)) {
+    return 'Your business already has a WhatsApp number linked by another admin. Each business links one number - ask them to disconnect it first.';
+  }
+  return null;
+}
+
 const IN_USE_MESSAGE =
   'WhatsApp is already connected by another admin. Only one admin can link WhatsApp at a time on this setup - ' +
   'ask them to disconnect it first (or turn on WAHA_MULTI_SESSION so each admin gets their own).';
@@ -60,12 +92,33 @@ function fail(res, err, status = 502) {
 
 /** Session status for the Connections card and the Reconnect banner (includes the QR while waiting for a scan). */
 router.get('/session', async (req, res) => {
+  const clientSettings = require('../core/whatsapp/clientSettings');
+  const settings = await clientSettings.get(req.user.workspaceId || null);
+  const tierInfo = { tier: settings.tier, channel: settings.channel };
+
+  // A business on Meta's official API: its own number's status, no QR code.
+  const meta = await metaSessionOf(req);
+  if (meta) {
+    const MetaCloudProvider = require('../core/whatsapp/MetaCloudProvider');
+    const live = await MetaCloudProvider.getStatus(meta.session_name);
+    return res.json({
+      provider: 'meta', configured: true, ...tierInfo, status: live.status, error: live.error || null,
+      phoneNumber: live.phoneNumber || meta.phone_number || null, pushName: live.pushName || meta.push_name || null,
+      templates: settings.meta_templates.map((t) => ({ name: t.name, language: t.language, params: t.params, body: t.body })),
+    });
+  }
+
   const provider = getProvider();
   const sessionName = sessionNameFor(req);
-  const base = { provider: provider.name, configured: provider.isConfigured(), dailyLimit: config.whatsapp.dailyLimit };
+  const base = { provider: provider.name, configured: provider.isConfigured(), dailyLimit: config.whatsapp.dailyLimit, ...tierInfo };
   if (!provider.isConfigured()) return res.json({ ...base, status: 'NOT_CONFIGURED' });
 
   try {
+    if (settings.channel === 'meta' && provider.name === 'waha') {
+      return res.json({ ...base, status: 'USE_META', message: "Your business is set up for Meta's official WhatsApp API. Connect it in the WhatsApp (Meta / Twilio) box below with your Meta phone number ID and access token." });
+    }
+    const other = provider.name === 'waha' ? await businessHasOtherNumber(req, sessionName) : null;
+    if (other) return res.json({ ...base, status: 'IN_USE', inUse: true, message: other });
     if (!(await canConnect(req))) {
       return res.json({ ...base, status: 'NOT_AVAILABLE', notAvailable: true, message: NOT_AVAILABLE_MESSAGE });
     }
@@ -127,6 +180,14 @@ router.post('/session/start', async (req, res) => {
   try {
     if (!(await canConnect(req))) return res.status(403).json({ error: NOT_AVAILABLE_MESSAGE, notAvailable: true });
     if (await heldByOther(req, provider, sessionName)) return res.status(409).json({ error: IN_USE_MESSAGE });
+    const clientSettings = require('../core/whatsapp/clientSettings');
+    if ((await clientSettings.get(req.user.workspaceId || null)).channel === 'meta') {
+      return res.status(409).json({ error: "Your business is set up for Meta's official WhatsApp API - connect it with your Meta details instead of a QR code." });
+    }
+    const other = await businessHasOtherNumber(req, sessionName);
+    if (other) return res.status(409).json({ error: other });
+    // First link: fix this business's tier (clients start reply-only).
+    await clientSettings.ensureRow(req.user.workspaceId || null, { userId: req.user.id });
     const status = await provider.startSession(sessionName, {
       webhookUrl: hook,
       metadata: { 'user.id': req.user.id, 'user.email': req.user.email || '', 'workspace.id': req.user.workspaceId || '' },
@@ -224,14 +285,38 @@ router.post('/conversations/:number/reply', async (req, res) => {
   if (!number) return res.status(400).json({ error: 'Invalid phone number' });
   if (!text) return res.status(400).json({ error: 'Message is empty' });
   try {
+    const sessionName = await sendingSessionFor(req);
+    const shared = isSharedNumberProvider() || sessionName.startsWith('meta_');
     await messaging.sendAndRecord({
-      sessionName: sessionNameFor(req), to: number, text,
-      userId: isSharedNumberProvider() ? null : req.user.id,
+      sessionName, to: number, text,
+      userId: shared ? null : req.user.id,
       workspaceId: req.user.workspaceId || null, source: 'manual',
     });
     res.json({ sent: true });
   } catch (err) {
-    fail(res, err);
+    fail(res, err, err.code && /REPLY_ONLY|META_TEMPLATE_REQUIRED|WRONG_BUSINESS|OPTED_OUT/.test(err.code) ? 400 : 502);
+  }
+});
+
+/** This business's own WhatsApp settings (alert number, town, language, auto-reply). Tier and limits are shown, not changed. */
+router.get('/settings', async (req, res) => {
+  if (!req.user.workspaceId) return res.status(400).json({ error: 'No workspace.' });
+  const clientSettings = require('../core/whatsapp/clientSettings');
+  const s = await clientSettings.get(req.user.workspaceId);
+  const session = await store.getSessionForWorkspace(req.user.workspaceId).catch(() => null);
+  res.json({ ...s, warmup: clientSettings.outreachLimitFor(session, s), languages: clientSettings.LANGUAGES });
+});
+
+router.put('/settings', async (req, res) => {
+  if (!req.user.workspaceId) return res.status(400).json({ error: 'No workspace.' });
+  if (!['owner', 'editor'].includes(req.user.workspaceRole)) return res.status(403).json({ error: "Only the business's owner or an editor can change these settings." });
+  const clientSettings = require('../core/whatsapp/clientSettings');
+  const { patch, fieldErrors, errors } = clientSettings.validate(req.body || {}, { allowed: clientSettings.CLIENT_FIELDS });
+  if (errors.length) return res.status(400).json({ error: errors[0], fieldErrors });
+  try {
+    res.json(await clientSettings.save(req.user.workspaceId, patch, { userId: req.user.id }));
+  } catch (err) {
+    res.status(err.code === 'MIGRATION_MISSING' ? 503 : 500).json({ error: err.message });
   }
 });
 
@@ -240,15 +325,28 @@ router.post('/conversations/:number/reply', async (req, res) => {
  * Body: { recipients: [{ number, text }] }  or  { numbers: [...], text }
  */
 router.post('/outreach', async (req, res) => {
-  if (getProvider().name !== 'waha') return res.status(400).json({ error: 'The outreach queue needs WHATSAPP_PROVIDER=waha.' });
-  const { recipients, numbers, text } = req.body || {};
-  const list = Array.isArray(recipients) ? recipients : (Array.isArray(numbers) ? numbers.map((n) => ({ number: n, text })) : []);
+  const meta = await metaSessionOf(req);
+  if (!meta && getProvider().name !== 'waha') return res.status(400).json({ error: 'The outreach queue needs WHATSAPP_PROVIDER=waha or a Meta number.' });
+  const { recipients, numbers, text, template } = req.body || {};
+  const list = Array.isArray(recipients) ? recipients : (Array.isArray(numbers) ? numbers.map((n) => ({ number: n, text, template })) : []);
   if (!list.length) return res.status(400).json({ error: 'Add at least one recipient.' });
   try {
-    const session = await store.getSessionByUser(req.user.id);
+    const session = meta || await store.getSessionByUser(req.user.id);
     if (!session) {
       const other = await heldByOther(req, getProvider(), sessionNameFor(req));
       return res.status(400).json({ error: other ? IN_USE_MESSAGE : 'Connect WhatsApp first.' });
+    }
+    // Templates: only ones this business registered (Settings -> Clients), with every variable filled in.
+    if (list.some((r) => r.template)) {
+      const settings = await require('../core/whatsapp/clientSettings').get(req.user.workspaceId || null);
+      for (const r of list.filter((x) => x.template)) {
+        const known = settings.meta_templates.find((t) => t.name === r.template.name && (!r.template.language || t.language === r.template.language));
+        if (!known) return res.status(400).json({ error: `"${r.template.name}" isn't one of this business's approved templates.` });
+        const params = (Array.isArray(r.template.params) ? r.template.params : []).map((p) => String(p || '').trim());
+        if (params.length !== known.params || params.some((p) => !p)) return res.status(400).json({ error: `Fill in all ${known.params} template variable(s).` });
+        r.template = { name: known.name, language: known.language, params };
+        r.text = r.text || (known.body ? known.body.replace(/\{\{(\d+)\}\}/g, (_m, i) => params[Number(i) - 1] || '') : `[template: ${known.name}]`);
+      }
     }
     // You typed these yourself, so they may be the first message to someone.
     const result = await outbox.enqueue({ sessionName: session.session_name, userId: req.user.id, workspaceId: req.user.workspaceId || null, recipients: list, allowFirstContact: true });

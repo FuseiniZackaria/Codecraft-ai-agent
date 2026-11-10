@@ -17,6 +17,7 @@ import BriefingDashboard from './pages/BriefingDashboard';
 import Departments from './pages/Departments';
 import DepartmentPage from './pages/DepartmentPage';
 import Team from './pages/Team';
+import Clients from './pages/Clients';
 import Settings from './pages/Settings';
 import Connections from './pages/Connections';
 import ClientTracker from './pages/ClientTracker';
@@ -293,6 +294,7 @@ function AdminLayout({ connectionError }) {
             <Route path="/settings" element={<TabbedLayout navKey="settings" />}>
               <Route index element={<Settings />} />
               <Route path="team" element={<Team />} />
+              <Route path="clients" element={<Clients />} />
             </Route>
 
             {/* Department routes */}

@@ -51,12 +51,24 @@ router.get('/whatsapp', (req, res) => {
 // Incoming Meta (official Cloud API) messages. Both routes go through the shared
 // WhatsApp pipeline, like Twilio below: saved in the common format (Inbox),
 // "stop"/"start" handled, everything else to the WhatsApp agent.
-async function handleMetaIncoming(req, workspaceId) {
-  const { messages } = MetaCloudProvider.handleIncomingWebhook(req);
+async function handleMetaIncoming(req, workspaceId, conn = null) {
+  const { messages, phoneNumberIds = {} } = MetaCloudProvider.handleIncomingWebhook(req);
+  // A client business's own Meta number: "meta_<phone number id>", only if it's THEIR number.
+  const ownId = conn?.provider_meta?.type === 'meta' ? String(conn.provider_meta.phone_number_id || '') : null;
+  let sessionName = MetaCloudProvider.SESSION;
+  if (ownId) {
+    await MetaCloudProvider.ensureSession(workspaceId, conn);
+    sessionName = MetaCloudProvider.sessionNameFor(ownId);
+  }
   for (const message of messages) {
+    const arrivedOn = phoneNumberIds[message.waMessageId];
+    if (ownId && arrivedOn && String(arrivedOn) !== ownId) {
+      console.warn(`[webhook] whatsapp (meta): message for number ${arrivedOn} arrived on another business's webhook - ignored`);
+      continue;
+    }
     await whatsappMessaging.handleIncomingMessage({
       providerName: 'meta',
-      sessionName: MetaCloudProvider.SESSION,
+      sessionName,
       userId: null,
       workspaceId,
       message,
@@ -66,11 +78,12 @@ async function handleMetaIncoming(req, workspaceId) {
 
 // Incoming Meta messages - workspace-scoped
 router.post('/whatsapp/:webhookToken', async (req, res) => {
+  if (!MetaCloudProvider.verifySignature(req)) { console.warn('[webhook] whatsapp (meta): bad signature - rejected'); return res.sendStatus(403); }
   res.sendStatus(200);
   try {
-    const workspaceId = await resolveWorkspaceFromWebhookToken('whatsapp', req.params.webhookToken);
-    if (!workspaceId) { console.warn('[webhook] whatsapp: unknown webhook token'); return; }
-    await handleMetaIncoming(req, workspaceId);
+    const conn = await connections.findByWebhookToken('whatsapp', req.params.webhookToken);
+    if (!conn || conn.status !== 'connected') { console.warn('[webhook] whatsapp: unknown webhook token'); return; }
+    await handleMetaIncoming(req, conn.workspace_id, conn);
   } catch (err) {
     console.error('[webhook] whatsapp processing failed:', err.message);
   }
@@ -78,6 +91,7 @@ router.post('/whatsapp/:webhookToken', async (req, res) => {
 
 // Incoming Meta messages - legacy (env)
 router.post('/whatsapp', async (req, res) => {
+  if (!MetaCloudProvider.verifySignature(req)) { console.warn('[webhook] whatsapp (meta): bad signature - rejected'); return res.sendStatus(403); }
   res.sendStatus(200);
   try {
     await handleMetaIncoming(req, await legacyWorkspaceId());

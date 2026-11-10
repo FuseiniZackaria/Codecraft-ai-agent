@@ -66,15 +66,56 @@ async function trySendTelegram(alertText) {
   }
 }
 
-async function trySendWhatsapp(alertText) {
-  if (!isChannelConfigured('whatsapp')) return 'not_configured';
+/**
+ * WhatsApp alert. Your alerts (to OWNER_WHATSAPP_NUMBER) go out from your own
+ * number; a client business's alerts (to its alert number) from ITS own number.
+ * An alert is never sent from another business's WhatsApp.
+ */
+async function trySendWhatsapp(alertText, { to = null, senderWorkspaceId = null } = {}) {
+  const target = to || config.notifications?.ownerWhatsappNumber || null;
+  if (!to && !isChannelConfigured('whatsapp')) return 'not_configured';
+  if (!target) return 'not_configured';
   try {
-    await whatsappProvider.sendMessage(config.notifications.ownerWhatsappNumber, alertText, { source: 'owner_alert' });
+    await whatsappProvider.sendMessage(target, alertText, { source: 'owner_alert', ...(senderWorkspaceId ? { workspaceId: senderWorkspaceId } : {}) });
     return 'sent';
   } catch (err) {
-    console.warn(`[notifications] owner WhatsApp alert failed: ${err.message}`);
+    console.warn(`[notifications] WhatsApp alert failed: ${err.message}`);
     return `failed: ${err.message}`;
   }
+}
+
+/**
+ * Who gets an alert about this business: you (the app owner - Telegram, your
+ * WhatsApp, your email), or the client business itself (its alert number,
+ * then its business email). A client's customer messages never go to your
+ * Telegram, and yours never to a client.
+ */
+async function audienceFor(workspaceId) {
+  const clientSettings = require('./whatsapp/clientSettings');
+  const operator = await clientSettings.isOperatorWorkspace(workspaceId).catch(() => !workspaceId);
+  if (operator) {
+    const ownerWs = await clientSettings.operatorWorkspaceId().catch(() => null);
+    return { operator: true, senderWorkspaceId: ownerWs || workspaceId || null };
+  }
+  const settings = await clientSettings.get(workspaceId);
+  return { operator: false, alertNumber: settings.alert_number, senderWorkspaceId: workspaceId };
+}
+
+/** Send one alert to the right audience: chat first, email only if no chat channel got through. */
+async function deliver({ workspaceId = null, text, subject }) {
+  const a = await audienceFor(workspaceId);
+  const results = { telegram: 'not_configured', whatsapp: 'not_configured', email: 'not_attempted' };
+  if (a.operator) {
+    results.telegram = await trySendTelegram(text);
+    results.whatsapp = await trySendWhatsapp(text, { senderWorkspaceId: a.senderWorkspaceId });
+  } else {
+    results.telegram = 'not_used';
+    results.whatsapp = a.alertNumber ? await trySendWhatsapp(text, { to: a.alertNumber, senderWorkspaceId: a.senderWorkspaceId }) : 'not_configured';
+  }
+  if (results.telegram !== 'sent' && results.whatsapp !== 'sent') {
+    results.email = await trySendEmail({ subject, body: text, workspaceId });
+  }
+  return results;
 }
 
 /**
@@ -134,22 +175,7 @@ async function notifyOwnerPendingApproval({ channel, from, customerMessage, draf
     `The customer hasn't had a reply yet. Reply to them yourself, or approve/edit Ian's suggestion on your CodeCraft Tasks page` +
     (approvalTaskId ? ` (task ${approvalTaskId}).` : '.');
 
-  const results = {
-    telegram: await trySendTelegram(alertText),
-    whatsapp: await trySendWhatsapp(alertText),
-    email: 'not_attempted',
-  };
-
-  const chatDeliveredOrPending = results.telegram === 'sent' || results.whatsapp === 'sent';
-  if (!chatDeliveredOrPending) {
-    results.email = await trySendEmail({
-      subject: `Approval needed - ${channel} message from ${from}`,
-      body: alertText,
-      workspaceId,
-    });
-  }
-
-  return results;
+  return deliver({ workspaceId, text: alertText, subject: `Approval needed - ${channel} message from ${from}` });
 }
 
 /**
@@ -157,7 +183,9 @@ async function notifyOwnerPendingApproval({ channel, from, customerMessage, draf
  * (no WhatsApp or email fallback), so routine replies don't flood the owner.
  * Returns 'sent' | 'not_configured' | 'failed: ...'. Never throws.
  */
-async function notifyOwnerFyi({ channel, from, customerMessage, sentReply }) {
+async function notifyOwnerFyi({ channel, from, customerMessage, sentReply, workspaceId = null }) {
+  // Your Telegram is yours: FYIs about a client business's customers don't go there.
+  if (!(await require('./whatsapp/clientSettings').isOperatorWorkspace(workspaceId).catch(() => !workspaceId))) return 'not_used';
   const text =
     `FYI - Ian replied on ${channel} (no approval needed)\n\n` +
     `From: ${from}\n` +
@@ -182,35 +210,55 @@ async function notifyOwnerAttention({ channel, from, contactName = null, mediaTy
   const alertText =
     `Please attend to this client on ${channel}\n\n${what}\n\n` +
     'Reply to them from your WhatsApp or from Work -> Inbox in CodeCraft.';
-  const results = {
-    telegram: await trySendTelegram(alertText),
-    whatsapp: await trySendWhatsapp(alertText),
-    email: 'not_attempted',
-  };
-  if (results.telegram !== 'sent' && results.whatsapp !== 'sent') {
-    results.email = await trySendEmail({ subject: `Attend to ${channel} client ${from}`, body: alertText, workspaceId });
-  }
-  return results;
+  return deliver({ workspaceId, text: alertText, subject: `Attend to ${channel} client ${from}` });
 }
 
 /**
- * A plain message to the owner (hot-lead alerts, the daily summary): Telegram
- * and WhatsApp, email only if neither got through. Never throws.
+ * A plain message to the business owner (hot-lead alerts, the daily summary):
+ * chat first, email only if no chat channel got through. Never throws.
  */
 async function notifyOwner({ subject, text, workspaceId = null }) {
-  const results = {
-    telegram: await trySendTelegram(text),
-    whatsapp: await trySendWhatsapp(text),
-    email: 'not_attempted',
-  };
-  if (results.telegram !== 'sent' && results.whatsapp !== 'sent') {
-    results.email = await trySendEmail({ subject: subject || 'CodeCraft update', body: text, workspaceId });
+  return deliver({ workspaceId, text, subject: subject || 'CodeCraft update' });
+}
+
+/** To you, the app owner, whatever business it's about (e.g. the WhatsApp server is down). */
+async function notifyOperator({ subject, text }) {
+  return deliver({ workspaceId: null, text, subject: subject || 'CodeCraft alert' });
+}
+
+/**
+ * A linked WhatsApp number disconnected or was banned. The business is told by
+ * email (its WhatsApp is the thing that's down), and you always get a copy so
+ * you can help - for every client, right away.
+ */
+async function notifySessionLost({ sessionName, workspaceId = null, status, phoneNumber = null }) {
+  const clientSettings = require('./whatsapp/clientSettings');
+  const isYours = await clientSettings.isOperatorWorkspace(workspaceId).catch(() => !workspaceId);
+  let business = 'Your business';
+  if (workspaceId) {
+    const p = await require('./businessProfile').getProfile(workspaceId).catch(() => null);
+    if (p?.business_name) business = p.business_name;
   }
+  const number = phoneNumber ? ` (+${phoneNumber})` : '';
+  const what = status === 'FAILED'
+    ? 'stopped working - WhatsApp logged it out. This can mean the number was banned or the phone unlinked it'
+    : 'disconnected';
+  const results = {};
+  if (!isYours) {
+    const text = `Your WhatsApp${number} ${what}, so your WhatsApp agent can't reply to customers right now.\n\n`
+      + 'Open CodeCraft -> Toolbox -> Connections and click Connect WhatsApp to link it again. If WhatsApp says the number is banned, contact us before linking another number.';
+    results.client = { email: await trySendEmail({ subject: 'Your WhatsApp is disconnected', body: text, workspaceId }) };
+  }
+  const opText = `${isYours ? 'Your' : `Client "${business}"`} WhatsApp${number} ${what} (session ${sessionName}). `
+    + `Their customers get no replies until it's linked again${isYours ? '' : ' - they were emailed'}. Other clients are not affected.`;
+  results.operator = await notifyOperator({ subject: `WhatsApp disconnected - ${business}`, text: opText });
   return results;
 }
 
 module.exports = {
   notifyOwner,
+  notifyOperator,
+  notifySessionLost,
   notifyOwnerPendingApproval,
   notifyOwnerAttention,
   notifyOwnerFyi,

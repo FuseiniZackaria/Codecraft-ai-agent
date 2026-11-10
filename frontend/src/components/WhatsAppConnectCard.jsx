@@ -138,12 +138,15 @@ export default function WhatsAppConnectCard() {
 
   const status = session?.status;
   const linked = status === 'WORKING';
-  const isTwilio = session?.provider === 'twilio';
+  const isMeta = session?.provider === 'meta';
+  // Twilio and a business's own Meta number: no QR code, nothing to link here.
+  const isTwilio = session?.provider === 'twilio' || isMeta;
 
   let badge;
   if (loading) badge = <span className="flex items-center gap-1 text-xs text-[var(--color-text-muted)]"><Loader2 size={13} className="animate-spin" /> Checking…</span>;
   else if (linked) badge = <span className="flex items-center gap-1 text-xs font-medium text-emerald-600"><CheckCircle2 size={13} /> Connected</span>;
   else if (session?.needsReconnect || status === 'FAILED') badge = <span className="flex items-center gap-1 text-xs font-medium text-[var(--color-danger)]"><AlertCircle size={13} /> Needs reconnect</span>;
+  else if (status === 'USE_META') badge = <span className="flex items-center gap-1 text-xs font-medium text-[var(--color-text-muted)]"><AlertCircle size={13} /> Uses Meta's official API</span>;
   else if (status === 'NOT_AVAILABLE') badge = <span className="flex items-center gap-1 text-xs font-medium text-[var(--color-text-muted)]"><AlertCircle size={13} /> Not available yet</span>;
   else if (status === 'IN_USE') badge = <span className="flex items-center gap-1 text-xs font-medium text-[var(--color-text-muted)]"><AlertCircle size={13} /> Connected by another admin</span>;
   else if (status === 'UNREACHABLE') badge = <span className="flex items-center gap-1 text-xs font-medium text-[var(--color-warning)]"><AlertCircle size={13} /> WhatsApp server offline</span>;
@@ -156,16 +159,18 @@ export default function WhatsAppConnectCard() {
           <MessageCircle size={16} className="text-[var(--color-text-muted)]" />
         </div>
         <div>
-          <div className="font-[var(--font-display)] font-semibold text-sm">{isTwilio ? 'WhatsApp (Twilio)' : 'WhatsApp (your phone)'}</div>
+          <div className="font-[var(--font-display)] font-semibold text-sm">{isMeta ? 'WhatsApp (Meta official API)' : isTwilio ? 'WhatsApp (Twilio)' : 'WhatsApp (your phone)'}</div>
           {badge}
         </div>
         <span className="ml-auto text-[9px] uppercase tracking-wide text-[var(--color-text-muted)] font-[var(--font-mono)] border border-[var(--color-border)] rounded px-1.5 py-0.5">
-          {isTwilio ? 'Twilio' : 'WAHA'}
+          {isMeta ? 'Meta' : isTwilio ? 'Twilio' : 'WAHA'}
         </span>
       </div>
 
       <p className="text-xs text-[var(--color-text-muted)]">
-        {isTwilio
+        {isMeta
+          ? "Your business number on Meta's official WhatsApp API. Within 24 hours of a customer's message you can reply freely; first messages use your approved templates (Work -> Inbox -> New message)."
+          : isTwilio
           ? 'Messages go through the Twilio account set on the server.'
           : 'Link your own WhatsApp by scanning a QR code, like WhatsApp Web. Only you see your chats; replies are sent automatically after a safety check.'}
       </p>
@@ -181,13 +186,16 @@ export default function WhatsAppConnectCard() {
         </p>
       )}
       {status === 'UNREACHABLE' && <p className="text-xs text-[var(--color-warning)]">{session.error}</p>}
-      {status === 'IN_USE' && <p className="text-xs text-[var(--color-text-muted)]">{session.message}</p>}
+      {(status === 'IN_USE' || status === 'USE_META') && <p className="text-xs text-[var(--color-text-muted)]">{session.message}</p>}
+      {session?.tier === 'reply_only' && linked && (
+        <p className="text-[11px] text-[var(--color-text-muted)]">Reply-only plan: your agent answers people who message you first, and never messages anyone first - this keeps your number safe.</p>
+      )}
       {status === 'NOT_AVAILABLE' && (
         <p className="text-xs rounded-md border border-[var(--color-border)] bg-[var(--color-surface-2)] p-2.5 text-[var(--color-text)]">{session.message}</p>
       )}
       {error && <p className="text-xs text-[var(--color-danger)]">{error}</p>}
 
-      {!isTwilio && session?.configured && status !== 'IN_USE' && status !== 'NOT_AVAILABLE' && (
+      {!isTwilio && session?.configured && !['IN_USE', 'NOT_AVAILABLE', 'USE_META'].includes(status) && (
         <div className="flex gap-2">
           {linked ? (
             <button
