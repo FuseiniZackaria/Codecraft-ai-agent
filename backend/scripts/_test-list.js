@@ -40,6 +40,7 @@ module.exports = [
   'tests/email-bounces.test.js',
   'tests/open-chat.test.js',
   'tests/multi-client.test.js',
+  'tests/video-editor.test.js',
   'tests/whatsapp-waha.test.js',
   'tests/whatsapp-voice.test.js',
   'tests/composio-per-workspace.test.js',

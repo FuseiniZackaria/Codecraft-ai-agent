@@ -63,10 +63,11 @@ module.exports = {
 
     let filterComplex;
     if (vertical) {
-      const bg = `[0:v]scale=1080:1920:force_original_aspect_ratio=increase,crop=1080:1920,gblur=sigma=20[bg]`;
-      const fg = `[0:v]scale=1080:1920:force_original_aspect_ratio=decrease[fg]`;
-      const merge = `[bg][fg]overlay=(W-w)/2:(H-h)/2`;
-      filterComplex = subtitlesClause ? `${bg};${fg};${merge}[merged];[merged]${subtitlesClause}[out]` : `${bg};${fg};${merge}[out]`;
+      // Shared with the Content Studio video worker (core/video/framing.js): blurred-background 9:16.
+      const { fitFilter } = require('../../../core/video/framing');
+      filterComplex = subtitlesClause
+        ? `${fitFilter({ input: '[0:v]', output: '[merged]', outW: 1080, outH: 1920 })};[merged]${subtitlesClause}[out]`
+        : fitFilter({ input: '[0:v]', output: '[out]', outW: 1080, outH: 1920 });
     } else if (subtitlesClause) {
       filterComplex = `[0:v]${subtitlesClause}[out]`;
     } else {

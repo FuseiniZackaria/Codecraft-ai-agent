@@ -204,6 +204,8 @@ async function tick() {
   require('./leads').tick().catch((err) => console.warn(`[scheduler] leads: ${err.message}`));
   // Outreach emails that bounced ("address not found"): marked, never emailed again, you're told (every 30 min).
   require('./emailBounces').tick().catch((err) => console.warn(`[scheduler] email bounces: ${err.message}`));
+  // Video editor: requeue jobs whose worker went quiet; delete videos past their keep date (every 5 min).
+  require('./video/jobs').tick().catch((err) => console.warn(`[scheduler] video: ${err.message}`));
 
   // Phase 2.3c: per-workspace iteration via a single query, grouped in code.
   // One listWorkflows() call fetches every workspace's workflows at once -

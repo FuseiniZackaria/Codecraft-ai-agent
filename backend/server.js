@@ -78,6 +78,10 @@ app.use('/api/webhooks/whatsapp', webhookLimiter, express.raw({ type: () => true
 // Keep the exact request bytes for any other route that needs them.
 app.use(express.json({ limit: '35mb', verify: (req, _res, buf) => { req.rawBody = buf; } }));
 
+// The video editor worker (laptop now, Render worker later): its own token, no user login.
+// Mounted before the general /api login check below. (api/videoWorkerRoutes.js)
+app.use('/api/video-worker', require('./api/videoWorkerRoutes'));
+
 // Dev-only: once per minute, print one line summarizing how many requests
 // hit each route since the last tick, so the frontend's "flood check"
 // story is observable from the server side too. Silent in production and
@@ -211,8 +215,12 @@ app.use('/api/onboarding', requireAuth, requireRole('admin'), require('./api/onb
 app.use('/api/connections', requireAuth, requireRole('admin'), connectionRoutes);
 app.use('/api/client-tracker', requireAuth, requireRole('admin'), clientTrackerRoutes);
 app.use('/api/whatsapp', requireAuth, requireRole('admin'), require('./api/whatsappRoutes'));
+// Content Studio's video editor: uploads, jobs, downloads, brand kit (api/videoRoutes.js).
+app.use('/api/video', requireAuth, requireRole('admin'), require('./api/videoRoutes'));
 // The app owner's Clients page: every client business's WhatsApp, tier and limits.
 app.use('/api/clients', requireAuth, requireRole('admin'), require('./api/clientsRoutes'));
+// Signed links to one generated file (e.g. a cover image in chat): the signature is the permission (core/fileLinks.js).
+app.get('/files/:projectId/*', require('./core/fileLinks').serveSignedFile);
 app.get('/health', (req, res) => res.json({ status: 'ok', plugins: loadedPlugins }));
 
 app.listen(config.port, () => {

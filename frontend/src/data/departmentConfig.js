@@ -46,6 +46,7 @@ const DEPARTMENTS = [
     description: 'Draft campaigns, social posts, and full content packages.',
     tabs: [
       { key: 'overview', label: 'Overview' },
+      { key: 'video', label: 'Video editor' },
       { key: 'approvals', label: 'Approvals' },
     ],
     placeholder: 'e.g. "Create a social media campaign for our new product launch"',

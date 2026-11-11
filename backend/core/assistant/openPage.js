@@ -25,6 +25,7 @@ const PAGES = {
   sales_outreach: { path: '/departments/sales/outreach', label: 'Sales - Outreach' },
   sales_approvals: { path: '/departments/sales/approvals', label: 'Sales - Approvals' },
   marketing: { path: '/departments/marketing', label: 'Marketing' },
+  video_editor: { path: '/departments/marketing/video', label: 'Content Studio - Video editor' },
   support: { path: '/departments/support', label: 'Support' },
   strategy: { path: '/departments/strategy', label: 'Strategy' },
   research: { path: '/departments/strategy/research', label: 'Strategy - Research' },

@@ -6,10 +6,17 @@ const { resolveProjectRoot, resolveSafePath, PROJECT_ID_PATTERN } = require('../
 
 const router = express.Router();
 
-function validateProjectId(req, res, next) {
+// Valid id AND the project belongs to the caller's business (core/projectOwnership.js).
+// Another business's project answers 404, so its name isn't even confirmed.
+async function validateProjectId(req, res, next) {
   if (!PROJECT_ID_PATTERN.test(req.params.projectId || '')) {
     return res.status(400).json({ error: 'Invalid project id' });
   }
+  const { canAccess, MARKER } = require('../core/projectOwnership');
+  if (!(await canAccess(req.params.projectId, req.user?.workspaceId || null))) {
+    return res.status(404).json({ error: 'Project not found' });
+  }
+  if (req.params[0] && path.basename(String(req.params[0])) === MARKER) return res.status(404).json({ error: 'File not found' });
   next();
 }
 

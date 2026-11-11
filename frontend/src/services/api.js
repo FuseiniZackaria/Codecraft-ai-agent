@@ -339,6 +339,19 @@ export const api = {
   // This business's own WhatsApp settings (alert number, town, language, auto-reply)
   getWhatsappSettings: () => request('/whatsapp/settings'),
   saveWhatsappSettings: (data) => request('/whatsapp/settings', { method: 'PUT', body: JSON.stringify(data) }),
+  // Content Studio video editor (backend/api/videoRoutes.js). Files go straight to storage with the returned links.
+  getVideoStatus: () => request('/video/status'),
+  getVideoJobs: () => request('/video/jobs'),
+  getVideoJob: (id) => request(`/video/jobs/${id}`),
+  startVideoJob: (data) => request('/video/jobs', { method: 'POST', body: JSON.stringify(data) }),
+  videoUploaded: (id) => request(`/video/jobs/${id}/uploaded`, { method: 'POST' }),
+  deleteVideoJob: (id) => request(`/video/jobs/${id}`, { method: 'DELETE' }),
+  videoTestClip: (platform) => request('/video/test-clip', { method: 'POST', body: JSON.stringify({ platform }) }),
+  getBrandKit: () => request('/video/brand-kit'),
+  saveBrandKit: (data) => request('/video/brand-kit', { method: 'PUT', body: JSON.stringify(data) }),
+  brandAssetUpload: (data) => request('/video/brand-kit/assets', { method: 'POST', body: JSON.stringify(data) }),
+  brandAssetConfirm: (data) => request('/video/brand-kit/assets/confirm', { method: 'POST', body: JSON.stringify(data) }),
+  deleteBrandAsset: (key) => request('/video/brand-kit/assets', { method: 'DELETE', body: JSON.stringify({ key }) }),
   // App owner only: every client business (backend/api/clientsRoutes.js)
   getClients: () => request('/clients'),
   saveClientSettings: (id, data) => request(`/clients/${id}/settings`, { method: 'PUT', body: JSON.stringify(data) }),

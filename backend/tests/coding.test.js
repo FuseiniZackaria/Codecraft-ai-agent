@@ -79,7 +79,7 @@ async function main() {
   console.log('✓ project zip was created');
 
   const lastStep = task.result[task.result.length - 1];
-  assert(lastStep.text.includes('index.html') && lastStep.text.includes('download'), 'summary should list files and a download link');
+  assert(lastStep.text.includes('index.html') && /\/files\/[^\s]+\/__project\.zip\?exp=\d+&sig=/.test(lastStep.text), 'summary should list files and a (signed) download link');
   console.log('✓ chat-facing summary lists files and a download link');
 
   fs.rmSync(projectDir, { recursive: true, force: true });

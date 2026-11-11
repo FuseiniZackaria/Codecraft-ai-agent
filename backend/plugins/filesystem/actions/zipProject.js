@@ -11,7 +11,8 @@ module.exports = {
     if (!projectId) throw new Error('zipProject requires "projectId"');
     const projectRoot = resolveProjectRoot(projectId);
     const zip = new AdmZip();
-    zip.addLocalFolder(projectRoot);
+    // Leave out the project's business stamp (core/projectOwnership.js).
+    zip.addLocalFolder(projectRoot, '', (p) => !String(p).endsWith('.codecraft-owner.json'));
     const zipPath = path.join(projectRoot, '..', `${projectId}.zip`);
     zip.writeZip(zipPath);
     return { zipPath, projectId };

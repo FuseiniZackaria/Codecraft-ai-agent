@@ -22,6 +22,24 @@ const ANTI_GENERIC =
  * effort - not attempted here.
  */
 class ContentStudioAgent extends BaseAgent {
+  /**
+   * The captions and hashtags steps' instructions - shared with the video
+   * editor (core/video/postText.js), which writes the post for a finished video.
+   * `platforms` narrows the captions to where the video is going.
+   */
+  static captionsInstruction(topic, platforms = ['Instagram', 'LinkedIn', 'TikTok', 'X']) {
+    return `Based on everything above, write captions for "${topic}" for: ${platforms.join(', ')}. ` +
+      `Match each platform's real norms (Instagram: warmer, some emojis, a question to drive comments; ` +
+      `LinkedIn: professional, no excessive emojis; TikTok: short, punchy, casual; X: concise, fits in one ` +
+      `post; YouTube: a title line, then a short description). Each needs a genuine call-to-action. ${ANTI_GENERIC}`;
+  }
+
+  static hashtagsInstruction(topic, platforms = ['Instagram', 'TikTok', 'LinkedIn']) {
+    return `Based on everything above, generate hashtag sets for "${topic}" for ${platforms.join(', ')} ` +
+      `(8-12 each). Ground them in the actual topic and research keywords - not generic tags ` +
+      `like #business #marketing #entrepreneur that apply to literally anything.`;
+  }
+
   constructor() {
     super({
       key: 'content-studio',
@@ -86,24 +104,19 @@ class ContentStudioAgent extends BaseAgent {
       type: 'llm_call',
       label: 'captions',
       maxTokens: 1200,
-      instruction:
-        `Based on everything above, write captions for "${task.instruction}" for: Instagram, LinkedIn, TikTok, ` +
-        `and X. Match each platform's real norms (Instagram: warmer, some emojis, a question to drive comments; ` +
-        `LinkedIn: professional, no excessive emojis; TikTok: short, punchy, casual; X: concise, fits in one ` +
-        `post). Each needs a genuine call-to-action. ${ANTI_GENERIC}`,
+      instruction: ContentStudioAgent.captionsInstruction(task.instruction),
     });
 
     steps.push({
       type: 'llm_call',
       label: 'hashtags',
       maxTokens: 600,
-      instruction:
-        `Based on everything above, generate hashtag sets for "${task.instruction}" for Instagram, TikTok, ` +
-        `and LinkedIn (8-12 each). Ground them in the actual topic and research keywords - not generic tags ` +
-        `like #business #marketing #entrepreneur that apply to literally anything.`,
+      instruction: ContentStudioAgent.hashtagsInstruction(task.instruction),
     });
 
     if (config.llm.openaiKey) {
+      // The cover image's project folder belongs to this business only.
+      require('../../core/projectOwnership').claimProject(`content-studio-${task.id}`, task.workspace_id || null);
       steps.push({
         type: 'llm_call',
         label: 'imagePrompt',
@@ -159,7 +172,8 @@ class ContentStudioAgent extends BaseAgent {
     let note = `Content package built for "${task.instruction}" - ${sections.length} section(s): ${sections.map(([t]) => t).join(', ')}.`;
 
     if (task.imageResult) {
-      const imageUrl = `http://localhost:${config.port}/api/workspace/content-studio-${task.id}/file/${task.imageResult.path}`;
+      // A signed link on the backend's public address (works from chat, on Render; expires in 30 days).
+      const imageUrl = require('../../core/fileLinks').signedFileUrl(`content-studio-${task.id}`, task.imageResult.path);
       combined += `\n\n---\n\n## Cover Image\n\n${task.imageResult.revisedPrompt}\n\n${imageUrl}`;
       note += ` Includes a generated cover image.`;
     }

@@ -116,6 +116,8 @@ class CodingAgent extends BaseAgent {
 
     const files = plan.files.slice(0, MAX_FILES);
     task.workspaceId = `${slugify(plan.projectName)}-${task.id.slice(0, 8)}`;
+    // The generated project folder belongs to this business only.
+    require('../../core/projectOwnership').claimProject(task.workspaceId, task.workspace_id || null);
     task.projectSummary = plan.summary || task.instruction;
     task.plannedFiles = files.map((f) => f.path);
     task.designBrief = plan.design || null;
@@ -280,7 +282,9 @@ class CodingAgent extends BaseAgent {
   async reflect(task, results) {
     const zipResult = await toolRegistry.call('filesystem.zipProject', { projectId: task.workspaceId }, { role: this.role });
 
-    const downloadUrl = `http://localhost:${config.port}/api/workspace/${task.workspaceId}/download`;
+    // A signed link on the backend's public address (opens from chat; expires in 30 days).
+    const fileLinks = require('../../core/fileLinks');
+    const downloadUrl = fileLinks.signedFileUrl(task.workspaceId, fileLinks.PROJECT_ZIP);
     const note =
       `Built "${task.projectSummary}" — ${results.length} file(s) written:\n` +
       task.plannedFiles.map((f) => `  - ${f}`).join('\n') +

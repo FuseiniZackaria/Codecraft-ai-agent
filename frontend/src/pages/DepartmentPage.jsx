@@ -8,6 +8,7 @@ import DepartmentTasks from '../components/DepartmentTasks';
 import JobOutreach from './JobOutreach';
 import Research from './Research';
 import BriefingDashboard from './BriefingDashboard';
+import VideoEditor from './VideoEditor';
 
 function EmbeddedOutreach() { return <JobOutreach embedded />; }
 function EmbeddedResearch() { return <Research embedded />; }
@@ -17,6 +18,7 @@ const TAB_CONTENT = {
   outreach: EmbeddedOutreach,
   research: EmbeddedResearch,
   intelligence: EmbeddedIntelligence,
+  video: VideoEditor, // Content Studio's video editor (Marketing & Content)
 };
 
 export default function DepartmentPage() {

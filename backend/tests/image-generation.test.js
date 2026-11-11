@@ -102,8 +102,7 @@ async function main() {
   const finalDoc = task.result[task.result.length - 1].text;
   assert(finalDoc.includes('## Cover Image'), 'final document should include a Cover Image section');
   assert(finalDoc.includes('A vivid rendering of'), 'final document should include the revised prompt');
-  assert(finalDoc.includes(`/api/workspace/content-studio-${task.id}/file/cover.png`), 'final document should include a working file URL');
-  assert(global.__capturedImagePrompt.includes('cozy bakery storefront'), 'the image prompt must come from the dedicated imagePrompt step, not the raw task instruction');
+  assert(finalDoc.includes(`/files/content-studio-${task.id}/cover.png?exp=`), 'final document should include a working, signed file URL');  assert(global.__capturedImagePrompt.includes('cozy bakery storefront'), 'the image prompt must come from the dedicated imagePrompt step, not the raw task instruction');
 
   const projectId = `content-studio-${task.id}`;
   assert.strictEqual(fs.readFileSync(path.join(WORKSPACE_ROOT, projectId, 'cover.png'), 'utf-8'), 'fake-image-bytes');

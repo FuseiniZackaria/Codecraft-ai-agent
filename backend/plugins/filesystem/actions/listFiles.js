@@ -6,6 +6,7 @@ function walk(dir, base = '') {
   const out = [];
   if (!fs.existsSync(dir)) return out;
   for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
+    if (entry.name === '.codecraft-owner.json') continue; // the project's business stamp (core/projectOwnership.js)
     const rel = path.join(base, entry.name);
     if (entry.isDirectory()) {
       out.push(...walk(path.join(dir, entry.name), rel));
