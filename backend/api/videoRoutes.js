@@ -65,6 +65,17 @@ router.get('/status', async (req, res) => {
   }
 });
 
+/** App owner only: a real upload/read/delete round trip that says which R2 setting is wrong (never shows keys). */
+router.post('/storage-check', async (req, res) => {
+  const ownerEmail = (process.env.APP_OWNER_EMAIL || require('../config').applicant?.email || '').toLowerCase();
+  if (!ownerEmail || String(req.user?.email || '').toLowerCase() !== ownerEmail) return res.status(403).json({ error: 'Only the app owner can check storage.' });
+  try {
+    res.json(await storage.selfCheck());
+  } catch (err) {
+    res.status(500).json({ ok: false, problem: err.message });
+  }
+});
+
 router.get('/jobs', async (req, res) => {
   const id = ws(req, res);
   if (!id) return;

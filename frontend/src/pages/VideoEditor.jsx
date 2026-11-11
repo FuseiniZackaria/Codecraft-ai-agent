@@ -3,6 +3,7 @@ import {
   Upload, Loader2, CheckCircle2, AlertCircle, Download, Trash2, Film, Palette, Copy, WifiOff, Sparkles, Image as ImageIcon, X,
 } from 'lucide-react';
 import { api } from '../services/api';
+import { useStore } from '../store/useStore';
 import { FieldTag, FieldError } from '../components/ui/FormField';
 
 /**
@@ -63,6 +64,8 @@ export default function VideoEditor() {
       </div>
 
       {error && <p className="text-sm text-[var(--color-danger)]">{error}</p>}
+      <StorageCheck />
+
       {status && !status.storageConfigured && (
         <div className="rounded-md border border-[var(--color-warning)]/40 bg-[var(--color-warning)]/10 p-3 text-sm">Video storage isn't set up yet, so videos can't be uploaded. (The app owner adds the R2 settings on the backend - see docs/video-editor.md.)</div>
       )}
@@ -80,6 +83,33 @@ export default function VideoEditor() {
         {jobs.length > 0 && <h3 className="text-sm font-semibold">Your videos</h3>}
         {jobs.map((j) => <JobCard key={j.id} job={j} stages={status?.stages || {}} workerOnline={!!status?.worker?.online} keepDays={status?.keepDays} onChange={loadJobs} />)}
       </div>
+    </div>
+  );
+}
+
+/** App owner only: test the R2 settings for real and say which one is wrong. */
+function StorageCheck() {
+  const isAppOwner = useStore((s) => !!s.user?.isAppOwner);
+  const [result, setResult] = useState(null);
+  const [busy, setBusy] = useState(false);
+  if (!isAppOwner) return null;
+  async function run() {
+    setBusy(true);
+    setResult(null);
+    try { setResult(await api.checkVideoStorage()); } catch (err) { setResult({ ok: false, problem: err.message }); } finally { setBusy(false); }
+  }
+  return (
+    <div className="text-sm">
+      <button type="button" onClick={run} disabled={busy} className="flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs border border-[var(--color-border)] hover:border-[var(--color-accent)] disabled:opacity-50">
+        {busy ? <Loader2 size={13} className="animate-spin" /> : <CheckCircle2 size={13} />} Check storage (R2)
+      </button>
+      {result && (
+        <div className={`mt-2 rounded-md border p-3 ${result.ok ? 'border-emerald-500/40 bg-emerald-500/5' : 'border-[var(--color-danger)]/40 bg-[var(--color-danger)]/5'}`}>
+          <p className={result.ok ? 'text-emerald-700' : 'text-[var(--color-danger)]'}>{result.ok ? result.message : result.problem}</p>
+          {result.findings?.length > 0 && <ul className="mt-1 list-disc pl-5 text-xs text-[var(--color-text-muted)]">{result.findings.map((f, i) => <li key={i}>{f}</li>)}</ul>}
+          {!result.ok && <p className="mt-1 text-xs text-[var(--color-text-muted)]">Fix it on Render (backend → Environment), wait for the restart, then check again.</p>}
+        </div>
+      )}
     </div>
   );
 }

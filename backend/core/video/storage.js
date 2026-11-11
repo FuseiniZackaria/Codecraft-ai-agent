@@ -20,13 +20,62 @@ const DOWNLOAD_LINK_SECONDS = 60 * 60;
 let client;
 let drv = null; // test hook: an in-memory stand-in for R2
 
+// Pasted values often carry spaces, line breaks or quotes - which break every signature.
+const clean = (v) => String(v || '').trim().replace(/^["']|["']$/g, '').trim();
+
 function settings() {
   return {
-    accountId: process.env.R2_ACCOUNT_ID || '',
-    accessKeyId: process.env.R2_ACCESS_KEY_ID || '',
-    secretAccessKey: process.env.R2_SECRET_ACCESS_KEY || '',
-    bucket: process.env.R2_BUCKET || '',
+    accountId: clean(process.env.R2_ACCOUNT_ID),
+    accessKeyId: clean(process.env.R2_ACCESS_KEY_ID),
+    secretAccessKey: clean(process.env.R2_SECRET_ACCESS_KEY),
+    bucket: clean(process.env.R2_BUCKET),
   };
+}
+
+/**
+ * A real round trip, the same way the browser and worker do it: upload a tiny
+ * file with a signed link, check it's there, read it back, delete it. Returns
+ * plain-language findings - never any key values.
+ */
+async function selfCheck() {
+  const s = settings();
+  const findings = [];
+  const missing = ['accountId', 'accessKeyId', 'secretAccessKey', 'bucket'].filter((k) => !s[k]);
+  if (missing.length) {
+    return { ok: false, problem: `Missing on the backend: ${missing.map((k) => ({ accountId: 'R2_ACCOUNT_ID', accessKeyId: 'R2_ACCESS_KEY_ID', secretAccessKey: 'R2_SECRET_ACCESS_KEY', bucket: 'R2_BUCKET' }[k])).join(', ')}.` };
+  }
+  // R2's own shapes: account id 32 hex, access key id 32 hex, secret 64 hex.
+  if (!/^[0-9a-f]{32}$/i.test(s.accountId)) findings.push(`R2_ACCOUNT_ID doesn't look right (it should be 32 letters/numbers from the R2 overview page; this one has ${s.accountId.length} characters).`);
+  if (!/^[0-9a-f]{32}$/i.test(s.accessKeyId)) findings.push(`R2_ACCESS_KEY_ID doesn't look right (it should be 32 characters; this one has ${s.accessKeyId.length}).`);
+  if (!/^[0-9a-f]{64}$/i.test(s.secretAccessKey)) {
+    findings.push(`R2_SECRET_ACCESS_KEY doesn't look right: an R2 secret is 64 letters/numbers, this one has ${s.secretAccessKey.length}`
+      + `${/^[A-Za-z0-9_-]{40}$/.test(s.secretAccessKey) ? ' - it looks like the "Token value" instead of the "Secret Access Key"' : ''}.`);
+  }
+  const key = `ws/_check/jobs/_check/output/storage-check-${Date.now()}.txt`;
+  const body = 'CodeCraft storage check';
+  try {
+    const put = await fetch(await uploadUrl(key, 'text/plain', { seconds: 300 }), { method: 'PUT', headers: { 'Content-Type': 'text/plain' }, body });
+    if (!put.ok) {
+      const text = await put.text();
+      const code = (/<Code>([^<]+)<\/Code>/.exec(text) || [])[1] || `HTTP ${put.status}`;
+      const hint = {
+        SignatureDoesNotMatch: 'R2_SECRET_ACCESS_KEY is wrong. Copy the "Secret Access Key" (not the "Token value") from the R2 API token page - or create a new token and copy both keys again.',
+        InvalidAccessKeyId: 'R2_ACCESS_KEY_ID is wrong, or the token was deleted. Create a new R2 API token and copy its Access Key ID and Secret Access Key.',
+        NoSuchBucket: `There's no bucket called "${s.bucket}" in this account - check R2_BUCKET (and R2_ACCOUNT_ID).`,
+        AccessDenied: `The token can't write to "${s.bucket}" - give it "Object Read & Write" on this bucket.`,
+      }[code] || `R2 refused the upload (${code}).`;
+      return { ok: false, problem: hint, code, findings };
+    }
+    const size = await sizeOf(key);
+    if (size !== body.length) return { ok: false, problem: 'The test file was uploaded but R2 reports a different size.', findings };
+    const get = await fetch(await downloadUrl(key, { seconds: 300 }));
+    if (!get.ok || (await get.text()) !== body) return { ok: false, problem: `Uploading works but reading it back failed (HTTP ${get.status}).`, findings };
+    await deleteKey(key).catch(() => {});
+    return { ok: true, findings, message: `Storage works: uploaded, checked, read back and deleted a test file in "${s.bucket}".` };
+  } catch (err) {
+    const net = /ENOTFOUND|getaddrinfo|fetch failed/i.test(`${err.message} ${err.cause?.code || ''}`);
+    return { ok: false, problem: net ? "Couldn't reach R2 - check R2_ACCOUNT_ID (it's part of the storage address)." : `Storage check failed: ${err.message}`, findings };
+  }
 }
 
 function isConfigured() {
@@ -137,4 +186,4 @@ const keys = {
 /** Tests: replace R2 with an in-memory stand-in (null restores R2). */
 function _useDriver(d) { drv = d; }
 
-module.exports = { isConfigured, uploadUrl, downloadUrl, sizeOf, deletePrefix, deleteKey, keys, safeName, _useDriver };
+module.exports = { selfCheck, isConfigured, uploadUrl, downloadUrl, sizeOf, deletePrefix, deleteKey, keys, safeName, _useDriver };

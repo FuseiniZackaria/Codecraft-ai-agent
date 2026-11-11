@@ -341,6 +341,7 @@ export const api = {
   saveWhatsappSettings: (data) => request('/whatsapp/settings', { method: 'PUT', body: JSON.stringify(data) }),
   // Content Studio video editor (backend/api/videoRoutes.js). Files go straight to storage with the returned links.
   getVideoStatus: () => request('/video/status'),
+  checkVideoStorage: () => request('/video/storage-check', { method: 'POST' }),
   getVideoJobs: () => request('/video/jobs'),
   getVideoJob: (id) => request(`/video/jobs/${id}`),
   startVideoJob: (data) => request('/video/jobs', { method: 'POST', body: JSON.stringify(data) }),
