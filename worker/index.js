@@ -25,9 +25,9 @@ const log = (...a) => console.log(new Date().toISOString().slice(11, 19), ...a);
 async function heartbeat() {
   try {
     const lk = require('./lib/loginKey'); // public key only: browsers seal website logins with it
-    await api.call('/heartbeat', { version: config.version, platform: process.platform, busy, keyId: lk.keyId, publicKey: lk.publicKeyB64 });
+    await api.call('/heartbeat', { version: config.version, platform: process.platform, busy, keyId: lk.keyId, publicKey: lk.publicKeyB64 }, { retries: 0 }); // the next check-in is 15 s away anyway
   } catch (err) {
-    log(`! can't reach the backend: ${err.message}`);
+    log(`! ${err.message}`);
   }
 }
 
@@ -38,7 +38,7 @@ function reporter(job) {
   let pct = 0;
   let canceled = false;
   const send = async (s, p, message) => {
-    const r = await api.call(`/jobs/${job.id}/progress`, { stage: s, progress: p, message: message || undefined }).catch((err) => { log(`! progress not sent: ${err.message}`); return {}; });
+    const r = await api.call(`/jobs/${job.id}/progress`, { stage: s, progress: p, message: message || undefined }, { retries: 1 }).catch((err) => { log(`! progress not sent: ${err.message}`); return {}; });
     if (r.canceled) { canceled = true; cancelAll(); }
   };
   const report = async (s, p, message = null) => {
