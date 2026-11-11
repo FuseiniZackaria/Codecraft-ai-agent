@@ -20,9 +20,10 @@ ENV NODE_ENV=production HYPERFRAMES_NO_TELEMETRY=1 WORK_DIR=/tmp/codecraft-video
 
 # The shared 9:16 / 16:9 framing (also used by the backend's video.edit plugin).
 COPY backend/core/video/framing.js backend/core/video/framing.js
+COPY backend/core/video/voices.js backend/core/video/voices.js
 
 COPY worker/package.json worker/package-lock.json worker/
-RUN cd worker && npm ci --omit=dev
+RUN cd worker && npm ci --omit=dev && npx playwright install --with-deps chromium
 
 COPY worker/ worker/
 
@@ -37,5 +38,10 @@ run(['browser','ensure']);\
 spawnSync(ff,['-y','-f','lavfi','-i','sine=frequency=440:duration=2','-ar','16000','-ac','1','/tmp/warm.wav'],{stdio:'ignore'});\
 spawnSync(process.execPath,[hf,'transcribe','/tmp/warm.wav','--dir','/tmp/warm','--engine','whisper','--model','small.en','--json'],{stdio:'inherit',env});\
 "
+
+# The free voice model (Kokoro, ~320 MB).
+RUN apt-get update && apt-get install -y --no-install-recommends curl bzip2 && rm -rf /var/lib/apt/lists/* \
+    && mkdir -p worker/.tools/tts && cd worker/.tools/tts \
+    && curl -sL https://github.com/k2-fsa/sherpa-onnx/releases/download/tts-models/kokoro-en-v0_19.tar.bz2 | tar -xj
 
 CMD ["node", "worker/index.js"]

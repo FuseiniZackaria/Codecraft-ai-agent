@@ -20,6 +20,12 @@ const MAX_ATTEMPTS = 2;
 
 const STAGES = {
   waiting: 'Waiting for the video editor',
+  explore: 'Exploring the website',
+  planning: 'Writing the plan',
+  awaiting: 'Waiting for your approval',
+  reference: 'Looking at the reference website',
+  voice: 'Recording the voiceover',
+  scenes: 'Building the website scenes',
   download: 'Getting your video',
   probe: 'Checking the video',
   transcribe: 'Transcribing',
@@ -110,7 +116,7 @@ async function listByStatus(statuses, limit = 500) {
 
 // ---------- storage limits (R2 free tier) ----------
 
-const LIVE = ['uploading', 'queued', 'processing', 'done', 'failed'];
+const LIVE = ['uploading', 'queued', 'processing', 'awaiting_approval', 'done', 'failed'];
 async function bytesUsed(workspaceId = null) {
   const rows = db()
     ? await (async () => {
@@ -157,14 +163,22 @@ function validateAnswers(body = {}) {
   return { answers, fieldErrors, errors: Object.values(fieldErrors) };
 }
 
-async function create({ workspaceId, userId, kind = 'edit', originalName = null, bytes = 0, contentType = null, answers = {} }) {
+/**
+ * mode: 'auto' (the original automatic edit), 'custom' ("edit my video my way":
+ * plan -> approve -> render) or 'website' ("make a video of my website": explore
+ * + plan -> approve -> render). `request` holds the description, links and
+ * choices - never login details (those stay in memory: loginVault.js).
+ */
+async function create({ workspaceId, userId, kind = 'edit', originalName = null, bytes = 0, contentType = null, answers = {}, mode = 'auto', request = null }) {
   const id = crypto.randomUUID();
   const row = {
     id,
     workspace_id: workspaceId,
     user_id: userId || null,
     kind,
-    status: kind === 'test_clip' ? 'queued' : 'uploading',
+    // Columns from migration 0012 are only sent for the new modes (the automatic edit works without it).
+    ...(mode !== 'auto' ? { mode, phase: 'plan', request: request || {} } : {}),
+    status: kind === 'test_clip' || mode === 'website' ? 'queued' : 'uploading',
     original_name: originalName,
     original_key: originalName ? storage.keys.original(workspaceId, id, originalName) : null,
     original_bytes: Number(bytes) || 0,
@@ -195,6 +209,7 @@ async function markUploaded(id, workspaceId) {
 async function remove(id, workspaceId) {
   const job = await get(id, workspaceId);
   if (!job) return false;
+  require('./loginVault').drop(id); // a website login still waiting for the worker: forgotten
   if (storage.isConfigured()) await storage.deletePrefix(storage.keys.jobPrefix(workspaceId, id)).catch((err) => console.warn(`[video] files of ${id} not deleted: ${err.message}`));
   await patch(id, { status: job.status === 'processing' || job.status === 'queued' ? 'canceled' : 'expired', output_bytes: 0, original_bytes: 0 }, { workspace_id: workspaceId });
   return true;
@@ -254,6 +269,36 @@ async function fail(id, workerId, error) {
   }, { worker_id: workerId });
 }
 
+/**
+ * The worker finished planning: the plan waits for the business's approval.
+ * The worker lets go of the job meanwhile (it may be another worker that renders).
+ */
+async function submitPlan(id, workerId, plan) {
+  const job = await getForWorker(id, workerId);
+  if (!job) return null;
+  if (job.status !== 'processing') return { canceled: true };
+  const log = Array.isArray(job.stage_log) ? job.stage_log.slice(-40) : [];
+  log.push({ stage: 'awaiting', label: STAGES.awaiting, at: now() });
+  return patch(id, { status: 'awaiting_approval', plan, stage: 'awaiting', stage_log: log, worker_id: null, heartbeat_at: null }, { worker_id: workerId });
+}
+
+/** "Approve": render it as planned. */
+async function approve(id, workspaceId) {
+  const job = await get(id, workspaceId);
+  if (!job || job.status !== 'awaiting_approval') return null;
+  return patch(id, { status: 'queued', phase: 'render', approved_at: now(), stage: 'waiting', progress: 0 }, { workspace_id: workspaceId, status: 'awaiting_approval' });
+}
+
+/** "Change it": plan again from a new description (the old plan is dropped). */
+async function revise(id, workspaceId, description) {
+  const job = await get(id, workspaceId);
+  if (!job || !['awaiting_approval', 'failed'].includes(job.status) || job.mode === 'auto') return null;
+  return patch(id, {
+    status: 'queued', phase: 'plan', plan: null, error: null, stage: 'waiting', progress: 0, attempts: 0,
+    request: { ...(job.request || {}), description: description ?? job.request?.description, revision: Number(job.request?.revision || 0) + 1 },
+  }, { workspace_id: workspaceId });
+}
+
 /** Add the post caption/hashtags to a finished job (they're written after it's done). */
 async function setPostText(id, workspaceId, post) {
   const job = await get(id, workspaceId);
@@ -284,9 +329,11 @@ async function cleanup() {
   if (!storage.isConfigured()) return 0;
   const nowMs = Date.now();
   let n = 0;
-  for (const j of await listByStatus(['done', 'failed', 'canceled', 'uploading'])) {
+  for (const j of await listByStatus(['done', 'failed', 'canceled', 'uploading', 'awaiting_approval'])) {
     const old = j.status === 'uploading'
       ? nowMs - new Date(j.created_at).getTime() > 86400000
+      : j.status === 'awaiting_approval'
+        ? nowMs - new Date(j.updated_at || j.created_at).getTime() > KEEP_DAYS * 86400000 // a plan nobody approved
       : j.status === 'canceled' || (j.expires_at && new Date(j.expires_at).getTime() < nowMs);
     if (!old) continue;
     await storage.deletePrefix(storage.keys.jobPrefix(j.workspace_id, j.id)).catch((err) => console.warn(`[video] cleanup of ${j.id}: ${err.message}`));
@@ -315,20 +362,29 @@ const workers = new Map(); // workerId -> { lastSeen, info }
 const OFFLINE_AFTER_MS = 60 * 1000;
 
 function heartbeat(workerId, info = {}) {
-  workers.set(String(workerId).slice(0, 80), { lastSeen: Date.now(), info: { version: info.version || null, busy: !!info.busy, platform: info.platform || null } });
+  const id = String(workerId).slice(0, 80);
+  const prev = workers.get(id);
+  // The worker's public key (website logins are encrypted in the browser with it; only that worker can read them).
+  const key = typeof info.publicKey === 'string' && info.publicKey.length < 2000 && /^[A-Za-z0-9+/=]+$/.test(info.publicKey) && /^[\w-]{6,64}$/.test(info.keyId || '')
+    ? { keyId: info.keyId, publicKey: info.publicKey } : prev?.key || null;
+  workers.set(id, { lastSeen: Date.now(), key, info: { version: info.version || null, busy: !!info.busy, platform: info.platform || null } });
 }
 
 function workerStatus() {
   let last = 0;
-  for (const w of workers.values()) last = Math.max(last, w.lastSeen);
-  return { online: !!last && Date.now() - last < OFFLINE_AFTER_MS, lastSeen: last ? new Date(last).toISOString() : null };
+  let key = null;
+  for (const w of workers.values()) {
+    if (w.lastSeen > last) { last = w.lastSeen; key = w.key; }
+  }
+  const online = !!last && Date.now() - last < OFFLINE_AFTER_MS;
+  return { online, lastSeen: last ? new Date(last).toISOString() : null, loginKey: online ? key : null };
 }
 
 function _reset() { mem.jobs.length = 0; workers.clear(); lastHousekeeping = 0; }
 
 module.exports = {
   STAGES, KEEP_DAYS, STORAGE_LIMIT_BYTES, PER_BUSINESS_LIMIT_BYTES, MAX_UPLOAD_BYTES, PLATFORMS, STYLES,
-  validateAnswers, create, get, list, markUploaded, remove, setPostText,
+  validateAnswers, create, get, list, markUploaded, remove, setPostText, submitPlan, approve, revise,
   claimNext, getForWorker, progress, complete, fail,
   bytesUsed, storageProblem, requeueStale, cleanup, tick,
   heartbeat, workerStatus, _reset, _mem: mem,

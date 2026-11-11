@@ -10,13 +10,15 @@
   "scripts": {
     "start": "node index.js",
     "setup": "node setup.js",
-    "test": "node test/pipeline.test.js"
+    "test": "node test/pipeline.test.js && node test/modes.test.js"
   },
   "dependencies": {
     "dotenv": "^18.0.10",
     "ffmpeg-static": "^5.3.0",
     "ffprobe-static": "^3.1.0",
     "gsap": "^3.15.0",
-    "hyperframes": "^0.9.31"
+    "hyperframes": "^0.9.31",
+    "playwright": "^1.62.1",
+    "sherpa-onnx-node": "^1.13.8"
   }
 }

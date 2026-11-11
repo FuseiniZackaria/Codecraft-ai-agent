@@ -27,6 +27,33 @@ What it does for every video (Jam's workflow):
     works before the long export. There's also a "Make a 7-second test clip"
     button in the brand kit.
 
+## Three ways to use it
+
+| Mode | You give | You approve | Then |
+|---|---|---|---|
+| **Edit my video** (automatic) | a video + the 3 questions | - | Jam's workflow above |
+| **Edit my video my way** | a video + "describe how you want it edited" (+ optional reference website) | the edit plan in plain words, including anything it **can't** do | it cuts, re-orders, zooms, adds titles/photos/captions exactly as planned |
+| **Make a video of my website** | a link + "describe the video" + a voice (+ optional login) | the scenes (with page screenshots) and the voiceover script | it records the site with sharp screenshots, a free voiceover, captions, intro and call to action |
+
+Plans are written by Claude **Sonnet** (`VIDEO_PLAN_MODEL`) - a few cents for a "my way"
+plan, roughly 5-15 cents for a website plan (it looks at the page screenshots).
+"Change it" plans again from a new description.
+
+**Website videos - safety, enforced in code:** read-only (saving requests are
+blocked except the login itself; nothing like delete / pay / buy / checkout /
+subscribe / submit / save / log out is ever clicked; text is only typed into
+the login form), same website only, never private or local addresses, a fresh
+private browser per job. 2-factor codes, captchas and "verify you're human"
+checks are never bypassed - the video uses the public pages and says so.
+**Logins:** sealed in your browser with the video worker's own key, so the
+backend can't read them; held only in memory, handed to the worker once,
+never saved in the database, logs, storage or files, and wiped after logging
+in. Use a demo account with sample data - whatever is on screen can appear in
+the video. Page text and screenshots (never the login) go to Anthropic for planning.
+
+**The free voice:** Kokoro (Apache 2.0) on the worker - 10 US and UK voices,
+no Python, no paid voice service. Captions follow the voice word by word.
+
 ## How it runs (free)
 
 ```
@@ -49,7 +76,12 @@ Backend (Render) ◀──jobs, progress──▶ Video worker (your laptop now,
 
 ## Setup, step by step
 
-### 1. Run migration 0011 (back up first)
+### 1. Run migrations 0011 and 0012 (back up first)
+
+0012 adds the two new modes (`backend/database/migrations/0012_video_modes.sql`) -
+run it the same way, after 0011.
+
+### 1a. Migration 0011
 
 ```
 node backend/scripts/backup-db.js --label=before-0011
@@ -136,10 +168,14 @@ npm install
 npm run setup
 ```
 
-`npm run setup` does three things:
+`npm run setup` does these things:
 - downloads the free Whisper program (official whisper.cpp release);
+- downloads the free voice model (Kokoro, about 320 MB, once);
+- installs the private browser for website videos (Playwright Chromium, about 150 MB);
 - prepares HyperFrames' headless browser;
 - creates `worker/.env`.
+
+(Already set up before? Run `npm install` and `npm run setup` again in the worker folder.)
 
 Open `worker/.env` and fill in two lines:
 

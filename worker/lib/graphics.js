@@ -67,13 +67,19 @@ function brollMoments(groups, broll) {
   return moments;
 }
 
-function compositionHtml({ width, height, duration, words, brand, businessName, cta, captions, logoFile, broll }) {
+/**
+ * @param titles      [{ start, text, seconds }]  title cards ("edit my video my way")
+ * @param brollItems  [{ file, start, seconds }]  photos chosen in the plan (else: matched by name)
+ * @param scenes      { css, parts: [html], tl: [js] }  website scenes underneath everything (opaque video)
+ */
+function compositionHtml({ width, height, duration, words, brand, businessName, cta, captions, logoFile, broll, titles = [], brollItems = null, scenes = null }) {
   const vertical = height > width;
   const k = Math.min(width, height) / 1080; // sizes scale with the frame (4K = 2x)
   const [c1, c2] = brand.colors.length >= 2 ? brand.colors : ['#E4572E', '#1B1B1E'];
   const font = brand.font || 'Montserrat';
   const groups = captions ? captionGroups(words, { vertical, duration }) : [];
-  const moments = captions ? brollMoments(groups, broll) : [];
+  const moments = brollItems ? brollItems.map((b) => ({ file: b.file, start: +b.start.toFixed(3), duration: b.seconds })).filter((m) => m.start < duration)
+    : captions ? brollMoments(groups, broll) : [];
   const capBottom = Math.round((vertical ? 640 : 110) * k);
   const capSize = Math.round((vertical ? 78 : 64) * k);
   const introEnd = Math.min(3.6, duration * 0.4);
@@ -81,7 +87,11 @@ function compositionHtml({ width, height, duration, words, brand, businessName, 
   const ctaStart = Math.max(introEnd, duration - ctaLen);
 
   const css = `
-html, body { margin: 0; background: transparent; }
+html, body { margin: 0; background: ${scenes ? c2 : 'transparent'}; }
+.clip { z-index: 10; }
+.title-card { position: absolute; left: ${Math.round(60 * k)}px; right: ${Math.round(60 * k)}px; top: ${Math.round((vertical ? 380 : 120) * k)}px; text-align: center; }
+.title-card span { display: inline-block; background: ${c1}; color: ${textOn(c1)}; padding: ${Math.round(20 * k)}px ${Math.round(36 * k)}px; border-radius: ${Math.round(20 * k)}px; font-size: ${Math.round((vertical ? 72 : 64) * k)}px; font-weight: 900; line-height: 1.1;
+  box-shadow: 0 ${Math.round(12 * k)}px ${Math.round(36 * k)}px rgba(0,0,0,0.35); }${scenes ? scenes.css : ''}
 #root { position: relative; overflow: hidden; font-family: '${font}', sans-serif; }
 .cap { position: absolute; left: 0; right: 0; bottom: ${capBottom}px; text-align: center; padding: 0 ${Math.round(60 * k)}px; overflow: visible; }
 .cap span { display: inline-block; margin: 0 ${Math.round(8 * k)}px; font-size: ${capSize}px; font-weight: 800; color: #FFFFFF; text-transform: ${vertical ? 'uppercase' : 'none'};
@@ -98,8 +108,15 @@ html, body { margin: 0; background: transparent; }
   border: ${Math.round(8 * k)}px solid ${c1}; border-radius: ${Math.round(24 * k)}px; overflow: hidden; box-shadow: 0 ${Math.round(14 * k)}px ${Math.round(40 * k)}px rgba(0,0,0,0.45); }
 .broll img { display: block; width: 100%; height: auto; }`;
 
-  const parts = [];
-  const tl = [];
+  const parts = scenes ? [...scenes.parts] : [];
+  const tl = scenes ? [...scenes.tl] : [];
+  titles.filter((t) => t.start < duration).forEach((t, i) => {
+    const id = `title${i}`;
+    const d = Math.min(t.seconds, duration - t.start);
+    parts.push(`<div id="${id}" class="clip" data-start="${t.start.toFixed(3)}" data-duration="${d.toFixed(3)}" data-track-index="5"><div id="${id}-in" class="title-card"><span>${esc(t.text)}</span></div></div>`);
+    tl.push(`tl.fromTo("#${id}-in", { y: ${-Math.round(40 * k)}, opacity: 0, scale: 0.94 }, { y: 0, opacity: 1, scale: 1, duration: 0.35, ease: "back.out(1.7)" }, ${t.start.toFixed(3)});`);
+    tl.push(`tl.to("#${id}-in", { opacity: 0, duration: 0.25 }, ${(t.start + d - 0.27).toFixed(3)});`);
+  });
   if (businessName || logoFile) {
     parts.push(`<div id="intro" class="clip" data-start="0.3" data-duration="${(introEnd - 0.3).toFixed(3)}" data-track-index="2"><div id="intro-bar" class="intro-bar">${logoFile ? `<img src="assets/${esc(logoFile)}" alt="">` : ''}${esc(businessName || '')}</div></div>`);
     tl.push(`tl.fromTo("#intro-bar", { x: ${-Math.round(80 * k)}, opacity: 0 }, { x: 0, opacity: 1, duration: 0.45, ease: "power3.out" }, 0.3);`);
@@ -170,7 +187,7 @@ async function fetchAssets(projectDir, brand) {
  * Render the overlay (transparent WebM) for one part.
  * @returns {string} path to overlay.webm
  */
-async function renderOverlay({ workDir, name, width, height, fps, duration, words, brand, businessName, cta, captions, assets }) {
+async function renderOverlay({ workDir, name, width, height, fps, duration, words, brand, businessName, cta, captions, assets, titles = [], brollItems = null, scenes = null, extraFiles = [], opaque = false }) {
   const projectDir = path.join(workDir, `${name}-graphics`);
   fs.mkdirSync(projectDir, { recursive: true });
   const { logoFile, broll } = assets || await fetchAssets(projectDir, brand);
@@ -181,10 +198,14 @@ async function renderOverlay({ workDir, name, width, height, fps, duration, word
   // GSAP from the worker's own install (no CDN fetch during the render).
   fs.mkdirSync(path.join(projectDir, 'assets'), { recursive: true });
   fs.copyFileSync(require.resolve('gsap/dist/gsap.min.js'), path.join(projectDir, 'assets', 'gsap.min.js'));
-  fs.writeFileSync(path.join(projectDir, 'index.html'), compositionHtml({ width, height, duration, words, brand, businessName, cta, captions, logoFile, broll }));
-  const out = path.join(workDir, `${name}.overlay.webm`);
+  // Website screenshots / reference photos the composition shows.
+  for (const f of extraFiles) fs.copyFileSync(f, path.join(projectDir, 'assets', path.basename(f)));
+  fs.writeFileSync(path.join(projectDir, 'index.html'), compositionHtml({ width, height, duration, words, brand, businessName, cta, captions, logoFile, broll, titles, brollItems, scenes }));
+  // Overlay: transparent WebM over the video. Website video (opaque): near-lossless MP4 master (encoded properly once, later).
+  const out = path.join(workDir, opaque ? `${name}.scenes.mp4` : `${name}.overlay.webm`);
+  const format = opaque ? ['--format', 'mp4', '--crf', '0'] : ['--format', 'webm', '--quality', 'high'];
   // Local render only (never `cloud render`): headless Chrome + FFmpeg on this machine.
-  await run(process.execPath, [config.hyperframesBin, 'render', '--format', 'webm', '--fps', String(fps), '--quality', 'high', '-o', out], {
+  await run(process.execPath, [config.hyperframesBin, 'render', ...format, '--fps', String(fps), '-o', out], {
     cwd: projectDir,
     env: childEnv(),
     timeoutMs: Math.max(30 * 60000, Math.round(duration * 60000)), // up to a minute per second of video on a slow laptop
@@ -193,4 +214,4 @@ async function renderOverlay({ workDir, name, width, height, fps, duration, word
   return { file: out, assets: { logoFile, broll, dir: projectDir } };
 }
 
-module.exports = { renderOverlay, compositionHtml, captionGroups, brollMoments, fetchAssets, textOn };
+module.exports = { renderOverlay, compositionHtml, captionGroups, brollMoments, fetchAssets, textOn, esc };

@@ -24,7 +24,8 @@ const log = (...a) => console.log(new Date().toISOString().slice(11, 19), ...a);
 
 async function heartbeat() {
   try {
-    await api.call('/heartbeat', { version: config.version, platform: process.platform, busy });
+    const lk = require('./lib/loginKey'); // public key only: browsers seal website logins with it
+    await api.call('/heartbeat', { version: config.version, platform: process.platform, busy, keyId: lk.keyId, publicKey: lk.publicKeyB64 });
   } catch (err) {
     log(`! can't reach the backend: ${err.message}`);
   }
@@ -66,7 +67,8 @@ async function work() {
   if (busy || stopping) return;
   busy = true;
   try {
-    const { job } = await api.call('/claim', { version: config.version, platform: process.platform });
+    const lk = require('./lib/loginKey');
+    const { job } = await api.call('/claim', { version: config.version, platform: process.platform, keyId: lk.keyId, publicKey: lk.publicKeyB64 });
     if (!job) return;
     currentJob = job;
     log(`> job ${job.id} (${job.kind}${job.originalName ? `: ${job.originalName}` : ''})`);
@@ -74,6 +76,10 @@ async function work() {
     const started = Date.now();
     try {
       const result = await processJob(job, report);
+      if (result?.submitted) {
+        log(`< plan sent for approval${result.canceled ? ' (but the job was canceled)' : ''} after ${Math.round((Date.now() - started) / 60000)} min`);
+        return;
+      }
       await report('post_text', 99, 'Writing the post caption and hashtags');
       await api.call(`/jobs/${job.id}/complete`, result);
       log(`< done in ${Math.round((Date.now() - started) / 60000)} min: ${result.outputs.map((o) => o.name).join(', ')}`);
@@ -100,7 +106,8 @@ function friendly(err) {
   const m = String(err.message || err);
   if (/no video picture|Invalid data found|moov atom not found/i.test(m)) return "The file couldn't be read as a video. Please export it again as MP4 or MOV and upload that.";
   if (/took too long/i.test(m)) return 'This video took too long to edit on the video editor. Try a shorter video, or try again.';
-  if (/Whisper is not installed|npm run setup/i.test(m)) return 'The video editor is missing a part (local Whisper). The owner has been told how to fix it.';
+  if (/npm run setup/i.test(m)) return `The video editor is missing a part (${/voice/i.test(m) ? 'the free voice' : 'local Whisper'}) - the owner needs to run "npm run setup" on it.`;
+  if (/log ?in details|No speech|couldn't be explored|private or local network/i.test(m)) return m.slice(0, 400); // already plain words
   return `The video editor hit a problem: ${m.slice(0, 300)}`;
 }
 

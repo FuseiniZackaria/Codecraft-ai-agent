@@ -347,6 +347,10 @@ export const api = {
   startVideoJob: (data) => request('/video/jobs', { method: 'POST', body: JSON.stringify(data) }),
   videoUploaded: (id) => request(`/video/jobs/${id}/uploaded`, { method: 'POST' }),
   deleteVideoJob: (id) => request(`/video/jobs/${id}`, { method: 'DELETE' }),
+  approveVideoJob: (id) => request(`/video/jobs/${id}/approve`, { method: 'POST' }),
+  reviseVideoJob: (id, description) => request(`/video/jobs/${id}/revise`, { method: 'POST', body: JSON.stringify({ description }) }),
+  // `login` is sealed in the browser for the video worker (never plain text, never stored).
+  videoJobLogin: (id, login) => request(`/video/jobs/${id}/login`, { method: 'POST', body: JSON.stringify({ login }) }),
   videoTestClip: (platform) => request('/video/test-clip', { method: 'POST', body: JSON.stringify({ platform }) }),
   getBrandKit: () => request('/video/brand-kit'),
   saveBrandKit: (data) => request('/video/brand-kit', { method: 'PUT', body: JSON.stringify(data) }),

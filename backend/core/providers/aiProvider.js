@@ -110,7 +110,7 @@ function toClaudeContent(parts) {
   });
 }
 
-async function completeWithClaude({ prompt, system, maxTokens = 1000, history = [], content = null }) {
+async function completeWithClaude({ prompt, system, maxTokens = 1000, history = [], content = null, claudeModel = null }) {
   const cleanHistory = history.filter((h) => h.content && String(h.content).trim().length > 0);
   const messages = [
     ...cleanHistory.map((h) => ({ role: h.role === 'assistant' ? 'assistant' : 'user', content: String(h.content) })),
@@ -122,7 +122,7 @@ async function completeWithClaude({ prompt, system, maxTokens = 1000, history = 
   try {
     // Claude always thinks a little first, and that counts against max_tokens -
     // so give it room. It's only a ceiling: just what's generated is billed.
-    final = await anthropic.stream({ system, messages, maxTokens: Math.max(maxTokens, 8000) }).finalMessage();
+    final = await anthropic.stream({ system, messages, maxTokens: Math.max(maxTokens, 8000), model: claudeModel }).finalMessage();
   } catch (err) {
     throw new Error(`AI provider error: ${anthropic.describeFailure(err)}`);
   }

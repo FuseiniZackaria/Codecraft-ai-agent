@@ -33,6 +33,16 @@ async function withLinks(job) {
   if (!job) return job;
   const out = { ...job };
   delete out.original_key;
+  // A website plan shows each scene's page screenshot (signed links, an hour).
+  if (job.status === 'awaiting_approval' && job.plan?.kind === 'website' && job.plan.thumbFiles && storage.isConfigured()) {
+    const thumbs = {};
+    for (const [p, name] of Object.entries(job.plan.thumbFiles).slice(0, 30)) {
+      thumbs[p] = await storage.downloadUrl(storage.keys.work(job.workspace_id, job.id, name), { inline: true, downloadName: name }).catch(() => null);
+    }
+    out.plan = { ...job.plan, thumbUrls: thumbs };
+  }
+  if (out.plan) delete out.plan.render; // the worker's internals, not for the page
+  out.needsLogin = !!(job.mode === 'website' && job.request?.needsLogin && job.status === 'failed' && /log ?in details/i.test(job.error || ''));
   if (job.status === 'done' && Array.isArray(job.result?.outputs) && storage.isConfigured()) {
     out.result = { ...job.result };
     out.result.outputs = await Promise.all(job.result.outputs.map(async (o) => ({
@@ -59,6 +69,7 @@ router.get('/status', async (req, res) => {
       brandKitReady: !!kit?.ready,
       fonts: brandKit.FONTS,
       stages: jobs.STAGES,
+      voices: require('../core/video/voices').VOICES.map(({ id: v, label }) => ({ id: v, label })),
     });
   } catch (err) {
     fail(res, err);
@@ -99,12 +110,61 @@ router.get('/jobs/:id', async (req, res) => {
   }
 });
 
-/** Start: { name, bytes, contentType, platform, cta, style, both_formats } -> { job, uploadUrl } */
+/**
+ * "Make a video of my website": { mode: 'website', url, description, voice, permission, platform, cta, style, login? }
+ * login = the username/password SEALED in the browser for the worker (never readable here, never stored).
+ */
+async function createWebsiteJob(req, res, id) {
+  const { publicHttpUrl } = require('../core/video/urls');
+  const { VOICES, DEFAULT_VOICE } = require('../core/video/voices');
+  const loginVault = require('../core/video/loginVault');
+  const body = req.body || {};
+  const { answers, fieldErrors } = jobs.validateAnswers(body);
+  const url = publicHttpUrl(body.url);
+  const description = String(body.description || '').trim();
+  if (!url) fieldErrors.url = 'Paste the website link, e.g. https://yourbusiness.com (public websites only).';
+  if (!description) fieldErrors.description = 'Describe the video you want, e.g. "a 60-second TikTok showing how my app works".';
+  else if (description.length > 2000) fieldErrors.description = 'Keep the description under 2000 characters.';
+  if (body.permission !== true) fieldErrors.permission = 'Tick the box to confirm you own this website or have permission to record it.';
+  const voice = VOICES.some((v) => v.id === body.voice) ? body.voice : DEFAULT_VOICE;
+  const sealed = body.login || null;
+  if (sealed && !loginVault.isSealed(sealed)) fieldErrors.login = "The login details couldn't be locked for the video editor. Reload the page and try again.";
+  const errs = Object.values(fieldErrors);
+  if (errs.length) return res.status(400).json({ error: errs[0], fieldErrors });
+  if (!storage.isConfigured()) return res.status(503).json({ error: 'Video storage is not set up yet (R2).', code: 'STORAGE_NOT_CONFIGURED' });
+  if (answers.style === 'captions' && !(await brandKit.get(id)).ready) {
+    return res.status(400).json({ error: 'Choose two brand colours and a font first - they are saved for every video.', fieldErrors: { brand: 'Brand colours and font needed.' } });
+  }
+  const problem = await jobs.storageProblem(id, 300 * 1024 ** 2);
+  if (problem) return res.status(400).json({ error: problem });
+  const job = await jobs.create({
+    workspaceId: id, userId: req.user.id, mode: 'website', answers,
+    request: { url, description, voice, needsLogin: !!sealed, loginUrl: publicHttpUrl(body.loginUrl) || null },
+  });
+  if (sealed) loginVault.put(job.id, sealed); // memory only; handed to the worker once
+  res.json({ job: await withLinks(job), worker: jobs.workerStatus() });
+}
+
+/** Start: { name, bytes, contentType, platform, cta, style, both_formats, mode?, description?, referenceUrl? } -> { job, uploadUrl } */
 router.post('/jobs', async (req, res) => {
   const id = ws(req, res);
   if (!id) return;
+  const mode = ['auto', 'custom', 'website'].includes(req.body?.mode) ? req.body.mode : 'auto';
+  if (mode === 'website') {
+    try { return await createWebsiteJob(req, res, id); } catch (err) { return fail(res, err); }
+  }
   const { name, bytes, contentType } = req.body || {};
   const { answers, fieldErrors } = jobs.validateAnswers(req.body || {});
+  let request = null;
+  if (mode === 'custom') {
+    const description = String(req.body?.description || '').trim();
+    if (!description) fieldErrors.description = 'Describe how you want this video edited.';
+    else if (description.length > 2000) fieldErrors.description = 'Keep the description under 2000 characters.';
+    const { publicHttpUrl } = require('../core/video/urls');
+    const referenceUrl = req.body?.referenceUrl ? publicHttpUrl(req.body.referenceUrl) : null;
+    if (req.body?.referenceUrl && !referenceUrl) fieldErrors.referenceUrl = "That reference link doesn't look like a public website.";
+    request = { description, referenceUrl };
+  }
   if (!name) fieldErrors.file = 'Choose a video to upload.';
   else if (!VIDEO_TYPES.test(String(contentType || ''))) fieldErrors.file = "That doesn't look like a video file (MP4, MOV, WebM, MKV…).";
   else if (!(Number(bytes) > 0)) fieldErrors.file = 'That file is empty.';
@@ -118,7 +178,7 @@ router.post('/jobs', async (req, res) => {
     }
     const problem = await jobs.storageProblem(id, bytes);
     if (problem) return res.status(400).json({ error: problem });
-    const job = await jobs.create({ workspaceId: id, userId: req.user.id, originalName: storage.safeName(name), bytes, contentType, answers });
+    const job = await jobs.create({ workspaceId: id, userId: req.user.id, originalName: storage.safeName(name), bytes, contentType, answers, mode, request });
     const uploadUrl = await storage.uploadUrl(job.original_key, contentType);
     res.json({ job: await withLinks(job), uploadUrl, contentType });
   } catch (err) {
@@ -150,6 +210,53 @@ router.post('/test-clip', async (req, res) => {
     const platform = ['instagram', 'tiktok', 'youtube'].includes(req.body?.platform) ? req.body.platform : 'tiktok';
     const job = await jobs.create({ workspaceId: id, userId: req.user.id, kind: 'test_clip', answers: { platform, cta: 'Follow for more', style: 'captions' } });
     res.json({ job: await withLinks(job), worker: jobs.workerStatus() });
+  } catch (err) {
+    fail(res, err);
+  }
+});
+
+/** The plan looks right: render it. */
+router.post('/jobs/:id/approve', async (req, res) => {
+  const id = ws(req, res);
+  if (!id) return;
+  try {
+    const job = await jobs.approve(req.params.id, id);
+    if (!job) return res.status(409).json({ error: 'This video has no plan waiting for approval.' });
+    res.json({ job: await withLinks(job), worker: jobs.workerStatus() });
+  } catch (err) {
+    fail(res, err);
+  }
+});
+
+/** "Change it": plan again from a new description. */
+router.post('/jobs/:id/revise', async (req, res) => {
+  const id = ws(req, res);
+  if (!id) return;
+  const description = String(req.body?.description || '').trim();
+  if (!description) return res.status(400).json({ error: 'Describe what to change.', fieldErrors: { description: 'Describe what to change.' } });
+  if (description.length > 2000) return res.status(400).json({ error: 'Keep it under 2000 characters.' });
+  try {
+    const job = await jobs.revise(req.params.id, id, description);
+    if (!job) return res.status(409).json({ error: "This video can't be re-planned right now." });
+    res.json({ job: await withLinks(job) });
+  } catch (err) {
+    fail(res, err);
+  }
+});
+
+/** Website login again (after a server restart or a wrong password): sealed in the browser, memory only. */
+router.post('/jobs/:id/login', async (req, res) => {
+  const id = ws(req, res);
+  if (!id) return;
+  const loginVault = require('../core/video/loginVault');
+  try {
+    const job = await jobs.get(req.params.id, id);
+    if (!job || job.mode !== 'website') return res.status(404).json({ error: 'Video not found' });
+    if (!loginVault.isSealed(req.body?.login)) return res.status(400).json({ error: "The login details couldn't be locked for the video editor. Reload the page and try again." });
+    const again = await jobs.revise(job.id, id, job.request?.description);
+    if (!again) return res.status(409).json({ error: "This video can't be restarted right now." });
+    loginVault.put(job.id, req.body.login);
+    res.json({ job: await withLinks(again) });
   } catch (err) {
     fail(res, err);
   }

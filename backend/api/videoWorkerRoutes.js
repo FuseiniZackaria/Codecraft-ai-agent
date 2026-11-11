@@ -45,10 +45,24 @@ router.post('/claim', async (req, res) => {
     const kit = await brandKit.get(job.workspace_id).catch(() => null);
     const link = (key, seconds = 6 * 3600) => storage.downloadUrl(key, { seconds });
     const profile = await require('../core/businessProfile').getProfile(job.workspace_id).catch(() => null);
+    // Files saved while planning (transcript, screenshots), for the render.
+    const files = {};
+    for (const name of (Array.isArray(job.plan?.files) ? job.plan.files : []).slice(0, 300)) {
+      files[name] = await link(storage.keys.work(job.workspace_id, job.id, name)).catch(() => null);
+    }
+    // Website login (sealed for this worker): handed over once, then forgotten here.
+    const loginVault = require('../core/video/loginVault');
+    const login = job.mode === 'website' && job.phase !== 'render' && job.request?.needsLogin ? loginVault.take(job.id) : null;
     res.json({
       job: {
         id: job.id,
         kind: job.kind,
+        mode: job.mode || 'auto',
+        phase: job.phase || 'edit',
+        request: job.request || {},
+        plan: job.plan || null,
+        files,
+        login,
         attempts: job.attempts,
         originalName: job.original_name,
         originalBytes: job.original_bytes,
@@ -100,13 +114,68 @@ router.post('/jobs/:id/plan', async (req, res) => {
   }
 });
 
-/** Where to upload one finished file: { name, contentType } -> { url, key } (inside this job's folder only). */
+/** "Edit my video my way": the description + transcript -> a plan to approve (Claude Sonnet; the automatic edit if the AI doesn't answer). */
+router.post('/jobs/:id/plan-custom', async (req, res) => {
+  const job = await ownJob(req, res);
+  if (!job) return;
+  const { words, duration, images, reference } = req.body || {};
+  if (!Array.isArray(words)) return res.status(400).json({ error: 'words required' });
+  const planner = require('../core/video/editPlanner');
+  try {
+    res.json(await planner.customPlan({
+      words, duration: Number(duration) || null, description: job.request?.description || '', answers: job.answers || {},
+      images: Array.isArray(images) ? images.map(String).slice(0, 60) : [], reference: reference && typeof reference === 'object' ? reference : null,
+    }));
+  } catch (err) {
+    if (/No speech/.test(err.message)) return res.status(400).json({ error: err.message });
+    console.warn(`[video] custom plan for ${job.id}: AI failed (${err.message}) - offering the automatic edit`);
+    res.json(await planner.fallbackCustom({ words, duration: Number(duration) || null }));
+  }
+});
+
+/** "Make a video of my website": the explored pages -> scenes + voiceover to approve. */
+router.post('/jobs/:id/plan-website', async (req, res) => {
+  const job = await ownJob(req, res);
+  if (!job) return;
+  const { pages, thumbs, notes } = req.body || {};
+  if (!Array.isArray(pages)) return res.status(400).json({ error: 'pages required' });
+  try {
+    const profile = await require('../core/businessProfile').getProfile(job.workspace_id).catch(() => null);
+    const kit = await brandKit.get(job.workspace_id).catch(() => null);
+    res.json(await require('../core/video/editPlanner').websitePlan({
+      pages: pages.slice(0, 20), thumbs: Array.isArray(thumbs) ? thumbs.slice(0, 10) : [], notes: Array.isArray(notes) ? notes.map(String).slice(0, 10) : [],
+      description: job.request?.description || '', answers: job.answers || {}, businessName: profile?.business_name || null, brandVoice: kit?.voice || null,
+    }));
+  } catch (err) {
+    res.status(502).json({ error: `Planning the video didn't work: ${err.message}` });
+  }
+});
+
+/** The plan is ready: it waits for the business's approval. { plan, files: [names saved under work/] } */
+router.post('/jobs/:id/submit-plan', async (req, res) => {
+  const job = await ownJob(req, res);
+  if (!job) return;
+  const plan = req.body?.plan;
+  if (!plan || typeof plan !== 'object' || !['custom', 'website'].includes(plan.kind)) return res.status(400).json({ error: 'plan required' });
+  if (JSON.stringify(plan).length > 900000) return res.status(400).json({ error: 'plan too large' });
+  const files = (Array.isArray(req.body?.files) ? req.body.files : []).map((f) => storage.safeName(String(f), 'file')).slice(0, 300);
+  try {
+    const r = await jobs.submitPlan(job.id, workerIdOf(req), { ...plan, files, notes: (Array.isArray(req.body?.notes) ? req.body.notes : []).map((n) => String(n).slice(0, 400)).slice(0, 20) });
+    res.json(r?.canceled ? { canceled: true } : { ok: true });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+/** Where to upload one file: { name, contentType, area: 'output' | 'work' } -> { url, key } (inside this job's folder only). */
 router.post('/jobs/:id/upload', async (req, res) => {
   const job = await ownJob(req, res);
   if (!job) return;
-  const contentType = /^video\/mp4$|^image\/(png|jpeg)$|^application\/json$/.test(req.body?.contentType || '') ? req.body.contentType : 'video/mp4';
+  const contentType = /^video\/mp4$|^image\/(png|jpeg)$|^application\/json$|^audio\/wav$/.test(req.body?.contentType || '') ? req.body.contentType : 'video/mp4';
   try {
-    const key = storage.keys.output(job.workspace_id, job.id, req.body?.name || 'video.mp4');
+    const key = req.body?.area === 'work'
+      ? storage.keys.work(job.workspace_id, job.id, req.body?.name || 'file')
+      : storage.keys.output(job.workspace_id, job.id, req.body?.name || 'video.mp4');
     res.json({ key, url: await storage.uploadUrl(key, contentType), contentType });
   } catch (err) {
     res.status(500).json({ error: err.message });
@@ -133,6 +202,8 @@ router.post('/jobs/:id/complete', async (req, res) => {
     const done = await jobs.complete(job.id, workerIdOf(req), result);
     if (done?.canceled) return res.json({ canceled: true });
     res.json({ ok: true });
+    // Working files (transcript, website screenshots - possibly of logged-in pages) go at once.
+    if (job.mode && job.mode !== 'auto') storage.deletePrefix(`${prefix}work/`).catch((err) => console.warn(`[video] work files of ${job.id} not deleted: ${err.message}`));
     // The post caption and hashtags, written afterwards so the video is available at once.
     if (job.kind !== 'test_clip') {
       writePost(job, result).catch(async (err) => {

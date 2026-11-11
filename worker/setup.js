@@ -61,6 +61,24 @@ async function whisperWindows() {
   ok(`local Whisper ready (${path.relative(ROOT, exe)})`);
 }
 
+const KOKORO_URL = 'https://github.com/k2-fsa/sherpa-onnx/releases/download/tts-models/kokoro-en-v0_19.tar.bz2';
+
+async function kokoroModel() {
+  const dir = path.join(ROOT, '.tools', 'tts');
+  const model = path.join(dir, 'kokoro-en-v0_19', 'model.onnx');
+  if (!fs.existsSync(model)) {
+    console.log('  downloading the free voice model (about 320 MB, once)...');
+    fs.mkdirSync(dir, { recursive: true });
+    const archive = path.join(dir, 'kokoro.tar.bz2');
+    await download(KOKORO_URL, archive);
+    const tar = process.platform === 'win32' ? path.join(process.env.SystemRoot || 'C:\\Windows', 'System32', 'tar.exe') : 'tar';
+    const r = spawnSync(tar, ['-xjf', archive, '-C', dir], { stdio: 'inherit' });
+    fs.rmSync(archive, { force: true });
+    if (r.status !== 0 || !fs.existsSync(model)) throw new Error('could not unpack the voice model');
+  }
+  ok('free voice ready (Kokoro, 10 US/UK voices)');
+}
+
 async function main() {
   console.log('CodeCraft video worker setup\n');
   const major = Number(process.versions.node.split('.')[0]);
@@ -77,6 +95,12 @@ async function main() {
   } else {
     ok('Whisper: HyperFrames builds it on first use (needs git, cmake and a C compiler - the Docker image has them)');
   }
+
+  // Free voice (Kokoro, Apache 2.0) for website videos: ~320 MB, once.
+  try { await kokoroModel(); } catch (err) { bad(`Voice model: ${err.message}`); process.exitCode = 1; }
+  // Playwright's private browser, for exploring websites (free, ~150 MB, once).
+  const pw = spawnSync(process.execPath, [path.join(ROOT, 'node_modules', 'playwright', 'cli.js'), 'install', 'chromium'], { stdio: 'inherit' });
+  if (pw.status === 0) ok('website browser ready (Playwright Chromium)'); else { bad('Playwright browser install failed'); process.exitCode = 1; }
 
   const env = { ...process.env, HYPERFRAMES_NO_TELEMETRY: '1', PATH: [path.dirname(ffmpeg), path.dirname(require('ffprobe-static').path), process.env.PATH].join(path.delimiter) };
   const hf = path.join(ROOT, 'node_modules', 'hyperframes', 'bin', 'hyperframes.mjs');

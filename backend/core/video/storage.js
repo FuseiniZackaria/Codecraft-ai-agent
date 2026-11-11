@@ -178,6 +178,8 @@ async function deleteKey(key) {
 const keys = {
   original: (ws, job, name) => `ws/${ws}/jobs/${job}/original/${safeName(name)}`,
   output: (ws, job, name) => `ws/${ws}/jobs/${job}/output/${safeName(name)}`,
+  // Between planning and rendering: transcript, website screenshots (deleted with the job).
+  work: (ws, job, name) => `ws/${ws}/jobs/${job}/work/${safeName(name, 'file')}`,
   jobPrefix: (ws, job) => `ws/${ws}/jobs/${job}/`,
   brand: (ws, name) => `ws/${ws}/brand/${Date.now().toString(36)}-${safeName(name, 'asset')}`,
   belongsTo: (ws, key) => typeof key === 'string' && key.startsWith(`ws/${ws}/`),

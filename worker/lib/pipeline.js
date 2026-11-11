@@ -33,7 +33,12 @@ async function processJob(job, report) {
   fs.rmSync(workDir, { recursive: true, force: true });
   fs.mkdirSync(workDir, { recursive: true });
   try {
-    return job.kind === 'test_clip' ? await testClip(job, workDir, report) : await editJob(job, workDir, report);
+    if (job.kind === 'test_clip') return await testClip(job, workDir, report);
+    // The two planned modes: plan (then wait for approval) or render the approved plan.
+    const modes = require('./modes');
+    if (job.mode === 'website') return job.phase === 'render' ? await modes.websiteRender(job, workDir, report) : await modes.websitePlan(job, workDir, report);
+    if (job.mode === 'custom') return job.phase === 'render' ? await modes.customRender(job, workDir, report) : await modes.customPlan(job, workDir, report);
+    return await editJob(job, workDir, report);
   } finally {
     if (!config.keepTemp) fs.rmSync(workDir, { recursive: true, force: true });
   }

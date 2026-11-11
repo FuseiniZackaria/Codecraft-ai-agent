@@ -25,9 +25,10 @@ function getClient() {
 }
 
 /** Start a streaming request. Returns the SDK's MessageStream (iterate it, then await .finalMessage()). */
-function stream({ system, messages, tools = [], maxTokens = 16000 }) {
+function stream({ system, messages, tools = [], maxTokens = 16000, model = null }) {
   return getClient().beta.messages.stream({
-    model: config.anthropic.model,
+    // `model`: a caller may pick a cheaper model for one job (e.g. video planning on Sonnet).
+    model: model || config.anthropic.model,
     max_tokens: maxTokens,
     betas: [FALLBACK_BETA],
     fallbacks: 'default',

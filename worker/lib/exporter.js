@@ -13,10 +13,25 @@ const { fitFilter } = require('./framing');
  * loudness to -14 LUFS (what Instagram, TikTok and YouTube play at), using
  * the measured values so the levelled voices keep their balance.
  */
-async function exportVideo({ master, overlay = null, info, width, height, loudness = null, out, maxSeconds = null, totalSeconds, onProgress }) {
+/**
+ * Smooth zoom-ins: [{ start, end, scale }] on the edited timeline. The picture
+ * eases in over half a second, holds, and eases back out (scaled up, then the
+ * centre cropped back to the original size).
+ */
+function zoomFilter(zooms, w, h) {
+  if (!zooms?.length) return null;
+  const ramp = 0.5;
+  const terms = zooms.map((z) => `${(z.scale - 1).toFixed(3)}*clip((t-${z.start.toFixed(3)})/${ramp},0,1)*clip((${z.end.toFixed(3)}-t)/${ramp},0,1)`);
+  const Z = `(1+${terms.join('+')})`;
+  return `scale=w='trunc(iw*${Z}/2)*2':h='trunc(ih*${Z}/2)*2':eval=frame:flags=lanczos,crop=${w}:${h}`;
+}
+
+async function exportVideo({ master, overlay = null, info, width, height, loudness = null, out, maxSeconds = null, totalSeconds, onProgress, zooms = null }) {
   const args = ['-i', master];
   if (overlay) args.push('-c:v', 'libvpx-vp9', '-i', overlay); // keeps the overlay's transparency
-  const video = [fitFilter({ input: '[0:v]', output: overlay ? '[framed]' : '[fitted]', inW: info.width, inH: info.height, outW: width, outH: height })];
+  const zoom = zoomFilter(zooms, info.width, info.height);
+  const video = zoom ? [`[0:v]${zoom}[zoomed]`] : [];
+  video.push(fitFilter({ input: zoom ? '[zoomed]' : '[0:v]', output: overlay ? '[framed]' : '[fitted]', inW: info.width, inH: info.height, outW: width, outH: height }));
   if (overlay) video.push(`[framed][1:v]overlay=0:0:format=auto:shortest=0,format=yuv420p[vout]`);
   else video.push('[fitted]format=yuv420p[vout]');
   const audio = loudness
@@ -36,4 +51,4 @@ async function exportVideo({ master, overlay = null, info, width, height, loudne
   return out;
 }
 
-module.exports = { exportVideo };
+module.exports = { exportVideo, zoomFilter };

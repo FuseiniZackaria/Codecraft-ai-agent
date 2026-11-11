@@ -96,6 +96,9 @@ async function buildMaster({ src, info, ranges, gains, lightFilter, workDir, nam
   const fps = info.fps;
   const snapped = snapRanges(ranges, fps);
   if (!snapped.length) throw new Error('Nothing left to keep in this part.');
+  // Re-ordered parts ("edit my video my way"): each in-order run is built on its own, then joined losslessly.
+  const inOrder = snapped.every((r, i) => i === 0 || r.start >= snapped[i - 1].end - 1e-6);
+  if (!inOrder) return buildReordered({ src, info, snapped, ranges, gains, lightFilter, workDir, name, onProgress });
   const total = snapped.reduce((s, r) => s + (r.end - r.start), 0);
   const inside = insideExpr(snapped);
   const video = [
@@ -125,6 +128,33 @@ async function buildMaster({ src, info, ranges, gains, lightFilter, workDir, nam
   return { file: out, duration: total, ranges: snapped };
 }
 
+/** Parts in a new order: build each in-order run, then join them (stream copy - no quality loss). */
+async function buildReordered({ src, info, snapped, gains, lightFilter, workDir, name, onProgress }) {
+  const runs = [];
+  snapped.forEach((r, i) => {
+    const last = runs[runs.length - 1];
+    if (last && r.start >= last.ranges[last.ranges.length - 1].end - 1e-6) { last.ranges.push(r); last.gains.push(gains?.[i] ?? 0); } else runs.push({ ranges: [r], gains: [gains?.[i] ?? 0] });
+  });
+  const total = snapped.reduce((s, r) => s + (r.end - r.start), 0);
+  let done = 0;
+  const pieces = [];
+  for (const [i, run] of runs.entries()) {
+    const len = run.ranges.reduce((s, r) => s + (r.end - r.start), 0);
+    const piece = await buildMaster({
+      src, info, ranges: run.ranges, gains: gains ? run.gains : null, lightFilter, workDir, name: `${name}-run${i}`,
+      onProgress: onProgress ? (f) => onProgress((done + f * len) / total) : null,
+    });
+    done += len;
+    pieces.push(piece.file);
+  }
+  const list = path.join(workDir, `${name}.concat.txt`);
+  fs.writeFileSync(list, pieces.map((p) => `file '${p.replace(/\\/g, '/').replace(/'/g, "'\\''")}'`).join('\n'));
+  const out = path.join(workDir, `${name}.master.mkv`);
+  await ffmpeg(['-f', 'concat', '-safe', '0', '-i', list, '-c', 'copy', out], { timeoutMs: 2 * 3600000 });
+  for (const p of pieces) fs.rmSync(p, { force: true });
+  return { file: out, duration: total, ranges: snapped };
+}
+
 /** Map a word's time in the original to its time in the cut part (null when it was cut out). */
 function mapTime(t, ranges) {
   let offset = 0;
@@ -144,7 +174,7 @@ function wordsOnNewTimeline(words, ranges) {
     if (s === null) continue;
     out.push({ text: w.text, start: +s.toFixed(3), end: +(eRaw === null ? s + 0.25 : eRaw + 0.001).toFixed(3) });
   }
-  return out;
+  return out.sort((a, b) => a.start - b.start); // re-ordered parts: in playing order
 }
 
 module.exports = { snapRanges, lightPlan, voiceGains, buildMaster, mapTime, wordsOnNewTimeline, gainExpr, insideExpr };
