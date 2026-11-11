@@ -43,6 +43,9 @@ module.exports = {
     if (!config.llm.openaiKey) {
       throw new Error('Transcription not configured - set OPENAI_API_KEY in .env');
     }
+    // (The Content Studio video editor doesn't use this: it transcribes for free on its worker.)
+    const openai = require('../../../core/openaiKey');
+    if (!openai.status().usable) throw new openai.OpenAIUnavailableError(openai.status().reason);
     if (!filePath) throw new Error('transcribe requires "filePath"');
     if (!fs.existsSync(filePath)) throw new Error(`File not found: ${filePath}`);
 
@@ -65,6 +68,7 @@ module.exports = {
 
     const json = await res.json();
     if (!res.ok) {
+      if (openai.noteFailure(res.status, json)) throw new openai.OpenAIUnavailableError(openai.status().reason);
       throw new Error(json?.error?.message || `OpenAI transcription API error (HTTP ${res.status})`);
     }
 

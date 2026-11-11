@@ -14,8 +14,12 @@ module.exports = {
   irreversible: false, // writes a local sandboxed file only - no real-world side effect, no approval gate needed
 
   async run({ prompt, projectId, path: relativePath, size = '1024x1024' }) {
-    if (!config.llm.openaiKey) {
-      throw new Error('Image generation not configured - set OPENAI_API_KEY in .env');
+    // Missing, not an OpenAI key, or already rejected: say so without calling OpenAI.
+    const openai = require('../../../core/openaiKey');
+    const ok = openai.status();
+    if (!ok.usable) {
+      if (!config.llm.openaiKey) throw new Error('Image generation not configured - set OPENAI_API_KEY in .env');
+      throw new openai.OpenAIUnavailableError(ok.reason);
     }
     if (!prompt || !projectId || !relativePath) {
       throw new Error('generateImage requires "prompt", "projectId", and "path"');
@@ -32,6 +36,8 @@ module.exports = {
 
     const json = await res.json();
     if (!res.ok) {
+      // A bad key / no credit: remembered, so later tasks skip the image without trying again.
+      if (openai.noteFailure(res.status, json)) throw new openai.OpenAIUnavailableError(openai.status().reason);
       throw new Error(json?.error?.message || `OpenAI Image API error (HTTP ${res.status})`);
     }
 

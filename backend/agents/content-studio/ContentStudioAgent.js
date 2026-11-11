@@ -114,7 +114,11 @@ class ContentStudioAgent extends BaseAgent {
       instruction: ContentStudioAgent.hashtagsInstruction(task.instruction),
     });
 
-    if (config.llm.openaiKey) {
+    // Cover image: OpenAI only (text never is). Skipped - with a note - when the key
+    // is missing, isn't an OpenAI key, or OpenAI already refused it / has no credit.
+    const openai = require('../../core/openaiKey').status();
+    if (!openai.usable) task.imageSkipped = openai.reason;
+    if (openai.usable) {
       // The cover image's project folder belongs to this business only.
       require('../../core/projectOwnership').claimProject(`content-studio-${task.id}`, task.workspace_id || null);
       steps.push({
@@ -149,11 +153,22 @@ class ContentStudioAgent extends BaseAgent {
       step = { ...step, args: { ...step.args, prompt: task.imagePrompt || task.instruction } };
     }
 
+    // The cover image is a bonus: if it fails (bad key, no credit, OpenAI down),
+    // the rest of the content package is still delivered, with a note.
+    if (step.label === 'image') {
+      try {
+        task.imageResult = await super.execute(step, task, priorContext);
+        return task.imageResult;
+      } catch (err) {
+        task.imageSkipped = err.code === 'OPENAI_UNAVAILABLE' ? err.message.replace(/^OpenAI isn't available: /, '') : `the image service returned an error (${String(err.message).slice(0, 160)})`;
+        console.warn(`[content-studio] cover image skipped: ${task.imageSkipped}`);
+        return { skipped: true, reason: task.imageSkipped };
+      }
+    }
+
     const result = await super.execute(step, task, priorContext);
 
-    if (step.label === 'image') {
-      task.imageResult = result;
-    } else if (step.label && step.type === 'llm_call') {
+    if (step.label && step.type === 'llm_call') {
       task[step.label] = result?.text || '';
     }
     return result;
@@ -176,6 +191,11 @@ class ContentStudioAgent extends BaseAgent {
       const imageUrl = require('../../core/fileLinks').signedFileUrl(`content-studio-${task.id}`, task.imageResult.path);
       combined += `\n\n---\n\n## Cover Image\n\n${task.imageResult.revisedPrompt}\n\n${imageUrl}`;
       note += ` Includes a generated cover image.`;
+    } else if (task.imageSkipped) {
+      // Friendly, not a failure: the package is complete without it.
+      combined += `\n\n---\n\n**Cover image:** skipped - ${task.imageSkipped}. Everything else above is ready.`
+        + (task.imagePrompt ? ` If you'd like one, paste this into any image tool:\n\n> ${task.imagePrompt.trim()}` : '');
+      note += ` Cover image skipped (${task.imageSkipped}).`;
     }
 
     await memory.addReflection(this.role, task.id, note, { workspaceId: task?.workspace_id || null });

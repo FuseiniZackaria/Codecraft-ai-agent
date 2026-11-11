@@ -2,7 +2,7 @@ const assert = require('assert');
 const fs = require('fs');
 const path = require('path');
 
-process.env.OPENAI_API_KEY = 'test-key-123';
+process.env.OPENAI_API_KEY = 'sk-test-key-123';
 
 const { loadPlugins } = require('../core/pluginLoader');
 const toolRegistry = require('../tools/ToolRegistry');
@@ -44,7 +44,7 @@ async function main() {
   });
   const result1 = await toolRegistry.call('imagegen.generateImage', { prompt: 'A sunset over mountains', projectId: 'imagegen-test2', path: 'cover.png' }, { role: 'test' });
   assert.strictEqual(capturedRequest.url, 'https://api.openai.com/v1/images/generations');
-  assert.strictEqual(capturedRequest.options.headers.Authorization, 'Bearer test-key-123');
+  assert.strictEqual(capturedRequest.options.headers.Authorization, 'Bearer sk-test-key-123');
   const body = JSON.parse(capturedRequest.options.body);
   assert.strictEqual(body.model, 'gpt-image-1');
   assert.strictEqual(body.prompt, 'A sunset over mountains');
@@ -79,7 +79,7 @@ async function main() {
   await assert.rejects(freshAction.run({ prompt: 'test', projectId: 'x', path: 'x.png' }), /OPENAI_API_KEY/);
   console.log('✓ generateImage refuses clearly when no key is configured');
 
-  process.env.OPENAI_API_KEY = 'test-key-123';
+  process.env.OPENAI_API_KEY = 'sk-test-key-123';
   delete require.cache[require.resolve('../config')];
 
   restoreFetch = stubFetch(async (url, options) => {
@@ -102,7 +102,8 @@ async function main() {
   const finalDoc = task.result[task.result.length - 1].text;
   assert(finalDoc.includes('## Cover Image'), 'final document should include a Cover Image section');
   assert(finalDoc.includes('A vivid rendering of'), 'final document should include the revised prompt');
-  assert(finalDoc.includes(`/files/content-studio-${task.id}/cover.png?exp=`), 'final document should include a working, signed file URL');  assert(global.__capturedImagePrompt.includes('cozy bakery storefront'), 'the image prompt must come from the dedicated imagePrompt step, not the raw task instruction');
+  assert(finalDoc.includes(`/files/content-studio-${task.id}/cover.png?exp=`), 'final document should include a working, signed file URL');
+  assert(global.__capturedImagePrompt.includes('cozy bakery storefront'), 'the image prompt must come from the dedicated imagePrompt step, not the raw task instruction');
 
   const projectId = `content-studio-${task.id}`;
   assert.strictEqual(fs.readFileSync(path.join(WORKSPACE_ROOT, projectId, 'cover.png'), 'utf-8'), 'fake-image-bytes');

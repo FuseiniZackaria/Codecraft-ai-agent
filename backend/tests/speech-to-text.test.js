@@ -3,7 +3,7 @@ const fs = require('fs');
 const path = require('path');
 const os = require('os');
 
-process.env.OPENAI_API_KEY = 'test-key';
+process.env.OPENAI_API_KEY = 'sk-test-key';
 
 const { loadPlugins } = require('../core/pluginLoader');
 const toolRegistry = require('../tools/ToolRegistry');
@@ -38,7 +38,7 @@ async function main() {
   });
   const result = await toolRegistry.call('speech.transcribe', { filePath: testVideoPath }, { role: 'test' });
   assert.strictEqual(capturedRequest.url, 'https://api.openai.com/v1/audio/transcriptions');
-  assert.strictEqual(capturedRequest.options.headers.Authorization, 'Bearer test-key');
+  assert.strictEqual(capturedRequest.options.headers.Authorization, 'Bearer sk-test-key');
   assert(capturedRequest.options.body instanceof FormData, 'body must be real multipart FormData, not JSON');
   assert.strictEqual(result.text, 'Hello, this is a test video about baking bread.');
   assert.strictEqual(result.duration, 5.2);
