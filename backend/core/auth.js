@@ -1,5 +1,6 @@
 const { createClient } = require('@supabase/supabase-js');
 const config = require('../config');
+const usageContext = require('./usage/context');
 
 const supabase = config.supabase.url && config.supabase.serviceKey
   ? createClient(config.supabase.url, config.supabase.serviceKey)
@@ -46,7 +47,8 @@ async function requireAuth(req, res, next) {
   const cached = getCached(token);
   if (cached) {
     req.user = cached;
-    return next();
+    // Everything this request does (agents, AI calls) is attributed to this person.
+    return usageContext.runForUser(cached, next);
   }
 
   let userData, userError;
@@ -84,7 +86,8 @@ async function requireAuth(req, res, next) {
   }
 
   const roleNames = (roleRows || []).map((r) => r.roles?.name).filter(Boolean);
-  const role = roleNames.includes('admin') ? 'admin' : 'client';
+  // Highest role wins; no role row = the least privilege (fail closed).
+  const role = roleNames.includes('owner') ? 'owner' : roleNames.includes('admin') ? 'admin' : 'client';
   let dashboardGoal = null;
   if (role === 'client') {
     try {
@@ -117,17 +120,29 @@ async function requireAuth(req, res, next) {
     // Already logged inside workspaceContext; never block the request on it.
   }
 
-  next();
+  // Everything this request does (agents, AI calls) is attributed to this person.
+  usageContext.runForUser(userObj, next);
 }
-/** Restricts a route to a specific role (or roles). Use AFTER requireAuth. */
+
+/**
+ * Restricts a route to a specific role (or roles). Use AFTER requireAuth.
+ * The owner can do everything an admin can: requireRole('admin') lets the
+ * owner through; requireRole('owner') is for owner-only routes.
+ */
 function requireRole(...allowedRoles) {
+  const allowed = new Set(allowedRoles);
+  if (allowed.has('admin')) allowed.add('owner');
   return (req, res, next) => {
     if (!req.user) return res.status(401).json({ error: 'Not authenticated' });
-    if (!allowedRoles.includes(req.user.role)) {
-      return res.status(403).json({ error: `This requires one of: ${allowedRoles.join(', ')}` });
+    if (!allowed.has(req.user.role)) {
+      return res.status(403).json({ error: allowedRoles.length === 1 && allowedRoles[0] === 'owner' ? 'Only the owner can do this.' : `This requires one of: ${allowedRoles.join(', ')}` });
     }
     next();
   };
 }
 
-module.exports = { requireAuth, requireRole };
+/** Admin-level access (admin or owner). */
+const isAdminRole = (role) => role === 'admin' || role === 'owner';
+const isOwner = (user) => user?.role === 'owner';
+
+module.exports = { requireAuth, requireRole, isAdminRole, isOwner };

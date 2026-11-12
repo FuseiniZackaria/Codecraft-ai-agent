@@ -109,4 +109,5 @@ module.exports = [
   'tests/briefing-report.test.js',
   'tests/briefing-dashboard-articles.test.js',
   'tests/dashboard-stats.test.js',
+  'tests/usage-caps.test.js',
 ];

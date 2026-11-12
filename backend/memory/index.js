@@ -30,7 +30,19 @@ function getMemory() {
   // shadow log file (backend/data/workspace_shadow.log). Phase 2.3b flips the
   // guard from "log on miss" to "throw on miss" once the shadow log confirms
   // every call site is passing workspaceId.
-  instance = withWorkspaceGuard(backing);
+  const guarded = withWorkspaceGuard(backing);
+  // Audit log reads are filtered for whoever is asking: only the owner sees
+  // other admins (team changes, their emails, usage and caps) - every reader
+  // (Console, dashboard, analytics, Ian's tools) gets the same view.
+  instance = new Proxy(guarded, {
+    get(target, prop, receiver) {
+      if (prop === 'getAuditLog') {
+        return async (...args) => require('../core/usage/visibility').filterForCurrentViewer(await target.getAuditLog(...args));
+      }
+      const value = Reflect.get(target, prop, receiver);
+      return typeof value === 'function' ? value.bind(target) : value;
+    },
+  });
   return instance;
 }
 

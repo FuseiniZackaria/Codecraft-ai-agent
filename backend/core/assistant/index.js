@@ -5,6 +5,7 @@ const { buildFrozenSystemPrompt, buildPerRequestContextBlock } = require('./syst
 const { buildTools } = require('./tools');
 const { invoke } = require('./handlers');
 const usage = require('./usage');
+const meter = require('../usage/meter'); // per-admin API usage + monthly caps
 const gemini = require('../providers/gemini');
 const anthropic = require('../providers/anthropic');
 const { startTimer } = require('../debugTiming');
@@ -121,6 +122,7 @@ async function runWithGemini({ message, scope = null, voice = false, workspaceId
 
   while (iterations < MAX_ITERATIONS) {
     iterations++;
+    await meter.check(); // monthly API credit cap (per admin) - before every model call
 
     const { model, chunks, attempts } = await gemini.startStream({
       model: config.assistant.model,
@@ -162,6 +164,11 @@ async function runWithGemini({ message, scope = null, voice = false, workspaceId
     }
 
     accumulateUsage(totalUsage, lastUsage);
+    if (lastUsage) {
+      const one = { input_tokens: 0, output_tokens: 0, cache_read_input_tokens: 0, cache_creation_input_tokens: 0 };
+      accumulateUsage(one, lastUsage);
+      await meter.record({ provider: 'gemini', model, agent: 'assistant', inputTokens: one.input_tokens + one.cache_read_input_tokens, outputTokens: one.output_tokens, costUsd: usage.costOf(model, one) });
+    }
     if (!usageByModel.has(model)) usageByModel.set(model, { input_tokens: 0, output_tokens: 0, cache_read_input_tokens: 0, cache_creation_input_tokens: 0 });
     accumulateUsage(usageByModel.get(model), lastUsage);
     timer.mark(`model call ${iterations}: stream done`, { model, finishReason, chars: currentTextBlock.length });
@@ -260,6 +267,7 @@ async function runWithClaude({ message, scope = null, voice = false, workspaceId
     iterations++;
     let final;
     let text = '';
+    await meter.check(); // monthly API credit cap (per admin) - before every model call
     try {
       const stream = anthropic.stream({ system, messages, tools, maxTokens: Math.max(config.assistant.maxTokens, 16000) });
       let first = true;
@@ -281,6 +289,13 @@ async function runWithClaude({ message, scope = null, voice = false, workspaceId
     }
 
     accumulateClaudeUsage(totalUsage, final.usage);
+    {
+      const u = final.usage || {};
+      await meter.record({
+        provider: 'anthropic', model: final.model, agent: 'assistant', costUsd: usage.costOf(final.model, u),
+        inputTokens: (u.input_tokens || 0) + (u.cache_read_input_tokens || 0) + (u.cache_creation_input_tokens || 0), outputTokens: u.output_tokens || 0,
+      });
+    }
     if (!usageByModel.has(final.model)) usageByModel.set(final.model, { input_tokens: 0, output_tokens: 0, cache_read_input_tokens: 0, cache_creation_input_tokens: 0 });
     accumulateClaudeUsage(usageByModel.get(final.model), final.usage);
     timer.mark(`model call ${iterations}: stream done`, { model: final.model, stopReason: final.stop_reason, chars: text.length });

@@ -51,14 +51,14 @@ async function businessHasOtherNumber(req, sessionName) {
   if (!config.waha.multiSession) return null;
   const recent = Date.now() - new Date(row.updated_at || 0).getTime() < SCAN_WINDOW_MS;
   if (row.status === 'WORKING' || (['STARTING', 'SCAN_QR_CODE'].includes(row.status) && recent)) {
-    return 'Your business already has a WhatsApp number linked by another admin. Each business links one number - ask them to disconnect it first.';
+    return 'Your business already has a WhatsApp number linked. Each business links one number - ask the owner to disconnect it first.';
   }
   return null;
 }
 
 const IN_USE_MESSAGE =
-  'WhatsApp is already connected by another admin. Only one admin can link WhatsApp at a time on this setup - ' +
-  'ask them to disconnect it first (or turn on WAHA_MULTI_SESSION so each admin gets their own).';
+  'WhatsApp is already linked on this setup, and only one number can be linked at a time - ' +
+  'ask the owner to disconnect it first (or turn on WAHA_MULTI_SESSION so each business gets its own).';
 const SCAN_WINDOW_MS = 5 * 60 * 1000; // a QR scan in progress reserves the shared session this long
 
 /**
@@ -248,7 +248,7 @@ router.post('/session/disconnect', async (req, res) => {
   try {
     const row = provider.name === 'waha' ? await store.getSessionByName(sessionName) : null;
     if (row && row.user_id !== req.user.id) {
-      return res.status(403).json({ error: 'Only the admin who connected this WhatsApp can disconnect it.' });
+      return res.status(403).json({ error: 'This WhatsApp was not connected from your account, so you cannot disconnect it - ask the owner.' });
     }
     await store.updateSession(sessionName, { disconnected_by_user: true }).catch(() => {});
     await provider.disconnect(sessionName);

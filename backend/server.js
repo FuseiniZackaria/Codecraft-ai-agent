@@ -82,6 +82,10 @@ app.use(express.json({ limit: '35mb', verify: (req, _res, buf) => { req.rawBody 
 // Mounted before the general /api login check below. (api/videoWorkerRoutes.js)
 app.use('/api/video-worker', require('./api/videoWorkerRoutes'));
 
+// Only the owner sees other admins: other people's ids and emails are blanked
+// out of every /api JSON answer to anyone else (core/usage/visibility.js).
+app.use('/api', require('./core/usage/visibility').hideOtherPeople);
+
 // Dev-only: once per minute, print one line summarizing how many requests
 // hit each route since the last tick, so the frontend's "flood check"
 // story is observable from the server side too. Silent in production and
@@ -137,7 +141,7 @@ app.get('/api/me', requireAuth, async (req, res) => {
     workspaceId: req.user.workspaceId || null,
     workspaceName: req.user.workspaceName || null,
     workspaceRole: req.user.workspaceRole || null,
-    isAppOwner: !!(ownerEmail && req.user.email?.toLowerCase() === ownerEmail.toLowerCase()),
+    isAppOwner: req.user.role === 'owner' || !!(ownerEmail && req.user.email?.toLowerCase() === ownerEmail.toLowerCase()),
   };
 
   // Setup checklist / welcome / tour: GET /api/onboarding (core/onboarding).
@@ -203,7 +207,9 @@ app.use('/api/analytics', requireAuth, requireRole('admin'), analyticsRoutes);
 // the companion extension which can't produce a Supabase login session.
 app.use('/api/browser', browserRoutes);
 app.use('/api/mcp', requireAuth, requireRole('admin'), mcpRoutes);
-app.use('/api/team', requireAuth, requireRole('admin'), teamRoutes);
+// Team (and everyone's usage) is the owner's only: other admins never see each other.
+app.use('/api/team', requireAuth, requireRole('owner'), teamRoutes);
+app.use('/api/usage', requireAuth, requireRole('admin'), require('./api/usageRoutes'));
 app.use('/api/business-profile', requireAuth, requireRole('admin'), businessProfileRoutes);
 // Knowledge base + agent tuning. To let clients edit their own later, allow
 // 'client' here too - core/workspaceAccess.js already checks the workspace role.

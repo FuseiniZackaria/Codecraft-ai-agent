@@ -251,6 +251,12 @@ export const api = {
     request(`/team/close/${userId}`, { method: 'POST', body: JSON.stringify({ action, confirmEmail }) }),
   enableAccount: (userId) => request(`/team/enable/${userId}`, { method: 'POST' }),
 
+  // --- API usage (estimated cost): own numbers for any admin; everyone's + caps for the owner ---
+  getMyUsage: () => request('/usage/me'),
+  getUsage: () => request('/usage'),
+  setUsageCap: (userId, monthlyCapUsd) =>
+    request(`/usage/caps/${encodeURIComponent(userId)}`, { method: 'PUT', body: JSON.stringify({ monthly_cap_usd: monthlyCapUsd }) }),
+
   // --- Workspace (admin-only observability) ---
   getWorkspaceShadowLog: (limit = 200) => request(`/workspace/shadow-log?limit=${limit}`),
   clearWorkspaceShadowLog: () => request('/workspace/shadow-log/clear', { method: 'POST' }),

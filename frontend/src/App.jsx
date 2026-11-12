@@ -103,7 +103,7 @@ export default function App() {
   // a new user object with the same id doesn't restart the whole timer.
   // Paused entirely while the tab is hidden; one catch-up refresh on return.
   useEffect(() => {
-    if (!user || user.role !== 'admin') return;
+    if (!user || (user.role !== 'admin' && user.role !== 'owner')) return;
     let timer;
     let stopped = false;
 

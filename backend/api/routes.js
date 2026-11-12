@@ -29,6 +29,7 @@ let gmailStatusCache = { at: 0, value: null };
 const GMAIL_STATUS_TTL_MS = 60_000;
 
 function isAppOwnerReq(req) {
+  if (req.user?.role === 'owner') return true;
   const ownerEmail = (process.env.APP_OWNER_EMAIL || config.applicant?.email || '').toLowerCase();
   return !!(ownerEmail && req.user?.email?.toLowerCase() === ownerEmail);
 }
@@ -185,6 +186,11 @@ router.post('/chat/stream', async (req, res) => {
     return;
   } catch (err) {
     timer.mark('assistant failed', { code: err.code || null, status: err.status || null, attempts: err.attempts || null });
+    // Monthly API credit cap: say so plainly (the fallback would be blocked by the same cap).
+    if (err.code === 'USAGE_CAP_REACHED') {
+      send({ type: 'error', error: err.message });
+      return res.end();
+    }
     if (err.code === 'GEMINI_UNAVAILABLE' || err.code === 'AI_UNAVAILABLE') {
       console.warn(`[chat/stream] ${err.message}`);
       send({ type: 'error', error: err.message });

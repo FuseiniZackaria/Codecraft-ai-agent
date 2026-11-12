@@ -24,10 +24,19 @@ function tokenOk(req) {
 router.use((req, res, next) => {
   if (!process.env.VIDEO_WORKER_TOKEN) return res.status(503).json({ error: 'VIDEO_WORKER_TOKEN is not set on the backend.' });
   if (!tokenOk(req)) return res.status(401).json({ error: 'Wrong worker token.' });
-  next();
+  usageContext.runAutomated(next); // no logged-in person; a job's own routes switch to its owner below
 });
 
 const workerIdOf = (req) => String(req.body?.workerId || '').replace(/[^\w.-]/g, '').slice(0, 80) || 'worker';
+
+// AI usage on a job (its plan, its post caption) counts for the person who started that video;
+// anything else the worker does with no job is "automated".
+const usageContext = require('../core/usage/context');
+router.param('id', (req, res, next, id) => {
+  jobs.getForWorker(id, workerIdOf(req))
+    .then((job) => (job?.user_id ? usageContext.runForUser({ id: job.user_id, email: null }, next) : usageContext.runAutomated(next)))
+    .catch(() => usageContext.runAutomated(next));
+});
 
 router.post('/heartbeat', (req, res) => {
   jobs.heartbeat(workerIdOf(req), req.body || {});

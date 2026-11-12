@@ -9,6 +9,9 @@ const whatsappMessaging = require('../core/whatsapp/messaging');
 
 const router = express.Router();
 
+// Webhooks (WhatsApp / Telegram auto-replies) belong to no logged-in person: their AI usage is "automated".
+router.use((req, res, next) => require('../core/usage/context').runAutomated(next));
+
 // ===================== HELPERS =====================
 
 async function resolveWorkspaceFromWebhookToken(provider, webhookToken) {

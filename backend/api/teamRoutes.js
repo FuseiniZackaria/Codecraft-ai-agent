@@ -40,9 +40,18 @@ function detectEmailTypo(email) {
 }
 
 function isAppOwner(req) {
+  if (req.user?.role === 'owner') return true; // the owner role (migration 0013)
   const ownerEmail = process.env.APP_OWNER_EMAIL || config.applicant?.email;
   return !!(ownerEmail && req.user?.email?.toLowerCase() === ownerEmail.toLowerCase());
 }
+
+/** The owner can never be removed, disabled or deleted through the app. */
+async function isOwnerAccount(userId) {
+  if (!supabase || !userId) return false;
+  const { data } = await supabase.from('user_roles').select('roles(name)').eq('user_id', userId);
+  return (data || []).some((r) => r.roles?.name === 'owner');
+}
+const OWNER_PROTECTED = 'The owner account cannot be removed, disabled or deleted.';
 
 // Invite links land on the app's set-password page. The origin is the admin's
 // own browser origin (the app), and must also be in Supabase -> Authentication
@@ -349,6 +358,7 @@ router.post('/resend/:userId', teamMutationLimiter, async (req, res) => {
       return res.status(404).json({ error: 'User not found.' });
     }
     const target = userData.user;
+    if (await isOwnerAccount(target.id)) return res.status(403).json({ error: OWNER_PROTECTED });
     if (target.last_sign_in_at) {
       return res.status(400).json({ error: 'This user has already signed in — no invite to resend.' });
     }
@@ -389,6 +399,7 @@ router.post('/cancel/:userId', teamMutationLimiter, async (req, res) => {
       return res.status(404).json({ error: 'User not found.' });
     }
     const target = userData.user;
+    if (await isOwnerAccount(target.id)) return res.status(403).json({ error: OWNER_PROTECTED });
     if (target.last_sign_in_at) {
       return res.status(400).json({ error: 'This user has already signed in — cannot cancel.' });
     }
@@ -451,6 +462,7 @@ router.delete('/:userId', teamMutationLimiter, async (req, res) => {
   if (req.user.workspaceRole !== 'owner' && !appOwner) {
     return res.status(403).json({ error: 'Only the workspace owner can remove team members.' });
   }
+  if (await isOwnerAccount(userId)) return res.status(403).json({ error: OWNER_PROTECTED });
 
   try {
     const adminRoleId = await getAdminRoleId();
@@ -588,6 +600,7 @@ router.post('/close/:userId', teamMutationLimiter, async (req, res) => {
     const loaded = await loadCloseTarget(req, res);
     if (!loaded) return;
     const { target, ownedWorkspaceIds } = loaded;
+    if (await isOwnerAccount(target.id)) return res.status(403).json({ error: OWNER_PROTECTED });
 
     const { action = 'disable', confirmEmail } = req.body || {};
     if (!['disable', 'delete'].includes(action)) {

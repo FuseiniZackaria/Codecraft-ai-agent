@@ -10,17 +10,8 @@ const config = require('../../config');
  * (ai.google.dev/gemini-api/docs/pricing, rising to $1.50 / $7.50 on
  * 2027-01-01) so the daily cap still means something if billing is on.
  */
-const PRICING = {
-  'gemini-3.8-flash':    { input: 0.75, output: 3.75 },
-  'gemini-3.5-flash-lite': { input: 0.30, output: 2.50 }, // fallback model
-  'claude-sonnet-5-5':   { input: 2.0,  output: 10.0 },
-  'claude-opus-5-5':     { input: 4.0,  output: 20.0 },
-  'claude-haiku-5-5':    { input: 0.10, output: 0.50 },
-  'claude-haiku-4-5':    { input: 1.0,  output: 5.0  },
-  'claude-opus-5':       { input: 5.0,  output: 25.0 }, // possible refusal-fallback model
-  'claude-opus-4-8':     { input: 5.0,  output: 25.0 }, // possible refusal-fallback model
-  'claude-sonnet-5':     { input: 2.0,  output: 10.0 }, // kept for compat
-};
+// The table lives in config/aiPrices.js (one place to edit when prices change).
+const PRICING = require('../../config/aiPrices');
 
 function costOf(model, usage) {
   const price = PRICING[model];

@@ -187,6 +187,11 @@ class BaseAgent {
    * Returns the task record with its final result.
    */
   async run(task) {
+    // Usage tracking: AI calls inside this run are labelled with this agent and task.
+    return require('../../core/usage/context').withDetails({ agent: this.key, taskId: task?.id || null }, () => this._run(task));
+  }
+
+  async _run(task) {
     const workspaceId = task?.workspace_id || null;
     // _currentTask lets createApprovalTask / reflect / remember fall back to
     // the parent task's workspace without every caller passing it. Cleared

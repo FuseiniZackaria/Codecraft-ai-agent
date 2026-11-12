@@ -85,7 +85,8 @@ export const NAV_ITEMS = [
     to: '/settings',
     tabs: [
       { label: 'General', to: '/settings', end: true },
-      { label: 'Team', to: '/settings/team' },
+      // The owner role only (migration 0013): team members and everyone's API usage.
+      { label: 'Team', to: '/settings/team', ownerRoleOnly: true },
       // Only the app owner (APP_OWNER_EMAIL) sees this tab: every client business's WhatsApp.
       { label: 'Clients', to: '/settings/clients', ownerOnly: true },
     ],

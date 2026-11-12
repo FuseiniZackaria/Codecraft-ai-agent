@@ -456,7 +456,7 @@ const WS = 'wwwwwwww-wwww-wwww-wwww-wwwwwwwwwwww';
     // Admin B is blocked with a clear message, sees "in use", and can't disconnect A
     const blocked = await api('POST', '/session/start', USER_B);
     assert.strictEqual(blocked.status, 409);
-    assert.ok(/already connected by another admin/.test(blocked.body.error));
+    assert.ok(/already linked on this setup/.test(blocked.body.error));
     assert.strictEqual((await api('GET', '/session', USER_B)).body.status, 'IN_USE');
     assert.strictEqual((await api('POST', '/session/disconnect', USER_B)).status, 403);
     assert.strictEqual((await store.getSessionByName('default')).user_id, USER_A, 'still A\'s');

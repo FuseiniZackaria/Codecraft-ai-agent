@@ -4,6 +4,7 @@ import { api } from '../services/api';
 import { FieldTag, FieldError, invalidCls, a11y, isEmailAddress } from '../components/ui/FormField';
 import { useStore } from '../store/useStore';
 import LoadingScreen from '../components/LoadingScreen';
+import TeamUsagePanel from '../components/usage/TeamUsagePanel';
 
 function formatDate(iso) {
   if (!iso) return 'Never';
@@ -810,8 +811,10 @@ export default function Team() {
   const user = useStore((s) => s.user);
   const isOwner = user?.workspaceRole === 'owner';
   const appOwner = user?.isAppOwner;
+  const ownerRole = user?.role === 'owner';
 
   async function refresh() {
+    if (!ownerRole) { setLoaded(true); return; }
     try {
       setError(null);
       setAdmins(await api.listTeam());
@@ -827,6 +830,19 @@ export default function Team() {
   }, []);
 
   const pendingCount = admins.filter((a) => a.pending).length;
+
+  // Team and everyone's usage belong to the owner only (the server refuses everyone else too).
+  if (!ownerRole) {
+    return (
+      <div className="p-4 md:p-6 max-w-3xl">
+        <div className="flex items-center gap-2 mb-1">
+          <Users size={20} className="text-[var(--color-accent)] shrink-0" />
+          <h1 className="font-[var(--font-display)] text-xl font-semibold truncate">Team</h1>
+        </div>
+        <p className="text-sm text-[var(--color-text-muted)]">Only the owner can manage the team.</p>
+      </div>
+    );
+  }
 
   return (
     <div className="p-4 md:p-6 max-w-3xl">
@@ -845,6 +861,8 @@ export default function Team() {
           {isOwner ? ' Team members share your workspace data; new businesses get their own.' : ''}
         </div>
       </div>
+
+      <TeamUsagePanel />
 
       <AddAdminForm onAdded={refresh} />
 

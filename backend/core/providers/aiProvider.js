@@ -19,8 +19,17 @@ module.exports = {
   speed: 'fast',
 
   async complete(opts) {
-    if (config.llm.provider === 'anthropic') return completeWithClaude(opts);
-    return completeWithGemini(opts);
+    // Monthly cap first (throws "Monthly API credit cap reached..."), then one usage row per call.
+    const meter = require('../usage/meter');
+    await meter.check();
+    const claude = config.llm.provider === 'anthropic';
+    const result = claude ? await completeWithClaude(opts) : await completeWithGemini(opts);
+    await meter.record({
+      provider: claude ? 'anthropic' : 'gemini',
+      model: result.model || (claude ? (opts.claudeModel || config.anthropic.model) : config.llm.model),
+      inputTokens: result.inputTokens, outputTokens: result.outputTokens, costUsd: result.costEstimate,
+    });
+    return result;
   },
 };
 
@@ -89,6 +98,7 @@ async function completeWithGemini({ prompt, system, maxTokens = 1000, history = 
     const costEstimate = costOf(model, { input_tokens: inputTokens, output_tokens: outputTokens });
     return {
       provider: 'ai',
+      model, // the model that actually answered (may be the fallback)
       text,
       costEstimate,
       inputTokens,
@@ -136,6 +146,7 @@ async function completeWithClaude({ prompt, system, maxTokens = 1000, history = 
   const u = final.usage || {};
   return {
     provider: 'ai',
+    model: final.model,
     text,
     costEstimate: costOf(final.model, u),
     inputTokens: (u.input_tokens || 0) + (u.cache_read_input_tokens || 0) + (u.cache_creation_input_tokens || 0),

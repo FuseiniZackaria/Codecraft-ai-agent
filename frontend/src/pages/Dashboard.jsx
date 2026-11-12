@@ -18,6 +18,7 @@ const BrandMark = () => <Logo onDark size={20} />;
 const TITLE_IDLE_REPLAY_MS = 25000;
 import { KpiCard, TaskStatusBar, TasksPerDayChart, RecentTasksTable } from '../components/dashboard/DashboardWidgets';
 import StatusPill from '../components/StatusPill';
+import MyUsageMeter from '../components/usage/MyUsageMeter';
 
 // The setup checklist (welcome / tour / checklist live in components/onboarding).
 function SetupCard() {
@@ -128,6 +129,8 @@ export default function Dashboard() {
               })}
             </ul>
           </Card>
+          {/* Your own estimated AI spend this month (the owner sees everyone's on Settings -> Team). */}
+          <MyUsageMeter />
         </div>
       </div>
     </div>

@@ -28,8 +28,11 @@ router.get('/stream', async (req, res) => {
   // background activity and go to the app owner's workspace only.
   const ws = req.user?.workspaceId || null;
   const legacyOk = await canSeeLegacy(ws);
+  const { canSee } = require('../core/usage/visibility');
   const visible = (event) => {
     if (!ws) return false;
+    // Only the owner sees other admins (team changes, their emails, usage and caps).
+    if (!canSee(event, req.user)) return false;
     const eventWs = event?.metadata?.workspaceId || event?.metadata?.workspace_id || null;
     return eventWs ? eventWs === ws : legacyOk;
   };

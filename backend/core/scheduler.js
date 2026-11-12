@@ -312,8 +312,11 @@ async function start() {
   await migrateLegacyGmailTriage().catch((err) => console.warn(`[scheduler] legacy migration failed: ${err.message}`));
 
   console.log('[scheduler] started - checking workflows every minute');
-  tick(); // also check immediately at startup
-  timer = setInterval(tick, TICK_INTERVAL_MS);
+  // Scheduled work belongs to no one: its AI usage goes to the "automated" bucket.
+  const { runAutomated } = require('./usage/context');
+  const automatedTick = () => runAutomated(tick);
+  automatedTick(); // also check immediately at startup
+  timer = setInterval(automatedTick, TICK_INTERVAL_MS);
 }
 
 function stop() {

@@ -17,7 +17,7 @@ const EDIT_ROLES = new Set(['owner', 'editor']);
 function canEditKnowledge(user) {
   if (!user?.workspaceId) return false;
   // Workspace role unknown (older login path) but a global admin: allow, as before.
-  if (!user.workspaceRole) return user.role === 'admin';
+  if (!user.workspaceRole) return user.role === 'admin' || user.role === 'owner';
   return EDIT_ROLES.has(user.workspaceRole);
 }
 

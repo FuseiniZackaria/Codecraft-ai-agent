@@ -68,6 +68,8 @@ const TABLES = [
   'whatsapp_consent',       // migration 0010
   'video_jobs',             // migration 0011
   'brand_kits',             // migration 0011
+  'api_usage',              // migration 0013
+  'usage_caps',             // migration 0013
   'workflow_connections',   // reserved for Phase 2; may not exist yet
   'workflow_definitions',
   'workflow_members',       // reserved for Phase 2; may not exist yet

@@ -17,6 +17,7 @@ const { normalizeNumber } = require('../core/whatsapp/phone');
 const router = express.Router();
 
 function isAppOwner(req) {
+  if (req.user?.role === 'owner') return true;
   const ownerEmail = (process.env.APP_OWNER_EMAIL || config.applicant?.email || '').toLowerCase();
   return !!(ownerEmail && req.user?.email?.toLowerCase() === ownerEmail);
 }
