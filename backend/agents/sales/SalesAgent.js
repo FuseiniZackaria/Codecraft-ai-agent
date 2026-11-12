@@ -23,6 +23,21 @@ const OUTREACH_STYLE =
   'signature, the owner\'s name and title, business name and contact details from the business context. ' +
   'Never leave a placeholder like [Your Name].';
 
+/**
+ * What THIS lead search is offering - from the request ("What I'm selling: ...",
+ * or "find ... that need professional drivers") - so drafts pitch that, not
+ * whatever the business profile usually sells. Empty string when not stated.
+ */
+function campaignOfferLine(ctx) {
+  const offer = String(ctx?.offer || '').trim() || (ctx?.need ? `${String(ctx.need).trim()} (they need it; we provide it)` : '');
+  if (!offer) return '';
+  return `THIS CAMPAIGN'S OFFER: ${offer}.\n` +
+    'The whole message is about this offer: open with why they need it (from the lead data), make the value paragraph ' +
+    'about it, and in "who we are" present the business only as providing it. Do NOT pitch websites, graphic design, ' +
+    'AI or any other service from the business context unless it IS this offer. Use each lead\'s own "offer" and ' +
+    '"reason" lines when given.\n\n';
+}
+
 function applicantProfileLine() {
   const p = config.applicant || {};
   const parts = [];
@@ -903,13 +918,15 @@ class SalesAgent extends BaseAgent {
           const draftResult = await provider.complete({
             maxTokens: Math.min(16000, 2000 + emailLeads.length * 700),
             system:
-              `${businessLine}For each lead below, draft a genuinely personalized outreach email. Use only what the ` +
+              `${businessLine}${campaignOfferLine(ctx)}For each lead below, draft a genuinely personalized outreach email. Use only what the ` +
               'lead data says about that business - never claim they lack something unless the data says so.\n\n' +
               `${OUTREACH_STYLE}\n\n` +
               'Respond with ONLY a JSON array (use \\n\\n between paragraphs in "body"): ' +
               '[{"name": "...", "email": "...", "subject": "...", "body": "..."}]',
+            // `offer` and `reason` are what the lead search worked out for each lead (shown on the approval card too).
             prompt: JSON.stringify(emailLeads.map((l) => ({
               name: l.name, email: l.email, type: l.type, location: l.location,
+              offer: l.offer || null, reason: l.reason || null,
               needsWebsiteReason: l.needsWebsiteReason, activityLevel: l.activityLevel,
             }))),
           });
@@ -960,12 +977,13 @@ class SalesAgent extends BaseAgent {
           const draftResult = await provider.complete({
             maxTokens: 2000,
             system:
-              'For each lead below, draft a short WhatsApp message (under 80 words). ' +
+              `${campaignOfferLine(ctx)}For each lead below, draft a short WhatsApp message (under 80 words). ` +
               'Mention something real about the business. Friendly, professional tone suited to ' +
               'Ghanaian small-business owners. Start with a greeting. Respond with ONLY a JSON array: ' +
               '[{"name": "...", "phone": "...", "message": "..."}]',
             prompt: JSON.stringify(whatsappOnlyLeads.map((l) => ({
               name: l.name, phone: l.phone, type: l.type, location: l.location,
+              offer: l.offer || null, reason: l.reason || null,
               needsWebsiteReason: l.needsWebsiteReason,
             }))),
           });
@@ -1008,12 +1026,13 @@ class SalesAgent extends BaseAgent {
           const draftResult = await provider.complete({
             maxTokens: 2000,
             system:
-              'For each lead below, draft a short DM (under 60 words) suitable for Instagram, ' +
+              `${campaignOfferLine(ctx)}For each lead below, draft a short DM (under 60 words) suitable for Instagram, ` +
               'Facebook, or other social platforms. Mention something specific about the business. ' +
               'Friendly, professional, suited to Ghanaian small-business owners. ' +
               'Respond with ONLY a JSON array: [{"name": "...", "message": "..."}]',
             prompt: JSON.stringify(socialOnlyLeads.map((l) => ({
               name: l.name, type: l.type, location: l.location,
+              offer: l.offer || null, reason: l.reason || null,
               needsWebsiteReason: l.needsWebsiteReason,
               platforms: (l.platforms || []).map((p) => p.platform),
             }))),
@@ -1174,4 +1193,4 @@ class SalesAgent extends BaseAgent {
   }
 }
 
-module.exports = SalesAgent;module.exports._internals = { parseLeadContext, findContact, extractPhone, buildLeadQueries, targetRoles };
+module.exports = SalesAgent;module.exports._internals = { parseLeadContext, campaignOfferLine, findContact, extractPhone, buildLeadQueries, targetRoles };

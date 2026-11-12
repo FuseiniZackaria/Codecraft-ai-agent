@@ -67,3 +67,16 @@ assert.strictEqual(hotels.target, 'hotel');
 assert.strictEqual(hotels.count, 5);
 assert.ok(buildLeadQueries(hotels, ['google_maps']).every((q) => !/lead/i.test(q)), 'no "lead" in searches');
 console.log('✓ "hotel leads" searches for hotels');
+
+// Drafts pitch what THIS search is about, not the business profile's usual services
+// ("find logistics companies that need professional drivers" -> emails about drivers, not websites).
+const { campaignOfferLine } = require('../agents/sales/SalesAgent')._internals;
+const drivers = parseLeadContext('Find 5 logistics companies in Accra that needs professional drivers');
+assert.strictEqual(drivers.need, 'professional drivers');
+const line = campaignOfferLine(drivers);
+assert.ok(/THIS CAMPAIGN'S OFFER: professional drivers/.test(line), line);
+assert.ok(/Do NOT pitch websites, graphic design, AI/.test(line));
+assert.ok(/"offer" and "reason"/.test(line), "each lead's own offer/reason lines are used");
+assert.ok(/AI in Marketing Course/.test(campaignOfferLine(ctx2)), 'a stated "What I\'m selling" wins');
+assert.strictEqual(campaignOfferLine(parseLeadContext('Find 10 restaurants in Accra')), '', 'nothing stated: the business profile decides, as before');
+console.log('✓ drafts pitch this search\'s offer (e.g. professional drivers), not the profile\'s other services');
