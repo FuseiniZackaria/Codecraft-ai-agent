@@ -257,7 +257,7 @@ export const api = {
   // --- My computer (Computer Helper): only the signed-in person's OWN computer ---
   getMyComputer: () => request('/computer'),
   connectMyComputer: () => request('/computer/connect', { method: 'POST' }),
-  getComputerHelper: (code) => request(`/computer/helper${code ? `?code=${encodeURIComponent(code)}` : ''}`),
+  getComputerHelper: (code, format = '') => request(`/computer/helper?code=${encodeURIComponent(code || '')}${format ? `&format=${encodeURIComponent(format)}` : ''}`),
   pauseMyComputer: (id, paused) => request(`/computer/devices/${encodeURIComponent(id)}/pause`, { method: 'POST', body: JSON.stringify({ paused }) }),
   disconnectMyComputer: (id) => request(`/computer/devices/${encodeURIComponent(id)}`, { method: 'DELETE' }),
   getUsage: () => request('/usage'),

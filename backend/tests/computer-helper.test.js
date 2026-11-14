@@ -176,6 +176,19 @@ async function main() {
     fs.rmSync(file, { force: true });
     console.log('✓ the downloadable helper keeps every safety rule (folders, blocked types, app list, delete cap)');
 
+    // --- Windows double-click file: same helper, packed after a marker line ---
+    const { buildWindowsLauncher } = require('../core/computerOperator/helperBundle');
+    const cmd = buildWindowsLauncher({ serverUrl: 'https://example.onrender.com', pairCode: 'ABCD-2345' });
+    assert.ok(cmd.startsWith('@echo off\r\n'), 'a Windows batch file');
+    assert.ok(!/[^\r]\n/.test(cmd), 'Windows line endings throughout');
+    assert.ok(!/[^\x00-\x7F]/.test(cmd), 'plain ASCII, so it unpacks unchanged');
+    const lines = cmd.split('\r\n');
+    const at = lines.indexOf(':__CODECRAFT_JS__');
+    assert.ok(at > 0 && lines.indexOf(':__CODECRAFT_JS__', at + 1) === -1, 'exactly one marker line');
+    assert.ok(lines.slice(0, at).includes('exit /b'), 'the batch part stops before the script');
+    assert.ok(lines.slice(at + 1).join('\n').includes('"ABCD-2345"'), 'the helper (with its code) follows the marker');
+    console.log('✓ the Windows double-click file carries the same helper');
+
     console.log('\ncomputer-helper: all checks passed');
   } finally {
     config.computerOperator.allowedRoots = originalRoots;

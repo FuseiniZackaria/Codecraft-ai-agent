@@ -1,7 +1,7 @@
 const express = require('express');
 const config = require('../config');
 const devices = require('../core/computerOperator/devices');
-const { buildHelper } = require('../core/computerOperator/helperBundle');
+const { buildHelper, buildWindowsLauncher } = require('../core/computerOperator/helperBundle');
 const activityLog = require('../core/activityLog');
 
 /**
@@ -39,11 +39,14 @@ function publicServerUrl(req) {
   return fromEnv || `${req.protocol}://${req.get('host')}`;
 }
 
-// The helper program, as text, with this server's address (and the connect code, if given) built in.
+// The helper program (?format=windows: a double-click .cmd), as text, with this server's address (and the connect code, if given) built in.
 router.get('/helper', async (req, res) => {
   try {
     const code = String(req.query.code || '').toUpperCase();
-    res.json({ filename: 'codecraft-computer-helper.js', content: buildHelper({ serverUrl: publicServerUrl(req), pairCode: code }) });
+    const opts = { serverUrl: publicServerUrl(req), pairCode: code };
+    // Windows: one file to double-click. Others: the plain script, run with node.
+    if (req.query.format === 'windows') return res.json({ filename: 'codecraft-computer-helper.cmd', content: buildWindowsLauncher(opts) });
+    res.json({ filename: 'codecraft-computer-helper.js', content: buildHelper(opts) });
   } catch (err) {
     res.status(400).json({ error: err.message });
   }

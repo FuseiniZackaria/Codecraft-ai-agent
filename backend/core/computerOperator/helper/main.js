@@ -50,32 +50,88 @@ function isDriveRoot(p) {
   return r === path.parse(r).root;
 }
 
+/** Yes/no question; Enter = the default. */
+async function yesNo(rl, q, def) {
+  for (;;) {
+    const a = (await ask(rl, `${q} ${def ? '[Y/n]' : '[y/N]'} `)).toLowerCase();
+    if (!a) return def;
+    if (['y', 'yes'].includes(a)) return true;
+    if (['n', 'no'].includes(a)) return false;
+    console.log('  Please type Y for yes or N for no.');
+  }
+}
+
+/** The normal Windows "choose a folder" window. Returns '' if closed or not on Windows. */
+function folderWindow() {
+  if (process.platform !== 'win32') return '';
+  try {
+    const ps =
+      "[Console]::OutputEncoding=[Text.Encoding]::UTF8; Add-Type -AssemblyName System.Windows.Forms; " +
+      "$f=New-Object System.Windows.Forms.Form; $f.TopMost=$true; " +
+      "$d=New-Object System.Windows.Forms.FolderBrowserDialog; $d.Description='Choose a folder the Codecraft AI may look at'; " +
+      "if($d.ShowDialog($f) -eq 'OK'){ [Console]::Out.Write($d.SelectedPath) }";
+    return require('child_process').execFileSync('powershell.exe', ['-NoProfile', '-STA', '-Command', ps], { encoding: 'utf8', windowsHide: true }).trim();
+  } catch {
+    return '';
+  }
+}
+
+function checkFolder(p) {
+  try {
+    if (!fs.statSync(p).isDirectory()) return `${p} is not a folder`;
+  } catch {
+    return `${p} does not exist`;
+  }
+  if (isDriveRoot(p)) return `${p} is a whole drive - please choose a specific folder instead`;
+  return null;
+}
+
+async function chooseOtherFolder(rl) {
+  let p = folderWindow();
+  if (!p) {
+    if (process.platform === 'win32') console.log('  (No folder chosen in the window.)');
+    p = (await ask(rl, '  Or type (or paste) the folder\'s full path, or press Enter to skip: ')).replace(/^"|"$/g, '');
+  }
+  return p;
+}
+
 async function pickFolders(rl) {
-  const sugg = suggestedFolders();
-  console.log('\nWhich folders may the AI look at? Nothing outside them is ever touched.');
-  if (sugg.length) {
-    console.log('Suggestions:');
-    sugg.forEach((p, i) => console.log(`  ${i + 1}. ${p}`));
-    console.log('Type numbers (e.g. 1,2), full folder paths, or both, separated by commas.');
-  } else {
-    console.log('Type full folder paths, separated by commas.');
+  console.log('\nWhich folders may the AI look at? It can never see anything outside them.\n');
+  const picked = [];
+  for (const p of suggestedFolders()) {
+    if (await yesNo(rl, `Share your ${path.basename(p)} folder?`, true)) picked.push(path.resolve(p));
   }
   for (;;) {
-    const raw = await ask(rl, '> ');
-    const picked = [];
-    let bad = null;
-    for (const part of raw.split(',').map((x) => x.trim().replace(/^"|"$/g, '')).filter(Boolean)) {
-      const p = /^\d+$/.test(part) ? sugg[Number(part) - 1] : part;
-      if (!p) { bad = `"${part}" is not one of the numbers above`; break; }
-      try {
-        if (!fs.statSync(p).isDirectory()) { bad = `${p} is not a folder`; break; }
-      } catch { bad = `${p} does not exist`; break; }
-      if (isDriveRoot(p)) { bad = `${p} is a whole drive - please pick specific folders instead`; break; }
-      picked.push(path.resolve(p));
+    const more = await yesNo(rl, picked.length ? 'Add another folder?' : 'Choose a folder to share?', !picked.length);
+    if (!more) {
+      if (picked.length) break;
+      console.log('  The AI needs at least one folder to work with.');
+      continue;
     }
-    if (bad) { console.log(`  ${bad}. Try again.`); continue; }
-    if (!picked.length) { console.log('  Pick at least one folder.'); continue; }
-    return [...new Set(picked)];
+    const p = await chooseOtherFolder(rl);
+    if (!p) continue;
+    const bad = checkFolder(p);
+    if (bad) { console.log(`  ${bad}.`); continue; }
+    picked.push(path.resolve(p));
+    console.log(`  Added ${path.resolve(p)}`);
+  }
+  return [...new Set(picked)];
+}
+
+// ---- Start automatically when the PC starts (Windows) ----
+function startupFile() {
+  if (process.platform !== 'win32' || !process.env.APPDATA) return null;
+  return path.join(process.env.APPDATA, 'Microsoft', 'Windows', 'Start Menu', 'Programs', 'Startup', 'Codecraft Computer Helper.cmd');
+}
+function setAutoStart(on) {
+  const f = startupFile();
+  if (!f) return false;
+  try {
+    if (on) fs.writeFileSync(f, `@echo off\r\nstart "Codecraft Computer Helper" /min "${process.execPath}" "${__filename}"\r\n`);
+    else fs.rmSync(f, { force: true });
+    return true;
+  } catch {
+    return false;
   }
 }
 
@@ -119,17 +175,24 @@ function sharedLine(s) {
   return { name: s.name || os.hostname(), roots: s.roots || [], apps: Object.keys(s.apps || {}) };
 }
 
-async function setup(existing) {
+async function setup(existing, { advanced = false } = {}) {
   const rl = readline.createInterface({ input: process.stdin, output: process.stdout });
   try {
-    console.log('\n=== Codecraft Computer Helper - setup ===');
-    console.log('This lets the Codecraft AI search, open and (only with your approval on the Tasks page)');
-    console.log('move files to the Recycle Bin - ONLY in the folders you pick, ONLY on this computer,');
-    console.log('and ONLY for your own requests. Close this window any time to stop it.');
+    console.log('\n=== Codecraft Computer Helper ===');
+    console.log('This lets the Codecraft AI find and open your files, and - only after you approve');
+    console.log('it on the Tasks page - move files to the Recycle Bin. ONLY in the folders you pick,');
+    console.log('ONLY on this computer, and ONLY for your own requests.');
+    console.log('Just answer the questions below: press Enter for the suggested answer.');
     const s = { ...(existing || {}), version: VERSION, server: (existing && existing.server) || __SERVER_URL };
     s.roots = await pickFolders(rl);
-    s.apps = await pickApps(rl);
+    // Apps the AI may start: only for people who ask for it (--advanced).
+    if (advanced) s.apps = await pickApps(rl);
+    else s.apps = s.apps || {};
     s.name = os.hostname();
+    if (startupFile()) {
+      const on = await yesNo(rl, '\nStart this helper automatically when you turn on this computer?', true);
+      s.autoStart = setAutoStart(on) ? on : false;
+    }
     if (!s.token) {
       let code = __PAIR_CODE;
       for (;;) {
@@ -152,7 +215,8 @@ async function setup(existing) {
       }
     }
     saveSettings(s);
-    console.log(`\nConnected. Settings saved in ${CONFIG_FILE}`);
+    console.log('\nAll set! Your computer is connected.');
+    console.log('Go back to the app and ask Ian, for example: "find my biggest files".');
     return s;
   } finally {
     rl.close();
@@ -168,7 +232,7 @@ async function loop(s) {
   const { runOp } = __req('./ops');
   console.log(`\nSharing: ${s.roots.join(', ')}`);
   if (Object.keys(s.apps || {}).length) console.log(`Apps: ${Object.keys(s.apps).join(', ')}`);
-  console.log('Waiting for your requests... (keep this window open; close it to stop)\n');
+  console.log('Ready. Keep this window open (you can minimize it). Close it to stop the AI reaching this computer.\n');
   const waits = [5, 15, 30, 60];
   let fails = 0;
   let wasPaused = false;
@@ -186,6 +250,7 @@ async function loop(s) {
     if (r.status === 401) {
       console.log('\nThis computer was disconnected on the "My computer" page.');
       try { fs.unlinkSync(CONFIG_FILE); } catch { /* gone */ }
+      setAutoStart(false);
       console.log('To connect again, get a new code on the page and run this helper again.');
       process.exit(0);
     }
@@ -228,10 +293,12 @@ async function main() {
   const args = process.argv.slice(2);
   if (args.includes('--forget')) {
     try { fs.unlinkSync(CONFIG_FILE); } catch { /* none */ }
+    setAutoStart(false);
     console.log('Forgot this computer\'s settings. Also click Disconnect on the "My computer" page.');
     return;
   }
   let s = loadSettings();
-  if (!s || !s.token || args.includes('--change-folders')) s = await setup(s);
+  const advanced = args.includes('--advanced');
+  if (!s || !s.token || advanced || args.includes('--change-folders')) s = await setup(s, { advanced });
   await loop(s);
 }

@@ -38,9 +38,12 @@ function CopyButton({ text, label = 'Copy' }) {
   );
 }
 
-async function downloadHelper(code) {
-  const { filename, content } = await api.getComputerHelper(code);
-  const url = URL.createObjectURL(new Blob([content], { type: 'text/javascript' }));
+const IS_WINDOWS = typeof navigator !== 'undefined' && /Windows/i.test(navigator.userAgent || '');
+
+// windows: one .cmd file to double-click; otherwise the plain script for `node`.
+async function downloadHelper(code, windows = IS_WINDOWS) {
+  const { filename, content } = await api.getComputerHelper(code, windows ? 'windows' : '');
+  const url = URL.createObjectURL(new Blob([content], { type: windows ? 'application/octet-stream' : 'text/javascript' }));
   const a = document.createElement('a');
   a.href = url;
   a.download = filename;
@@ -178,80 +181,101 @@ export default function MyComputer() {
           </div>
 
           <p className="text-[11px] text-[var(--color-text-muted)]">
-            To change folders or apps, run <code className="font-[var(--font-mono)] break-all">{RUN_CMD} --change-folders</code> on your PC. The website can show this list but can never change it.
+            To share different folders, click Disconnect, then connect again and pick them. The website can show this list but can never change it.
           </p>
         </div>
       )}
 
       {data && !device && (
         <div className="rounded-lg border border-[var(--color-border)] bg-[var(--color-surface)] p-4 mb-4">
-          <div className="text-sm font-medium mb-3">Connect this computer</div>
-          <ol className="space-y-3 text-sm">
-            <li className="flex gap-2">
-              <span className="text-[var(--color-accent)] font-semibold shrink-0">1.</span>
+          <div className="text-sm font-medium">Connect this computer</div>
+          <div className="text-xs text-[var(--color-text-muted)] mb-4">Takes about a minute. Do this on the computer you want the AI to reach.</div>
+
+          <ol className="space-y-4 text-sm">
+            <li className="flex gap-3">
+              <span className="flex h-6 w-6 items-center justify-center rounded-full bg-[var(--color-accent)]/15 text-[var(--color-accent)] text-xs font-semibold shrink-0">1</span>
+              <div className="min-w-0 flex-1">
+                <button
+                  type="button"
+                  disabled={busy}
+                  onClick={() => run(async () => {
+                    let p = pairing;
+                    if (!p || codeExpired) {
+                      const fresh = await api.connectMyComputer();
+                      p = { code: fresh.code, expiresAt: fresh.expiresAt };
+                      setPairing(p);
+                    }
+                    await downloadHelper(p.code);
+                  })}
+                  className="flex items-center justify-center gap-2 w-full sm:w-auto px-4 py-2.5 rounded-md text-sm font-medium bg-[var(--color-accent)] text-white disabled:opacity-50"
+                >
+                  {busy ? <Loader2 size={15} className="animate-spin" /> : <Download size={15} />}
+                  {pairing && !codeExpired ? 'Download again' : IS_WINDOWS ? 'Download the helper' : 'Download the helper for Windows'}
+                </button>
+              </div>
+            </li>
+            <li className="flex gap-3">
+              <span className="flex h-6 w-6 items-center justify-center rounded-full bg-[var(--color-accent)]/15 text-[var(--color-accent)] text-xs font-semibold shrink-0">2</span>
               <div className="min-w-0">
-                Install <a href="https://nodejs.org" target="_blank" rel="noreferrer" className="text-[var(--color-accent)] underline">Node.js</a> (version 18 or newer) on the computer you want to connect, if it isn't there already.
-              </div>
-            </li>
-            <li className="flex gap-2">
-              <span className="text-[var(--color-accent)] font-semibold shrink-0">2.</span>
-              <div className="min-w-0 flex-1">
-                <div className="mb-2">Get a connect code and download the helper (the code is built in).</div>
-                {!pairing || codeExpired ? (
-                  <button
-                    type="button"
-                    disabled={busy}
-                    onClick={() => run(async () => {
-                      const p = await api.connectMyComputer();
-                      setPairing({ code: p.code, expiresAt: p.expiresAt });
-                      await downloadHelper(p.code);
-                    })}
-                    className="flex items-center gap-1.5 px-3 py-2 rounded-md text-sm bg-[var(--color-accent)] text-white disabled:opacity-50"
-                  >
-                    {busy ? <Loader2 size={14} className="animate-spin" /> : <Download size={14} />}
-                    {codeExpired ? 'Code expired - get a new one' : 'Get code & download helper'}
-                  </button>
-                ) : (
-                  <div className="rounded-md border border-[var(--color-border)] p-3">
-                    <div className="text-xs text-[var(--color-text-muted)] mb-1">Your connect code (works once, for 10 minutes)</div>
-                    <div className="flex items-center gap-2 flex-wrap">
-                      <span className="font-[var(--font-mono)] text-xl tracking-widest">{pairing.code}</span>
-                      <CopyButton text={pairing.code} />
-                      <button
-                        type="button"
-                        onClick={() => run(() => downloadHelper(pairing.code))}
-                        className="flex items-center gap-1 text-[11px] px-2 py-1 rounded-md border border-[var(--color-border)] text-[var(--color-text-muted)] hover:text-[var(--color-accent)]"
-                      >
-                        <Download size={11} /> Download again
-                      </button>
-                    </div>
-                  </div>
-                )}
-              </div>
-            </li>
-            <li className="flex gap-2">
-              <span className="text-[var(--color-accent)] font-semibold shrink-0">3.</span>
-              <div className="min-w-0 flex-1">
-                <div className="mb-2">Open a terminal in your Downloads folder and run:</div>
-                <div className="flex items-center gap-2 rounded-md border border-[var(--color-border)] bg-black/30 px-3 py-2">
-                  <code className="font-[var(--font-mono)] text-xs flex-1 break-all">{RUN_CMD}</code>
-                  <CopyButton text={RUN_CMD} />
-                </div>
+                <div><b>Open the file you just downloaded</b> (double-click it, or click it at the bottom of your browser).</div>
                 <div className="text-xs text-[var(--color-text-muted)] mt-1">
-                  On Windows: open Downloads, click the address bar, type <code className="font-[var(--font-mono)]">cmd</code>, press Enter, then paste the line above.
+                  If your browser or Windows shows a warning, choose <b>Keep</b>, or <b>More info</b> then <b>Run anyway</b>. The helper only works on this computer, in the folders you choose.
                 </div>
               </div>
             </li>
-            <li className="flex gap-2">
-              <span className="text-[var(--color-accent)] font-semibold shrink-0">4.</span>
-              <div className="min-w-0">Pick the folders the AI may look at. Keep the helper window open while you want the AI to reach your computer.</div>
+            <li className="flex gap-3">
+              <span className="flex h-6 w-6 items-center justify-center rounded-full bg-[var(--color-accent)]/15 text-[var(--color-accent)] text-xs font-semibold shrink-0">3</span>
+              <div className="min-w-0">
+                <div><b>Answer the questions</b> in the window that opens: press <b>Enter</b> to say yes, or type <b>N</b> and press Enter to say no.</div>
+                <div className="text-xs text-[var(--color-text-muted)] mt-1">If it says it needs Node.js, it installs it or opens the download page. Install it, then open the file again.</div>
+              </div>
             </li>
           </ol>
+
           {pairing && !codeExpired && (
-            <div className="mt-3 flex items-center gap-2 text-xs text-[var(--color-text-muted)]">
-              <Loader2 size={12} className="animate-spin" /> Waiting for your computer to connect…
+            <div className="mt-4 rounded-md border border-[var(--color-border)] p-3 flex items-center justify-between gap-2 flex-wrap">
+              <div className="flex items-center gap-2 text-xs text-[var(--color-text-muted)]">
+                <Loader2 size={12} className="animate-spin shrink-0" /> Waiting for your computer to connect…
+              </div>
+              <div className="flex items-center gap-2 text-xs text-[var(--color-text-muted)]">
+                If it asks for a code: <span className="font-[var(--font-mono)] text-sm text-[var(--color-text)] tracking-widest">{pairing.code}</span>
+                <CopyButton text={pairing.code} />
+              </div>
             </div>
           )}
+
+          <details className="mt-4 text-xs text-[var(--color-text-muted)]">
+            <summary className="cursor-pointer select-none hover:text-[var(--color-accent)]">Using a Mac or Linux, or having trouble?</summary>
+            <div className="mt-2 space-y-2">
+              <div>
+                1. Install <a href="https://nodejs.org" target="_blank" rel="noreferrer" className="text-[var(--color-accent)] underline">Node.js</a> (the LTS version).
+              </div>
+              <div className="flex items-center gap-2 flex-wrap">
+                2.
+                <button
+                  type="button"
+                  disabled={busy}
+                  onClick={() => run(async () => {
+                    let p = pairing;
+                    if (!p || codeExpired) {
+                      const fresh = await api.connectMyComputer();
+                      p = { code: fresh.code, expiresAt: fresh.expiresAt };
+                      setPairing(p);
+                    }
+                    await downloadHelper(p.code, false);
+                  })}
+                  className="flex items-center gap-1 px-2 py-1 rounded-md border border-[var(--color-border)] hover:text-[var(--color-accent)] disabled:opacity-50"
+                >
+                  <Download size={11} /> Download the plain helper
+                </button>
+              </div>
+              <div>3. Open a terminal in your Downloads folder and run:</div>
+              <div className="flex items-center gap-2 rounded-md border border-[var(--color-border)] bg-black/30 px-3 py-2">
+                <code className="font-[var(--font-mono)] flex-1 break-all">{RUN_CMD}</code>
+                <CopyButton text={RUN_CMD} />
+              </div>
+            </div>
+          </details>
         </div>
       )}
 
