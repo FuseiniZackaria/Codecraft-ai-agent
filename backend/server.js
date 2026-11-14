@@ -81,6 +81,8 @@ app.use(express.json({ limit: '35mb', verify: (req, _res, buf) => { req.rawBody 
 // The video editor worker (laptop now, Render worker later): its own token, no user login.
 // Mounted before the general /api login check below. (api/videoWorkerRoutes.js)
 app.use('/api/video-worker', require('./api/videoWorkerRoutes'));
+// The Computer Helper on each person's PC: its own secret, no browser login. (api/computerHelperRoutes.js)
+app.use('/api/computer-helper', require('./api/computerHelperRoutes'));
 
 // Only the owner sees other admins: other people's ids and emails are blanked
 // out of every /api JSON answer to anyone else (core/usage/visibility.js).
@@ -210,6 +212,8 @@ app.use('/api/mcp', requireAuth, requireRole('admin'), mcpRoutes);
 // Team (and everyone's usage) is the owner's only: other admins never see each other.
 app.use('/api/team', requireAuth, requireRole('owner'), teamRoutes);
 app.use('/api/usage', requireAuth, requireRole('admin'), require('./api/usageRoutes'));
+// "My computer": each person connects and controls only their OWN computer.
+app.use('/api/computer', requireAuth, requireRole('admin'), require('./api/computerRoutes'));
 app.use('/api/business-profile', requireAuth, requireRole('admin'), businessProfileRoutes);
 // Knowledge base + agent tuning. To let clients edit their own later, allow
 // 'client' here too - core/workspaceAccess.js already checks the workspace role.

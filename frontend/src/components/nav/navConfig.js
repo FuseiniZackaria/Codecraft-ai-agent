@@ -75,6 +75,8 @@ export const NAV_ITEMS = [
     tabs: [
       { label: 'Connections', to: '/toolbox/connections' },
       { label: 'Skills', to: '/toolbox/skills' },
+      // Each person connects only their OWN computer (Computer Helper).
+      { label: 'My computer', to: '/toolbox/computer' },
     ],
   },
   {

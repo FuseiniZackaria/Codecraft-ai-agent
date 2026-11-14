@@ -1,14 +1,10 @@
-const { launchApp } = require('../../../core/computerOperator/appLaunch');
+const target = require('../../../core/computerOperator/target');
 
-/**
- * Non-gated, same spirit as openFile/openFolder - launching a NAMED,
- * pre-approved app (from COMPUTER_ALLOWED_APPS) is equivalent to the user
- * double-clicking it themselves. Not irreversible/destructive, so no
- * approval gate - the real safety boundary is appLaunch.js's allowlist
- * check, which happens before this ever runs.
- */
+// start an app from the allowed-apps list only. Runs on the computer of the person asking (their Computer Helper),
+// or on this server in the owner's local mode - see core/computerOperator/target.js.
 module.exports = {
+  name: 'launchApp',
   permission: 'computer.read',
   irreversible: false,
-  run: async (args) => launchApp(args.exePath),
+  run: async ({ exePath } = {}) => target.call('launchApp', { exePath }),
 };

@@ -1,6 +1,4 @@
-const { moveToRecycleBin } = require('../../../core/computerOperator/recycleBin');
-const { getAllowedRoots } = require('../../../core/computerOperator/pathSafety');
-const config = require('../../../config');
+const target = require('../../../core/computerOperator/target');
 const activityLog = require('../../../core/activityLog');
 
 module.exports = {
@@ -16,38 +14,21 @@ module.exports = {
   /**
    * @param {object} args
    * @param {string[]} args.paths - specific, already-resolved file/folder paths to recycle (not names to search for)
+   * @param {string} [args.deviceId] - the person's computer this was planned on (Computer Helper)
+   * @param {string} [args.forUserId] - that person; only they can approve it
    */
-  async run({ paths } = {}, context = {}) {
+  async run({ paths, deviceId, forUserId } = {}, context = {}) {
     const workspaceId = context.workspaceId || null;
-    const allowedRoots = getAllowedRoots();
-    if (allowedRoots.length === 0) {
-      throw new Error('No folders are configured for computer access yet. Set COMPUTER_ALLOWED_ROOTS in .env first.');
-    }
     if (!Array.isArray(paths) || paths.length === 0) {
       throw new Error('deleteToRecycleBin requires a non-empty "paths" array');
     }
-
-    const maxBatch = config.computerOperator.maxDeleteBatch;
-    if (paths.length > maxBatch) {
-      throw new Error(
-        `Refusing to delete ${paths.length} items in one action - the safety cap is ${maxBatch} per approval. Split this into smaller batches.`
-      );
+    // A delete planned on someone's computer runs ONLY there (never falls back
+    // to this server); the size cap and Recycle-Bin-only rule are in ops.js.
+    const out = await target.call('deleteToRecycleBin', { paths }, deviceId ? { deviceId, forUserId } : {});
+    for (const r of out.results || []) {
+      if (r.status === 'recycled') await activityLog.record('Computer Operator Agent', 'file_recycled', r.path, { wasDirectory: !!r.wasDirectory, workspaceId });
+      else await activityLog.record('Computer Operator Agent', 'file_recycle_failed', r.path, { error: r.error, workspaceId });
     }
-
-    const results = [];
-    for (const targetPath of paths) {
-      try {
-        const result = await moveToRecycleBin(targetPath);
-        results.push({ path: targetPath, status: 'recycled' });
-        await activityLog.record('Computer Operator Agent', 'file_recycled', targetPath, { wasDirectory: result.wasDirectory, workspaceId });
-      } catch (err) {
-        results.push({ path: targetPath, status: 'failed', error: err.message });
-        await activityLog.record('Computer Operator Agent', 'file_recycle_failed', targetPath, { error: err.message, workspaceId });
-      }
-    }
-
-    const succeeded = results.filter((r) => r.status === 'recycled').length;
-    const failed = results.filter((r) => r.status === 'failed').length;
-    return { results, succeeded, failed };
+    return out;
   },
 };

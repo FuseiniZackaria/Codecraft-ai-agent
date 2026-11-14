@@ -1,9 +1,10 @@
 const BaseAgent = require('../base/BaseAgent');
 const { selectProvider } = require('../../core/router');
-const { getAllowedRoots } = require('../../core/computerOperator/pathSafety');
-const { findDirectoriesByName } = require('../../core/computerOperator/directoryInspect');
-const { searchFiles } = require('../../core/computerOperator/fileSearch');
-const { findAppsByName } = require('../../core/computerOperator/appLaunch');
+// Every file action runs on the computer of the person asking (their Computer
+// Helper) - or on this server in the owner's local mode. See target.js.
+const target = require('../../core/computerOperator/target');
+
+const failStep = (err) => [{ type: 'llm_call', maxTokens: 150, instruction: `Tell the user, in one or two short friendly sentences, that this could not be done: ${err.message}` }];
 
 /**
  * ComputerOperatorAgent - Stages 1-10 of the local computer-operator system:
@@ -50,19 +51,18 @@ class ComputerOperatorAgent extends BaseAgent {
   }
 
   async plan(task) {
-    const allowedRoots = getAllowedRoots();
-    if (allowedRoots.length === 0) {
+    const where = await target.resolveTarget();
+    if (where.kind === 'none') {
       return [
         {
           type: 'llm_call',
           maxTokens: 150,
-          instruction:
-            'Tell the user, in one short, friendly sentence, that local computer file access is not configured ' +
-            'yet, and they need to set COMPUTER_ALLOWED_ROOTS in their .env file (listing the folder(s) they want ' +
-            'this agent able to search) before this will work.',
+          instruction: `Tell the user, in one or two short, friendly sentences, that computer access is not set up for them yet: ${where.reason}`,
         },
       ];
     }
+    // Approved deletes are pinned to this exact computer and person.
+    const pin = where.kind === 'device' ? { deviceId: where.device.id, forUserId: where.device.user_id } : {};
 
     const historyContext = this.formatHistoryContext(task.history);
 
@@ -147,11 +147,11 @@ class ComputerOperatorAgent extends BaseAgent {
     }
 
     if (isDeleteFileMode && hasFileName) {
-      return this.planDeleteFile(extracted.fileName);
+      return this.planDeleteFile(extracted.fileName, pin);
     }
 
     if (isDeleteFolderMode && hasFolderName) {
-      return this.planDeleteFolder(extracted.folderName);
+      return this.planDeleteFolder(extracted.folderName, pin);
     }
 
     if (isLaunchAppMode && hasFileName) {
@@ -267,12 +267,12 @@ class ComputerOperatorAgent extends BaseAgent {
     ];
   }
 
-  async planDeleteFile(fileName) {
+  async planDeleteFile(fileName, pin = {}) {
     let searchResult;
     try {
-      searchResult = searchFiles({ query: fileName, maxResults: 10 });
+      searchResult = await target.call('searchFiles', { query: fileName, maxResults: 10 });
     } catch (err) {
-      return [{ type: 'llm_call', maxTokens: 150, instruction: `Tell the user this failed: ${err.message}` }];
+      return failStep(err);
     }
 
     const matches = searchResult.results;
@@ -298,28 +298,28 @@ class ComputerOperatorAgent extends BaseAgent {
       ];
     }
 
-    const target = matches[0];
+    const picked = matches[0];
     await this.createApprovalTask({
-      instruction: `Move to Recycle Bin: ${target.path}`,
+      instruction: `Move to Recycle Bin: ${picked.path}`,
       tool: 'computer.deleteToRecycleBin',
-      payload: { paths: [target.path] },
+      payload: { paths: [picked.path], ...pin },
     });
 
     return [
       {
         type: 'llm_call',
         maxTokens: 150,
-        instruction: `Tell the user a request to move "${target.name}" (${target.path}) to the Recycle Bin has been created and is waiting on the Tasks page for their approval - nothing has been deleted yet.`,
+        instruction: `Tell the user a request to move "${picked.name}" (${picked.path}) to the Recycle Bin has been created and is waiting on the Tasks page for their approval - nothing has been deleted yet.`,
       },
     ];
   }
 
-  async planDeleteFolder(folderName) {
+  async planDeleteFolder(folderName, pin = {}) {
     let matches;
     try {
-      matches = findDirectoriesByName(folderName);
+      matches = await target.call('findDirectoriesByName', { name: folderName });
     } catch (err) {
-      return [{ type: 'llm_call', maxTokens: 150, instruction: `Tell the user this failed: ${err.message}` }];
+      return failStep(err);
     }
 
     if (matches.length === 0) {
@@ -342,28 +342,28 @@ class ComputerOperatorAgent extends BaseAgent {
       ];
     }
 
-    const target = matches[0];
+    const picked = matches[0];
     await this.createApprovalTask({
-      instruction: `Move to Recycle Bin: ${target}`,
+      instruction: `Move to Recycle Bin: ${picked}`,
       tool: 'computer.deleteToRecycleBin',
-      payload: { paths: [target] },
+      payload: { paths: [picked], ...pin },
     });
 
     return [
       {
         type: 'llm_call',
         maxTokens: 150,
-        instruction: `Tell the user a request to move the folder "${target}" to the Recycle Bin has been created and is waiting on the Tasks page for their approval - nothing has been deleted yet.`,
+        instruction: `Tell the user a request to move the folder "${picked}" to the Recycle Bin has been created and is waiting on the Tasks page for their approval - nothing has been deleted yet.`,
       },
     ];
   }
 
-  planDirectoryListing(folderName) {
+  async planDirectoryListing(folderName) {
     let matches;
     try {
-      matches = findDirectoriesByName(folderName);
+      matches = await target.call('findDirectoriesByName', { name: folderName });
     } catch (err) {
-      return [{ type: 'llm_call', maxTokens: 150, instruction: `Tell the user this failed: ${err.message}` }];
+      return failStep(err);
     }
 
     if (matches.length === 0) {
@@ -373,8 +373,7 @@ class ComputerOperatorAgent extends BaseAgent {
           maxTokens: 150,
           instruction:
             `Tell the user, honestly and clearly, that no folder matching "${folderName}" was found within their ` +
-            `allowed folders - it may not exist there, or the folder containing it hasn't been added to ` +
-            `COMPUTER_ALLOWED_ROOTS yet.`,
+            `allowed folders - it may not exist there, or the folder containing it hasn't been shared yet.`,
         },
       ];
     }
@@ -405,12 +404,12 @@ class ComputerOperatorAgent extends BaseAgent {
     ];
   }
 
-  planOpenFolder(folderName) {
+  async planOpenFolder(folderName) {
     let matches;
     try {
-      matches = findDirectoriesByName(folderName);
+      matches = await target.call('findDirectoriesByName', { name: folderName });
     } catch (err) {
-      return [{ type: 'llm_call', maxTokens: 150, instruction: `Tell the user this failed: ${err.message}` }];
+      return failStep(err);
     }
 
     if (matches.length === 0) {
@@ -449,12 +448,12 @@ class ComputerOperatorAgent extends BaseAgent {
     ];
   }
 
-  planOpenFile(fileName) {
+  async planOpenFile(fileName) {
     let searchResult;
     try {
-      searchResult = searchFiles({ query: fileName, maxResults: 10 });
+      searchResult = await target.call('searchFiles', { query: fileName, maxResults: 10 });
     } catch (err) {
-      return [{ type: 'llm_call', maxTokens: 150, instruction: `Tell the user this failed: ${err.message}` }];
+      return failStep(err);
     }
 
     const matches = searchResult.results;
@@ -501,8 +500,13 @@ class ComputerOperatorAgent extends BaseAgent {
    * app sitting inside an allowed root is never enough on its own - only a
    * name explicitly present in COMPUTER_ALLOWED_APPS can ever be launched.
    */
-  planLaunchApp(appName) {
-    const matches = findAppsByName(appName);
+  async planLaunchApp(appName) {
+    let matches;
+    try {
+      matches = await target.call('findAppsByName', { name: appName });
+    } catch (err) {
+      return failStep(err);
+    }
 
     if (matches.length === 0) {
       return [
@@ -511,7 +515,7 @@ class ComputerOperatorAgent extends BaseAgent {
           maxTokens: 200,
           instruction:
             `Tell the user, honestly and clearly, that no app matching "${appName}" is in their configured ` +
-            `allowlist - it needs to be added to COMPUTER_ALLOWED_APPS in .env before this agent can launch it.`,
+            `allowlist - it needs to be added to the allowed apps (in the Computer Helper on their PC, or COMPUTER_ALLOWED_APPS on a local setup) before this agent can launch it.`,
         },
       ];
     }

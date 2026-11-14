@@ -339,7 +339,7 @@ export default function Skills() {
 
           <div className="rounded-lg border border-dashed border-[var(--color-border)] p-4">
             <div className="text-xs text-[var(--color-text-muted)] mb-2">
-              Install from GitHub, a .zip URL, or a local path — same formats as the CLI.
+              Install from GitHub, a .zip URL, or a local path — same formats as the CLI. Skills made with Claude (a folder with SKILL.md) work too: their instructions are used when a task mentions the skill's name; any scripts in them don't run.
             </div>
             <div className="flex gap-2">
               <input

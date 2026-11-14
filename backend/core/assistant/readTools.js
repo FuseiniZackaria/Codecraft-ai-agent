@@ -1,6 +1,7 @@
 const memory = require('../../memory');
 const config = require('../../config');
 const { canSeeLegacy, rowVisible } = require('../workspaceContext');
+const { hideOthersComputerTasks } = require('../computerOperator/taskPrivacy');
 const { agentMeta, sections } = require('../../config/agentSections');
 
 /**
@@ -188,7 +189,7 @@ async function getTasks(input = {}, context = {}) {
     workspaceId, lite: true, limit: department ? Math.min(limit * 4, 200) : limit,
     ...(statuses ? { status: statuses } : {}), ...(since ? { since } : {}),
   });
-  const tasks = rows
+  const tasks = hideOthersComputerTasks(rows)
     .map(taskRow)
     .filter((t) => !department || t.department === department)
     .slice(0, limit);
@@ -323,7 +324,7 @@ async function getAnalytics(input = {}, context = {}) {
   const TASK_CAP = 1000;
 
   const [tasks, auditLog, defs] = await Promise.all([
-    memory.listTasks({ workspaceId, lite: true, since, limit: TASK_CAP }),
+    memory.listTasks({ workspaceId, lite: true, since, limit: TASK_CAP }).then(hideOthersComputerTasks),
     memory.getAuditLog(2000, { workspaceId, since }),
     memory.listWorkflowDefinitions({ workspaceId, lite: true, limit: 200 }),
   ]);

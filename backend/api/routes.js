@@ -89,8 +89,16 @@ async function scopeByWorkspace(rows, req) {
   const ws = req.user?.workspaceId;
   if (!ws) return [];
   const legacyOk = await canSeeLegacy(ws);
-  return (rows || []).filter((r) => rowVisible(r, ws, legacyOk));
+  return (rows || []).filter((r) => rowVisible(r, ws, legacyOk) && !othersComputerTask(r, req));
 }
+
+// A request to change files on someone's OWN computer (Computer Helper) is
+// theirs alone: nobody else - not even the owner - sees it, approves it,
+// edits it or deletes it (own-PC-only rule). Local-mode tasks have no forUserId.
+function othersComputerTask(row, req) {
+  return isOthersComputerTask(row, req.user?.id || null);
+}
+const { isOthersComputerTask } = require('../core/computerOperator/taskPrivacy');
 
 // Loads a task by id only if it belongs to the caller's workspace; another
 // workspace's task is reported as not found (never readable, approvable,
@@ -99,6 +107,7 @@ async function loadOwnTask(req, id) {
   const task = await memory.getTask(id);
   const ws = req.user?.workspaceId;
   if (!task || !ws) return null;
+  if (othersComputerTask(task, req)) return null;
   return rowVisible(task, ws, await canSeeLegacy(ws)) ? task : null;
 }
 
@@ -402,6 +411,10 @@ router.patch('/tasks/:id/payload', async (req, res) => {
     if (!task) return res.status(404).json({ error: 'Task not found' });
     if (task.status !== 'pending_approval') {
       return res.status(400).json({ error: `Task is not pending approval (status: ${task.status})` });
+    }
+    // Which files and which computer were found by the agent; never hand-edited.
+    if (task.payload?.forUserId && String(task.toolCall?.tool || '').startsWith('computer.')) {
+      return res.status(400).json({ error: 'A computer request cannot be edited - reject it and ask again instead.' });
     }
     const updated = await memory.updateTask(req.params.id, {
       payload: { ...task.payload, ...req.body.payload },

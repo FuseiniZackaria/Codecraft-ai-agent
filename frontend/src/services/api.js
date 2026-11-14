@@ -253,6 +253,13 @@ export const api = {
 
   // --- API usage (estimated cost): own numbers for any admin; everyone's + caps for the owner ---
   getMyUsage: () => request('/usage/me'),
+
+  // --- My computer (Computer Helper): only the signed-in person's OWN computer ---
+  getMyComputer: () => request('/computer'),
+  connectMyComputer: () => request('/computer/connect', { method: 'POST' }),
+  getComputerHelper: (code) => request(`/computer/helper${code ? `?code=${encodeURIComponent(code)}` : ''}`),
+  pauseMyComputer: (id, paused) => request(`/computer/devices/${encodeURIComponent(id)}/pause`, { method: 'POST', body: JSON.stringify({ paused }) }),
+  disconnectMyComputer: (id) => request(`/computer/devices/${encodeURIComponent(id)}`, { method: 'DELETE' }),
   getUsage: () => request('/usage'),
   setUsageCap: (userId, monthlyCapUsd) =>
     request(`/usage/caps/${encodeURIComponent(userId)}`, { method: 'PUT', body: JSON.stringify({ monthly_cap_usd: monthlyCapUsd }) }),

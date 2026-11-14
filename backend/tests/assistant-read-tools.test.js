@@ -41,8 +41,12 @@ function staticScan() {
     assert.ok(READS.has(method), `readTools.js calls memory.${method}, which is not on the read-only list`);
   }
   for (const [, mod] of src.matchAll(/require\(['"]([^'"]+)['"]\)/g)) {
-    assert.ok(['../../memory', '../../config', '../workspaceContext', '../../config/agentSections', '../analytics', './usage', '../../tools/ToolRegistry'].includes(mod), `unexpected require ${mod}`);
+    assert.ok(['../../memory', '../../config', '../workspaceContext', '../../config/agentSections', '../analytics', './usage', '../../tools/ToolRegistry', '../computerOperator/taskPrivacy'].includes(mod), `unexpected require ${mod}`);
   }
+  // The computer-task privacy filter it uses must be a pure read too.
+  const privacySrc = fs.readFileSync(path.join(__dirname, '../core/computerOperator/taskPrivacy.js'), 'utf8');
+  for (const [, mod] of privacySrc.matchAll(/require\(['"]([^'"]+)['"]\)/g)) assert.strictEqual(mod, '../usage/context', `taskPrivacy.js requires ${mod}`);
+  assert.ok(!/\.(insert|update|upsert|delete)\s*\(|fetch\s*\(|writeFile/.test(privacySrc), 'taskPrivacy.js must not write');
   // The two helpers it borrows must be pure reads too.
   const usageSrc = fs.readFileSync(path.join(__dirname, '../core/assistant/usage.js'), 'utf8');
   const getDaily = usageSrc.slice(usageSrc.indexOf('async function getDaily'), usageSrc.indexOf('async function flush'));

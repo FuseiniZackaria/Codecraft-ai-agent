@@ -61,7 +61,7 @@ class SupabaseStore {
   async listTasks(options = {}) {
     const ws = options.workspaceId || options.workspace_id || null;
     const columns = options.lite
-      ? 'id,agent,instruction,status,created_at,updated_at,workspace_id,result_error:result->>error'
+      ? 'id,agent,instruction,status,created_at,updated_at,workspace_id,result_error:result->>error,computer_for_user:payload->>forUserId'
       : '*';
     let query = this.client.from('tasks').select(columns).order('created_at', { ascending: false });
     if (ws) query = (await canSeeLegacy(ws)) ? query.or(`workspace_id.is.null,workspace_id.eq.${ws}`) : query.eq('workspace_id', ws);
@@ -75,6 +75,8 @@ class SupabaseStore {
         id: row.id, agent: row.agent, instruction: row.instruction, status: row.status,
         result: row.result_error ? { error: row.result_error } : null,
         created_at: row.created_at, updated_at: row.updated_at, workspace_id: row.workspace_id || null,
+        // Set only on requests pinned to one person's own computer (core/computerOperator/taskPrivacy.js).
+        ...(row.computer_for_user ? { computer_for_user: row.computer_for_user } : {}),
       }));
     }
     return (data || []).map((row) => this._fromRow(row));

@@ -9,6 +9,7 @@ import Login from './pages/Login';
 import Dashboard from './pages/Dashboard';
 import Console from './pages/Console';
 import Skills from './pages/Skills';
+import MyComputer from './pages/MyComputer';
 import Tasks from './pages/Tasks';
 import Workflows from './pages/Workflows';
 import Analytics from './pages/Analytics';
@@ -290,6 +291,7 @@ function AdminLayout({ connectionError }) {
               <Route index element={<Navigate to="connections" replace />} />
               <Route path="skills" element={<Skills />} />
               <Route path="connections" element={<Connections />} />
+              <Route path="computer" element={<MyComputer />} />
             </Route>
             <Route path="/settings" element={<TabbedLayout navKey="settings" />}>
               <Route index element={<Settings />} />

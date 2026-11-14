@@ -26,7 +26,10 @@ class Manifest {
   static load(packageDir) {
     const manifestPath = path.join(packageDir, 'manifest.json');
     if (!fs.existsSync(manifestPath)) {
-      throw new ManifestError('manifest.json not found in package root');
+      // A skill made with Claude (Agent Skills format): SKILL.md, no manifest.json.
+      const skillMd = path.join(packageDir, 'SKILL.md');
+      if (fs.existsSync(skillMd)) return Manifest.validate(Manifest.fromClaudeSkill(fs.readFileSync(skillMd, 'utf-8')));
+      throw new ManifestError('manifest.json (or a Claude SKILL.md) not found in package root');
     }
 
     let raw;
@@ -37,6 +40,50 @@ class Manifest {
     }
 
     return Manifest.validate(raw);
+  }
+
+  /**
+   * Build a manifest from a Claude skill's SKILL.md header. It installs as a
+   * "guidance" skill: its instructions are added to agent prompts when a task
+   * mentions one of its trigger words. Scripts in the skill folder never run.
+   *
+   * Triggers: a `triggers` list in the header if there is one, otherwise the
+   * words of the skill's name (e.g. "invoice-writer" -> "invoice", "writer").
+   * Never empty - an empty list would add the skill to EVERY prompt.
+   */
+  static fromClaudeSkill(text) {
+    const header = parseFrontmatter(text);
+    if (!header) throw new ManifestError('SKILL.md has no header - it must start with --- name: ... description: ... ---');
+    const rawName = String(header.name || '').trim();
+    if (!rawName) throw new ManifestError('SKILL.md header is missing "name"');
+    const id = rawName.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '');
+    if (!id) throw new ManifestError(`SKILL.md name "${rawName}" has no letters or numbers`);
+    const meta = header.metadata && typeof header.metadata === 'object' ? header.metadata : {};
+    const listOf = (v) => (Array.isArray(v) ? v : typeof v === 'string' && v.trim() ? v.split(',') : [])
+      .map((t) => String(t).trim()).filter(Boolean);
+    let triggers = listOf(header.triggers).concat(listOf(meta.triggers));
+    if (!triggers.length) {
+      const GENERIC = new Set(['skill', 'skills', 'helper', 'tool', 'tools', 'the', 'and', 'for', 'with', 'claude']);
+      const words = id.split('-').filter((w) => w.length >= 3 && !GENERIC.has(w));
+      triggers = [...new Set([id.replace(/-/g, ' '), ...words])];
+    }
+    const version = String(header.version || meta.version || '1.0.0').trim();
+    return {
+      id,
+      name: rawName.replace(/[-_]+/g, ' ').replace(/\b\w/g, (ch) => ch.toUpperCase()),
+      version: /^\d+\.\d+\.\d+/.test(version) ? version : '1.0.0',
+      author: String(header.author || meta.author || 'Claude skill'),
+      description: String(header.description || '').trim(),
+      kind: 'guidance',
+      guidanceFile: 'SKILL.md',
+      triggers,
+      minimumCoreVersion: '1.0.0',
+      dependencies: [],
+      permissions: [],
+      tools: [],
+      events: ['skill.loaded', 'skill.enabled'],
+      source: 'claude-skill',
+    };
   }
 
   static validate(raw) {
@@ -85,4 +132,64 @@ class Manifest {
   }
 }
 
-module.exports = { Manifest, ManifestError };
+/**
+ * The YAML header between the first two "---" lines, kept simple: "key: value",
+ * quoted values, "key: >" / "key: |" blocks, "[a, b]" and "- item" lists, and one
+ * level of nesting (e.g. metadata:). Returns null when there is no header.
+ */
+function parseFrontmatter(text) {
+  const lines = String(text || '').replace(/^\uFEFF/, '').split(/\r?\n/);
+  if (lines[0].trim() !== '---') return null;
+  const end = lines.findIndex((l, i) => i > 0 && l.trim() === '---');
+  if (end < 0) return null;
+  const body = lines.slice(1, end);
+  const unquote = (v) => {
+    const t = v.trim();
+    if ((t.startsWith('"') && t.endsWith('"')) || (t.startsWith("'") && t.endsWith("'"))) return t.slice(1, -1);
+    if (t.startsWith('[') && t.endsWith(']')) return t.slice(1, -1).split(',').map((x) => unquote(x)).filter(Boolean);
+    return t;
+  };
+  const indentOf = (l) => l.length - l.trimStart().length;
+
+  function parseBlock(start, minIndent) {
+    const out = {};
+    let i = start;
+    while (i < body.length) {
+      const line = body[i];
+      if (!line.trim() || line.trim().startsWith('#')) { i++; continue; }
+      const indent = indentOf(line);
+      if (indent < minIndent) break;
+      const m = line.trim().match(/^([A-Za-z0-9_-]+):\s*(.*)$/);
+      if (!m) { i++; continue; }
+      const [, key, rest] = m;
+      i++;
+      if (/^[>|][+-]?$/.test(rest)) {
+        const parts = [];
+        while (i < body.length && (!body[i].trim() || indentOf(body[i]) > indent)) { parts.push(body[i].trim()); i++; }
+        out[key] = rest.startsWith('>') ? parts.filter(Boolean).join(' ') : parts.join('\n').trim();
+      } else if (rest === '') {
+        const next = body.slice(i).find((l) => l.trim());
+        if (next && indentOf(next) > indent && next.trim().startsWith('- ')) {
+          const items = [];
+          while (i < body.length && (!body[i].trim() || (indentOf(body[i]) > indent && body[i].trim().startsWith('- ')))) {
+            if (body[i].trim()) items.push(unquote(body[i].trim().slice(2)));
+            i++;
+          }
+          out[key] = items;
+        } else if (next && indentOf(next) > indent) {
+          const nested = parseBlock(i, indentOf(next));
+          out[key] = nested.value;
+          i = nested.next;
+        } else {
+          out[key] = '';
+        }
+      } else {
+        out[key] = unquote(rest);
+      }
+    }
+    return { value: out, next: i };
+  }
+  return parseBlock(0, 0).value;
+}
+
+module.exports = { Manifest, ManifestError, parseFrontmatter };

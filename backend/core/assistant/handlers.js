@@ -1,5 +1,6 @@
 const orchestrator = require('../orchestrator');
 const memory = require('../../memory');
+const { hideOthersComputerTasks } = require('../computerOperator/taskPrivacy');
 const { departmentForTool } = require('./tools');
 
 /**
@@ -145,7 +146,7 @@ async function runDepartmentTask(toolName, input, context) {
 }
 
 async function listPendingApprovals(context = {}) {
-  const tasks = await memory.listTasks({ workspaceId: context.workspaceId || null });
+  const tasks = hideOthersComputerTasks(await memory.listTasks({ workspaceId: context.workspaceId || null }));
   const pending = tasks
     .filter((t) => t.status === 'pending_approval')
     .slice(0, 20)
